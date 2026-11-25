@@ -25,8 +25,17 @@ What the executor does, per the spec's "Execution and oversight" section:
   When it trips, the exchange rejects new orders until the group is reset,
   and this executor does not reset it.
 - **Reconciliation.** Fills and fees come from ``GET /portfolio/fills`` for
-  the order. If that read lags the order response, the shortfall is recorded
-  at the limit price (never understating cost) and the result says so.
+  the order. If that read lags the order response, or fails after the order
+  was accepted, the shortfall is recorded at the limit price (never
+  understating cost) and the result says so: an accepted order always comes
+  back as a result, never as an exception, so it can be stored.
+- **Halt.** Given a ``halt_check`` (the state store's ``get_halt``), the
+  executor reads the persisted halt flag when an order starts and again
+  immediately before the order is sent, and refuses (``REJECTED``, error
+  ``halted: ...``) without sending when it is set.
+- **Rejections.** A refused order carries the deterministic id
+  ``stable_id("demo-rejected", client_order_id)``, so distinct rejections are
+  stored as distinct orders and count toward the fill-failure halt.
 - **Scope.** Balance, positions, orders and cancels are for the configured
   numbered subaccount only (``config.kalshi.demo_subaccount``).
 
@@ -47,8 +56,9 @@ import httpx
 from pmfa.config import Config
 from pmfa.errors import ConfigError, ExchangeError
 from pmfa.ports import Clock
-from pmfa.records.base import ONE, ZERO
+from pmfa.records.base import ONE, ZERO, stable_id
 from pmfa.records.decision import Fill, OrderIntent, OrderResult, OrderStatus
+from pmfa.records.episode import HaltState
 from pmfa.records.market import Balance, OrderBook, Position, Side
 from pmfa.world.kalshi.client import KalshiClient, KalshiExchangeError, KalshiNotFound
 from pmfa.world.kalshi.data import KalshiData
@@ -116,6 +126,7 @@ class DemoExecutor:
         sleep: Callable[[float], None] = time.sleep,
         fill_read_attempts: int = 3,
         fill_read_delay_seconds: float = 0.5,
+        halt_check: Callable[[], HaltState] | None = None,
     ) -> None:
         if not is_demo_url(client.base_url):
             raise ConfigError(
@@ -135,6 +146,8 @@ class DemoExecutor:
         self._fill_read_delay = fill_read_delay_seconds
         self._groups: dict[int, str] = {}
         self._exchange_index: dict[str, int] = {}
+        self.halt_check = halt_check
+        """Reads the persisted halt flag; set it after building when the store comes later."""
 
     # -- holdings
 
@@ -165,6 +178,9 @@ class DemoExecutor:
     def place(self, intent: OrderIntent) -> OrderResult:
         """Send one immediate-or-cancel limit order and reconcile its fills."""
         placed_at = self.clock.now()
+        halted = self._halted(intent, placed_at)
+        if halted is not None:
+            return halted
         if intent.contracts < 1:
             return self._rejected(intent, placed_at, "contracts must be at least 1")
         if not (ZERO < intent.limit_price < ONE):
@@ -174,6 +190,9 @@ class DemoExecutor:
         except (KalshiExchangeError, KalshiNotFound) as exc:
             return self._rejected(intent, placed_at, f"order group unavailable: {exc}")
         payload = order_payload(intent, subaccount=self.subaccount, order_group_id=group_id)
+        halted = self._halted(intent, placed_at)  # the group lookup took network time
+        if halted is not None:
+            return halted
         try:
             response = self.client.post(ORDERS_PATH, json=payload)
         except KalshiExchangeError as exc:
@@ -223,6 +242,15 @@ class DemoExecutor:
         return len(resting)
 
     # -- internals
+
+    def _halted(self, intent: OrderIntent, placed_at: datetime) -> OrderResult | None:
+        """A ``halted`` refusal when the persisted halt flag is set, else ``None``."""
+        if self.halt_check is None:
+            return None
+        state = self.halt_check()
+        if not state.halted:
+            return None
+        return self._rejected(intent, placed_at, f"halted: {state.reason}")
 
     def _exchange_shard(self, ticker: str) -> int:
         if ticker not in self._exchange_index:
@@ -296,8 +324,14 @@ class DemoExecutor:
     ) -> OrderResult:
         fills: list[Fill] = []
         error = ""
+        read_failed = ""
         if filled > 0:
-            fills = self._reconciled_fills(order_id, filled)
+            try:
+                fills = self._reconciled_fills(order_id, filled)
+            except (KalshiExchangeError, KalshiNotFound) as exc:
+                # The order was accepted: it must come back as a result, not an exception,
+                # so the caller stores it. The fills are recorded at the limit price below.
+                fills, read_failed = [], f"fills could not be read ({exc}); "
             recorded = sum((f.contracts for f in fills), ZERO)
             if recorded < filled:
                 shortfall = filled - recorded
@@ -315,7 +349,7 @@ class DemoExecutor:
                     )
                 )
                 error = (
-                    f"fills not yet reconciled: {shortfall} of {filled} contracts "
+                    f"{read_failed}fills not yet reconciled: {shortfall} of {filled} contracts "
                     "recorded at the limit price"
                 )
         if filled <= 0:
@@ -356,7 +390,7 @@ class DemoExecutor:
 
     def _rejected(self, intent: OrderIntent, placed_at: datetime, error: str) -> OrderResult:
         return OrderResult(
-            order_id="",
+            order_id=stable_id("demo-rejected", intent.client_order_id),
             client_order_id=intent.client_order_id,
             episode_id=intent.episode_id,
             market_ticker=intent.market_ticker,
@@ -419,9 +453,12 @@ def demo_executor(
     transport: httpx.BaseTransport | None = None,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    halt_check: Callable[[], HaltState] | None = None,
 ) -> DemoExecutor:
     """A :class:`DemoExecutor` signed with the demo key from the environment.
 
+    ``halt_check`` (the state store's ``get_halt``) is read before every order is
+    sent; it can also be set on the executor afterwards (``executor.halt_check``).
     Raises :class:`ConfigError` when no demo credentials are set.
     """
     signer = load_signer(config, environ=environ)
@@ -435,7 +472,7 @@ def demo_executor(
         config, signer=signer, transport=transport, sleep=sleep, monotonic=monotonic
     )
     data = demo_exchange(config, clock, transport=transport, sleep=sleep, monotonic=monotonic)
-    return DemoExecutor(client, clock, config, data=data, sleep=sleep)
+    return DemoExecutor(client, clock, config, data=data, sleep=sleep, halt_check=halt_check)
 
 
 __all__ = [

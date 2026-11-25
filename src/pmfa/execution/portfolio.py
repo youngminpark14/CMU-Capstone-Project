@@ -13,7 +13,13 @@ hand. The rules follow the exchange:
   fee``), plus the dollars returned by netting, plus settlement payouts (one
   dollar per contract on the winning side).
 - **Equity** is cash plus open holdings at cost (``contracts x average price``,
-  fees excluded), so a fill lowers equity by its fee only. There are no marks.
+  fees excluded), so a fill lowers equity by its fee only. This is the
+  bankroll sizing uses (what ``Balance.equity`` documents).
+- **Marked equity** (:func:`marked_equity`) is cash plus each open holding at
+  the current best bid on its own side, or at cost when that side has no bid.
+  It is what the equity points behind the daily loss stop and the drawdown
+  halt record, so the stops see unrealized losses. The bid is the conservative
+  side: it is what the holding could be sold for now.
 
 Decimal throughout; contracts are kept as the exchange counts them.
 """
@@ -143,6 +149,19 @@ def _apply_fill(
     return closed, None
 
 
+def marked_equity(acct: Account, bid: Callable[[str, Side], Decimal | None]) -> Decimal:
+    """Cash plus each open holding at its own side's bid, or at cost without one.
+
+    ``bid(market_ticker, side)`` is the best bid for ``side`` in that market now,
+    or ``None`` when there is none. The value of a holding is ``contracts x bid``.
+    """
+    total = acct.cash
+    for h in acct.holdings:
+        price = bid(h.market_ticker, h.side)
+        total += h.cost if price is None else h.contracts * price
+    return total
+
+
 def positions(
     acct: Account, event_of: Callable[[str], str], *, event_ticker: str | None = None
 ) -> list[Position]:
@@ -172,4 +191,4 @@ def positions(
     return result
 
 
-__all__ = ["Account", "Holding", "account", "positions"]
+__all__ = ["Account", "Holding", "account", "marked_equity", "positions"]

@@ -359,9 +359,14 @@ def build_backtest_world(
     - Exchange: ``SnapshotExchange`` over the snapshot.
     - Evidence: ``FrozenEvidence`` over the corpus and its release calendar.
     - Knowledge: ``knowledge`` (default: the shared index) behind a ``CanaryGuard``.
-    - Executor: a ``PaperExecutor`` whose book is the snapshot's execution book
-      at the clock's time (the first one-minute candle after the as-of time plus
-      the latency, at the ask, else the hourly fallback, else empty).
+    - Executor: a ``PaperExecutor`` with two books. ``execution_book``, which the
+      pipeline decides with (the price re-read before sending, the one
+      recompute, the second gate, routing's price move) and which marks equity,
+      is the exchange's as-of book: nothing priced after the clock's time. The
+      order itself fills against the snapshot's execution book at the clock's
+      time (the first one-minute candle after the as-of time plus the latency,
+      on the conservative side, else the hourly fallback, else empty), which no
+      decision sees. A limit that candle does not meet leaves the order unfilled.
     - Review policy ``FILL_TAGGED``: with no human present, approve-tier
       proposals are filled and tagged, so reports can separate them.
     - ``state.transport`` is forced to ``direct`` for throughput (see ``backtest_config``).
@@ -377,10 +382,12 @@ def build_backtest_world(
         else data.guard(knowledge if knowledge is not None else data.knowledge())
     )
 
-    def books(ticker: str) -> Any:
+    def fill_books(ticker: str) -> Any:
         return execution_book(data.snapshot, ticker, clock.now(), config).book
 
-    executor = PaperExecutor(store, clock, config, exchange, books)
+    executor = PaperExecutor(
+        store, clock, config, exchange, exchange.get_order_book, fill_books=fill_books
+    )
     return World(
         mode=RunMode.BACKTEST,
         config=config,

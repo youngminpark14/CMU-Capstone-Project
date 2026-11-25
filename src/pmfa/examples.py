@@ -56,8 +56,22 @@ class ExampleError(PmfaError):
 # --------------------------------------------------------------------------- finding examples
 
 
+NO_CHECKOUT_HINT = (
+    "The sample episodes ship with a source checkout of the repository, not with the installed "
+    "package: "
+    "run `pmfa replay` from a clone of the repository, or pass the path of an example "
+    "directory or world file."
+)
+"""Said when no ``examples/episodes`` directory is found, as from an installed wheel."""
+
+
 def examples_root() -> Path:
-    """``examples/episodes`` in the working directory, else in the source checkout."""
+    """``examples/episodes`` in the working directory, else in the source checkout.
+
+    The examples are not package data, so an installed wheel has neither: the
+    path returned then does not exist, and callers say so with
+    :data:`NO_CHECKOUT_HINT`.
+    """
     here = Path.cwd() / "examples" / "episodes"
     if here.is_dir():
         return here
@@ -110,6 +124,8 @@ def resolve(path: str | Path) -> ExamplePaths:
         world = target
         cassette = target.parent / CASSETTE_FILE
         directory = target.parent if (target.parent / EXPECTED_DIR).is_dir() else None
+    elif not examples_root().is_dir():
+        raise ExampleError(f"no example or world file at {path}. {NO_CHECKOUT_HINT}")
     else:
         raise ExampleError(f"no example or world file at {path} (try `pmfa replay --list`)")
     if not cassette.is_file():
@@ -347,6 +363,7 @@ def summary_line(directory: Path) -> str:
 
 __all__ = [
     "HAND_MADE_NOTICE",
+    "NO_CHECKOUT_HINT",
     "EpisodeRun",
     "ExampleError",
     "ExamplePaths",

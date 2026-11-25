@@ -10,8 +10,8 @@ optional scripted human review.
 
 The ports built from it obey the as-of rule inside each call:
 
-- ``RecordedExchange`` answers as of its clock: no event that opens later, no
-  result that settles later, no candle that ends later.
+- ``RecordedExchange`` answers as of its clock: no event or strike that opens
+  later, no result that settles later, no candle that ends later.
 - ``RecordedEvidence`` never returns a document published after ``as_of``.
 - The built world's ``Knowledge`` indexes every document, including those
   dated after the trigger: the as-of filter inside retrieval, not omission,
@@ -254,11 +254,10 @@ class RecordedExchange:
     def list_events(self, series_ticker: str, *, include_closed: bool = False) -> list[Event]:
         now = self.clock.now()
         events = [
-            self._as_of(e)
+            event
             for e in self.file.events
-            if e.series_ticker == series_ticker and e.markets
+            if e.series_ticker == series_ticker and (event := self._as_of(e)) is not None
         ]
-        events = [e for e in events if e.open_time <= now]
         if not include_closed:
             events = [
                 e
@@ -269,17 +268,19 @@ class RecordedExchange:
 
     def get_event(self, event_ticker: str) -> Event:
         for e in self.file.events:
-            if e.event_ticker == event_ticker and e.markets:
+            if e.event_ticker == event_ticker:
                 event = self._as_of(e)
-                if event.open_time > self.clock.now():
+                if event is None:
                     break
                 return event
         raise NotFound(f"recorded world has no event {event_ticker!r} as of {self.clock.now()}")
 
     def get_market(self, ticker: str) -> Market:
         market = _find_market(self.file, ticker)
-        self.get_event(market.event_ticker)  # raises if the event is not open yet
-        return self._market_as_of(market)
+        for listed in self.get_event(market.event_ticker).markets:  # raises if not open yet
+            if listed.ticker == ticker:
+                return listed
+        raise NotFound(f"recorded market {ticker!r} has not opened as of {self.clock.now()}")
 
     def get_order_book(self, ticker: str) -> OrderBook:
         self.get_market(ticker)
@@ -305,8 +306,11 @@ class RecordedExchange:
         book = self.get_order_book(ticker)
         return book.resting_dollars_near_touch(side, self.config.caps.liquidity_band)
 
-    def _as_of(self, event: Event) -> Event:
-        return event.model_copy(update={"markets": [self._market_as_of(m) for m in event.markets]})
+    def _as_of(self, event: Event) -> Event | None:
+        """The event with only the markets open by the clock's time; ``None`` before any opens."""
+        now = self.clock.now()
+        listed = [self._market_as_of(m) for m in event.markets if m.open_time <= now]
+        return event.model_copy(update={"markets": listed}) if listed else None
 
     def _market_as_of(self, market: Market) -> Market:
         """Hide a result that settles after the clock's time."""

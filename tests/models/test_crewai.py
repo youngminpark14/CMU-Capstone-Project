@@ -98,6 +98,58 @@ def test_runs_inside_an_event_loop(probe):
     assert probe["report"]["event_loop"]["same_instance"]
 
 
+@pytest.fixture(scope="module")
+def hostile_env_report(tmp_path_factory):
+    """What CrewAI switched on when the inherited environment and a .env file asked for tracing."""
+    home = tmp_path_factory.mktemp("crewai-hostile")
+    out = home / "report.json"
+    dotenv_file = home / ".env"
+    dotenv_file.write_text(
+        "PMFA_PROBE_FROM_DOTENV=read-from-dotenv\nCREWAI_TRACING_ENABLED=true\n", encoding="utf-8"
+    )
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("PYTHON_DOTENV")}
+    env.update(
+        {
+            "HOME": str(home),
+            "PYTHONPATH": str(REPO),
+            "PMFA_PROBE_DOTENV": str(dotenv_file),
+            "CREWAI_TRACING_ENABLED": "true",
+            "CREWAI_DISABLE_TELEMETRY": "false",
+            "CREWAI_DISABLE_TRACKING": "false",
+            "OTEL_SDK_DISABLED": "false",
+            "HTTP_PROXY": CLOSED_PORT_PROXY,
+            "HTTPS_PROXY": CLOSED_PORT_PROXY,
+            "http_proxy": CLOSED_PORT_PROXY,
+            "https_proxy": CLOSED_PORT_PROXY,
+        }
+    )
+    env.pop("PMFA_PROBE_FROM_DOTENV", None)
+    done = subprocess.run(
+        [sys.executable, str(REPO / "tests" / "models" / "crewai_env_probe.py"), str(out)],
+        cwd=home,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=110,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-4000:]
+    return json.loads(out.read_text())
+
+
+def test_inherited_variables_cannot_turn_crewai_tracing_back_on(hostile_env_report):
+    assert hostile_env_report["tracing_enabled"] is False
+    assert hostile_env_report["env"]["CREWAI_TRACING_ENABLED"] == "false"
+    assert hostile_env_report["env"]["CREWAI_DISABLE_TELEMETRY"] == "true"
+    assert hostile_env_report["env"]["OTEL_SDK_DISABLED"] == "true"
+
+
+def test_crewai_does_not_load_a_dotenv_file(hostile_env_report):
+    # Secrets come from the environment only; CrewAI's import-time load_dotenv() is switched off.
+    assert hostile_env_report["from_dotenv"] is None
+    assert hostile_env_report["env"]["PYTHON_DOTENV_DISABLED"] == "1"
+
+
 def test_kickoff_makes_no_network_call_and_prints_nothing(probe):
     # The probe refuses and records every socket connection; with CrewAI's telemetry
     # left on, it records the exporter's attempts at exit, so an empty list means none.

@@ -16,4 +16,4 @@ Syndicated copies merge into one origin, so one secondary story repeated twice e
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 4.
+Spec, Further Notes, "Changes from the checkpoint documents", item 4. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

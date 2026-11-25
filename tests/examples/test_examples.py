@@ -98,6 +98,46 @@ def test_the_replay_of_a_hand_made_fixture_prints_the_provenance_line_first():
     assert "\x1b[" not in out.output  # no colour codes when not a terminal
 
 
+def forecast_section(output: str) -> str:
+    """The text between the Forecast and Decision rules, whitespace collapsed."""
+    body = output.split("─ Forecast ─", 1)[1].split("─ Decision ─", 1)[0]
+    return " ".join(body.split())
+
+
+def test_the_forecast_cites_each_passage_with_source_url_and_publish_time():
+    out = runner.invoke(app, ["replay", "fed-minutes-hawkish"])
+    assert out.exit_code == 0, out.output
+    flat = forecast_section(out.output)
+    episode = replay(EPISODES / "fed-minutes-hawkish").episode
+    passages = {
+        p["passage_id"]: p for step in episode.trace for p in (step.data or {}).get("passages", [])
+    }
+    assert episode.forecast is not None
+    cited = episode.forecast.passage_ids
+    assert cited
+    for passage_id in cited:
+        passage = passages[passage_id]
+        line = next(part for part in flat.split("- ") if part.startswith(passage_id))
+        assert passage["source"] in line
+        assert passage["url"] in line
+        assert passage["published_at"] in line
+
+
+def test_trace_also_cites_passages_with_their_urls(tmp_path):
+    from pmfa.state.store import SqliteStore
+
+    result = replay(EPISODES / "fed-minutes-hawkish")
+    store = SqliteStore(tmp_path / "state.sqlite")
+    episode = result.episode
+    store.save_episode(episode)
+    for step in episode.trace:
+        store.append_trace(episode.episode_id, step)
+    out = runner.invoke(app, ["trace", episode.episode_id, "--db", str(tmp_path / "state.sqlite")])
+    assert out.exit_code == 0, out.output
+    forecast = forecast_section(out.output)
+    assert "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260916.htm" in forecast
+
+
 def test_check_passes_on_a_committed_example_and_json_prints_the_record():
     out = runner.invoke(app, ["replay", "cpi-ladder", "--check", "--json"])
     assert out.exit_code == 0, out.output
@@ -227,3 +267,18 @@ def test_replay_runs_with_no_key_no_proxy_and_no_network(tmp_path):
     assert "check passed" in done.stdout + done.stderr
     assert "LOADED []" in done.stdout  # no model client was imported
     assert elapsed < 30, f"replay took {elapsed:.1f}s"
+
+
+def test_an_installed_package_without_a_checkout_says_where_the_examples_are(tmp_path, monkeypatch):
+    # As from a wheel: no examples/ in the working directory or above the package.
+    import pmfa.examples as examples_module
+
+    installed = tmp_path / "site-packages" / "pmfa" / "examples.py"
+    monkeypatch.setattr(examples_module, "__file__", str(installed))
+    monkeypatch.chdir(tmp_path)
+    listed = runner.invoke(app, ["replay", "--list"])
+    assert listed.exit_code == 1
+    assert "source checkout" in listed.output
+    named = runner.invoke(app, ["replay", "cpi-ladder"])
+    assert named.exit_code == 2
+    assert "source checkout" in named.output

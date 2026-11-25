@@ -157,3 +157,50 @@ def test_trade_rows_reject_inconsistent_settlement():
         TradeRow.model_validate(
             {**TRADES[0].model_dump(), "settled_at": T0 - timedelta(hours=1)},
         )
+
+
+def test_simultaneous_settlements_are_one_point_and_count_only_the_fees():
+    """Two legs of one event settle at the same instant: no phantom mid-instant trough."""
+    loser = trade(Side.YES, "25", "0.40", "0.42", result=Side.NO, market="EV-1-C25")
+    winner = trade(
+        Side.YES, "25", "0.60", "0.42", result=Side.YES, market="EV-1-H0", filled_hours=1
+    )
+    curve = equity_curve([loser, winner], BANKROLL)
+    assert [(p.at - T0, p.equity) for p in curve] == [
+        (timedelta(0), D("999.58")),
+        (timedelta(hours=1), D("999.16")),
+        (timedelta(hours=24), D("999.16")),  # -10.00 on C25 and +10.00 on H0 at once
+    ]
+    drawdown = max_drawdown(curve, BANKROLL)
+    assert drawdown.dollars == D("0.84")  # the two fees, nothing more
+    # The paper account, replaying the same fills and settlements, agrees.
+    from pmfa.execution.portfolio import account
+    from pmfa.records.decision import Fill
+
+    fills = [
+        Fill(
+            fill_id=f"f{i}",
+            order_id=f"o{i}",
+            market_ticker=t.market_ticker,
+            side=t.side,
+            contracts=t.contracts,
+            price=t.price,
+            fee=t.fee,
+            filled_at=t.filled_at,
+            simulated=True,
+        )
+        for i, t in enumerate([loser, winner])
+    ]
+    settlements = [(t.market_ticker, t.result, t.settled_at) for t in (loser, winner)]
+    for p in curve:
+        acct = account(fills, settlements, bankroll=BANKROLL, as_of=p.at)
+        assert (p.cash, p.equity) == (acct.cash, acct.equity)
+
+
+def test_a_hedged_pair_settling_together_loses_only_its_fees():
+    yes = trade(Side.YES, "25", "0.50", "0.44", result=Side.YES)
+    no = trade(Side.NO, "25", "0.50", "0.44", result=Side.YES, filled_hours=1)
+    curve = equity_curve([yes, no], BANKROLL)
+    assert len(curve) == 3
+    assert max_drawdown(curve, BANKROLL).dollars == D("0.88")
+    assert curve[-1].equity == BANKROLL - D("0.88")

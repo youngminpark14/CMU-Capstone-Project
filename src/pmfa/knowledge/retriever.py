@@ -68,6 +68,30 @@ def event_text(event: Event) -> str:
     return "\n".join(lines)
 
 
+def listings(event: Event) -> list[tuple[str, int, int, Event]]:
+    """The event as each listing change saw it: ``(row id, open_ts, close_ts, event)``.
+
+    A ladder adds strikes after its first markets open. Each distinct market open
+    time starts a new listing that holds only the markets open by then, valid
+    until the next one opens (or the event closes). Boundaries are whole epoch
+    seconds rounded up from the open time, so a listing is only ever shown once
+    every strike it names has opened, and the listings never overlap.
+    ``query_events`` then returns, inside the Chroma query, exactly the listing
+    current at the as-of time. The first listing keeps the event ticker as its
+    id, so re-indexing over an index built before listings existed replaces
+    that row rather than duplicating it.
+    """
+    starts = sorted({ceil_ts(m.open_time) for m in event.markets})
+    close = floor_ts(event.close_time)
+    out: list[tuple[str, int, int, Event]] = []
+    for i, start in enumerate(starts):
+        until = starts[i + 1] if i + 1 < len(starts) else close
+        listed = [m for m in event.markets if ceil_ts(m.open_time) <= start]
+        row_id = event.event_ticker if i == 0 else f"{event.event_ticker}@{start}"
+        out.append((row_id, start, until, event.model_copy(update={"markets": listed})))
+    return out
+
+
 def ledger_text(entry: LedgerEntry) -> str:
     """The ledger-index document: the question, which is what a new forecast is matched on."""
     return entry.question
@@ -260,26 +284,32 @@ class ChromaKnowledge:
         )
 
     def index_events(self, events: list[Event]) -> int:
-        """Store one document per event. An event needs markets: they carry its open and close."""
+        """Store each event's documents, one per listing change; returns the events indexed.
+
+        An event needs markets: they carry its open and close. See ``listings``
+        for why one event can have several documents.
+        """
         if not events:
             return 0
         for event in events:
             if not event.markets:
                 raise ValueError(f"event {event.event_ticker} has no markets to index")
         latest = list({e.event_ticker: e for e in events}.values())
-        texts = [event_text(e) for e in latest]
+        rows = [row for e in latest for row in listings(e)]
+        texts = [event_text(listed) for _, _, _, listed in rows]
         self.index.upsert(
             EVENTS,
-            ids=[e.event_ticker for e in latest],
+            ids=[row_id for row_id, _, _, _ in rows],
             vectors=self.index.embed(texts),
             metadatas=[
                 {
-                    "series_ticker": e.series_ticker,
-                    "category": e.category,
-                    "open_ts": ceil_ts(e.open_time),
-                    "close_ts": floor_ts(e.close_time),
+                    "event_ticker": listed.event_ticker,
+                    "series_ticker": listed.series_ticker,
+                    "category": listed.category,
+                    "open_ts": start,
+                    "close_ts": until,
                 }
-                for e in latest
+                for _, start, until, listed in rows
             ],
             documents=texts,
         )
@@ -312,7 +342,10 @@ class ChromaKnowledge:
 
     def search_events(self, query: str, *, as_of: datetime, k: int = 5) -> list[EventHit]:
         hits = self.index.query_events(self._query_vector(query), as_of=as_of, n=k)
-        return [EventHit(event_ticker=h.id, similarity=h.similarity) for h in hits]
+        return [
+            EventHit(event_ticker=h.metadata.get("event_ticker", h.id), similarity=h.similarity)
+            for h in hits
+        ]
 
     def search_evidence(
         self,
@@ -431,4 +464,4 @@ def _ledger_metadata(e: LedgerEntry) -> dict[str, Any] | None:
     }
 
 
-__all__ = ["ChromaKnowledge", "event_text", "ledger_text"]
+__all__ = ["ChromaKnowledge", "event_text", "ledger_text", "listings"]

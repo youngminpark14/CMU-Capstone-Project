@@ -12,7 +12,7 @@ Each role is a CrewAI agent with no tools, no delegation, no memory and one iter
 
 ## Consequences
 
-A test asserts the two runners send byte-identical text, so cassettes and cache keys recorded under one work under the other. CrewAI's telemetry, tracing and version check are turned off before it is imported.
+A test asserts the two runners send byte-identical text, so cassettes and cache keys recorded under one work under the other. CrewAI's telemetry, tracing and version check are turned off before it is imported, overriding any inherited value, and its import-time `load_dotenv()` is disabled, so a `.env` file is never read.
 
 ## Origin
 

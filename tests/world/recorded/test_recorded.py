@@ -39,6 +39,7 @@ from .factories import (
     NoModels,
     book,
     event,
+    market,
     prior_fill,
     resolved_entry,
     world_file,
@@ -141,6 +142,26 @@ def test_an_event_that_opens_after_the_clock_does_not_exist_yet() -> None:
     assert exchange.list_events(SERIES) == []
     with pytest.raises(NotFound):
         exchange.get_event(EVENT)
+
+
+def test_a_strike_that_opens_after_the_clock_is_not_listed_yet() -> None:
+    later = AS_OF + timedelta(days=5)
+    recorded = event()
+    added = market(f"{EVENT}-C50", "Cut 50bp", "0.02", "0.04", open_time=later)
+    file = world_file(events=[recorded.model_copy(update={"markets": [*recorded.markets, added]})])
+    clock = SimClock(AS_OF)
+    exchange = RecordedExchange(file, clock)
+
+    assert [m.ticker for m in exchange.get_event(EVENT).markets] == [HOLD, CUT]
+    [listed] = exchange.list_events(SERIES)
+    assert [m.ticker for m in listed.markets] == [HOLD, CUT]
+    for read in (exchange.get_market, exchange.get_order_book):
+        with pytest.raises(NotFound):
+            read(added.ticker)
+
+    clock.set(later)
+    assert [m.ticker for m in exchange.get_event(EVENT).markets] == [HOLD, CUT, added.ticker]
+    assert exchange.get_market(added.ticker).ticker == added.ticker
 
 
 def test_books_use_the_execution_book_when_recorded() -> None:

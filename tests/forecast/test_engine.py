@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -18,7 +19,8 @@ from pmfa.forecast import (
 )
 from pmfa.records.decision import SizingSummary
 from pmfa.records.episode import Exit
-from pmfa.records.forecast import NodeStatus, TreeNode
+from pmfa.records.forecast import Forecast, NodeStatus, TreeNode
+from pmfa.records.market import Side
 from pmfa.records.roles import (
     GenerateInput,
     ModelSlot,
@@ -120,6 +122,54 @@ def test_protected_slot_expands_a_trade_flipping_scenario_and_freezes_one_that_c
     assert forecast.depth_reached == 3
 
 
+def test_a_scenario_whose_removal_flips_the_side_is_protected_even_within_one_risk_unit():
+    # Bankroll $10,000: one risk unit is $100, and the flip from YES ($5) to NO ($5)
+    # moves the cost by only $10, so the flip rule alone puts C3 in the protected slot.
+    models = three_level_world()
+    result = engine(models).run(request(FED, SPACE, [L1, L2, R], bankroll="10000"))
+    nodes = by_claim(result.nodes)
+    assert (nodes["C3"].status, nodes["C3"].reason) == (NodeStatus.EXPANDED, "protected")
+    assert nodes["C3-res"].status is NodeStatus.LEAF
+    assert result.forecast is not None
+    assert result.forecast.protected_node_id == nodes["C3"].node_id
+    assert not result.forecast.protected_drove_size  # the move is within one risk unit
+
+
+def _linear_size(forecast: Forecast) -> SizingSummary:
+    """YES contracts in proportion to the cut-25 probability: every shift moves the size."""
+    contracts = int(forecast.market_probabilities[C25] * 1000)
+    return SizingSummary(
+        market_ticker=C25, side=Side.YES, contracts=contracts, cost=Decimal(contracts) / 2
+    )
+
+
+def test_of_two_qualifying_scenarios_the_one_that_moves_the_size_most_is_protected():
+    # Outside the depth-2 beam: removing B3 (mass 0.03, cut 0.7) moves about $3; removing
+    # C3 (mass 0.02, cut 1.0) about $5. Both exceed the $1 risk unit; C3, later in beam
+    # order, moves more.
+    models = three_level_world()
+    models.specs["B3"] = models.specs["B3-res"] = Spec(0.1, {**BASE, "cut_25": 0.7, "hold": 0.2})
+    result = engine(models, size_fn=_linear_size).run(request(FED, SPACE, [L1, L2, R]))
+    nodes = by_claim(result.nodes)
+    assert (nodes["C3"].status, nodes["C3"].reason) == (NodeStatus.EXPANDED, "protected")
+    assert nodes["B3"].status is NodeStatus.FROZEN
+    assert nodes["C3-res"].status is NodeStatus.LEAF
+    assert result.forecast is not None
+    assert result.forecast.protected_node_id == nodes["C3"].node_id
+    assert result.forecast.protected_drove_size
+
+
+def test_scenarios_outside_the_beam_that_change_nothing_are_frozen():
+    models = three_level_world()
+    models.specs["C3"] = models.specs["C3-res"] = Spec(0.1, BASE)
+    result = engine(models).run(request(FED, SPACE, [L1, L2, R]))
+    nodes = by_claim(result.nodes)
+    for claim in ("C1", "B2", "C2", "A3", "B3", "C3"):
+        assert nodes[claim].status is NodeStatus.FROZEN
+    assert not any(n.reason == "protected" for n in result.nodes)
+    assert result.forecast is not None and result.forecast.protected_node_id is None
+
+
 @pytest.mark.parametrize("tradable", [True, False])
 def test_a_scenario_whose_removal_zeroes_a_tradable_market_takes_the_protected_slot(tradable):
     models = three_level_world()
@@ -183,6 +233,17 @@ def test_on_node_sees_every_node_in_its_final_form():
 
 
 # --------------------------------------------------------------------------- budget
+
+
+def test_the_generator_proposes_at_most_three_thoughts_per_node():
+    claims = ["W", "X", "Y", "Z"]
+    models = one_level_world({c: Spec(0.25, BASE) for c in claims})
+    result = engine(models).run(request(FED, SPACE, [R]))
+    assert sorted(n.claim for n in result.nodes) == ["W", "X", "Y"]
+    [score] = [p for p, _ in models.tasks(RoleTask.SCORE)]
+    assert isinstance(score, ScoreInput) and len(score.scenarios) == 3
+    [generate] = [p for p, _ in models.tasks(RoleTask.GENERATE)]
+    assert isinstance(generate, GenerateInput) and generate.max_thoughts == 3
 
 
 def test_budget_exhaustion_aggregates_what_was_scored_so_far():

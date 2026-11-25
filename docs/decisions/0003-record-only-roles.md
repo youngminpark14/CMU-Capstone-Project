@@ -16,4 +16,4 @@ Evidence text cannot trigger an action; at most it can distort a probability, wh
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 3.
+Spec, Further Notes, "Changes from the checkpoint documents", item 3. The spec says only that "the checkpoints had agents calling tools"; it does not name the checkpoint, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

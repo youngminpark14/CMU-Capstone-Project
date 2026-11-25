@@ -8,7 +8,12 @@ Role and input record in, validated output record out. The gateway owns:
   the model its unusable answer and what was wrong with it; a refusal or a
   truncated answer gets the same single retry; a second failure raises
   ``ModelOutputError``;
-- the meters and hard caps (``pmfa.models.meter``), checked before every call;
+- the meters and hard caps (``pmfa.models.meter``), checked before every call.
+  A call's cost is known only once it returns, so the episode and run dollar
+  caps can be exceeded by the last call let through, by at most that call's
+  cost. When the seconds cap is enforced (live modes), each call's timeout is
+  the configured ``request_timeout_seconds`` or the episode's seconds left,
+  whichever is shorter;
 - the content-addressed response cache (``pmfa.models.cache``);
 - cassette recording (``pmfa.models.cassette``).
 
@@ -197,13 +202,17 @@ class Gateway:
         episode_id: str,
         repair: Repair | None,
     ) -> tuple[Completion, float]:
+        timeout = self.config.models.request_timeout_seconds
+        left = self.meter.seconds_left(episode_id)
+        if left is not None:
+            timeout = min(timeout, left)
         started = self._timer()
         try:
             completion = self.runner.run(
                 task,
                 payload,
                 assignment,
-                timeout=self.config.models.request_timeout_seconds,
+                timeout=timeout,
                 repair=repair,
             )
         except BaseException:

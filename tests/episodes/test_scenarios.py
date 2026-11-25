@@ -28,7 +28,7 @@ from pmfa.records.decision import (
     RoutingTier,
 )
 from pmfa.records.episode import EpisodeStatus, Exit
-from pmfa.records.evidence import Trigger, TriggerKind
+from pmfa.records.evidence import ScheduledEvent, Trigger, TriggerKind
 from pmfa.records.forecast import NodeStatus
 from pmfa.records.market import Side
 from pmfa.records.roles import MatchInput, ModelSlot, PassageSelectionInput, RoleTask
@@ -56,6 +56,7 @@ from .support import (
     Spec,
     T,
     advance,
+    book,
     books_for,
     calibrated_ledger,
     check_trace,
@@ -63,6 +64,7 @@ from .support import (
     doc_trigger,
     fed_event,
     fed_file,
+    fed_series,
     hawkish_script,
     make_world,
     no_book,
@@ -273,6 +275,80 @@ def test_06_a_trade_changing_tail_scenario_takes_the_protected_slot_and_one_that
     slots = [c.slot for c in world.models.calls_for(RoleTask.SCORE)]
     assert slots[0] is ModelSlot.CRITIC_DEPTH1
     assert set(slots[1:]) == {ModelSlot.CRITIC_DEEP}
+
+
+HOLD_DIST = {"hold": 0.80, "cut_25": 0.05, "hike_25": 0.10, "cut_gt25": 0.03, "hike_gt25": 0.02}
+HIKE_DIST = {"hold": 0.05, "cut_25": 0.02, "hike_25": 0.90, "cut_gt25": 0.01, "hike_gt25": 0.02}
+
+
+def jobs_level_episode(scores: dict[str, tuple[float, dict[str, float]]], prices, kelly="0.25"):
+    """A jobs level of first-level scenarios (beam width 1), each with one resolution child
+    carrying the same distribution. ``scores`` maps each claim to (probability, distribution)."""
+    jobs = JOBS_DEC.scheduled_event_id
+    tree: dict = {(jobs, None): [T(claim) for claim in scores]}
+    specs: dict[str, Spec] = {}
+    for claim, (probability, dist) in scores.items():
+        leaf = f"Resolve after: {claim}"
+        tree[(RESOLUTION, claim)] = [T(leaf, (max(dist, key=dist.get),))]
+        specs[claim] = Spec(probability, dist)
+        specs[leaf] = Spec(1.0, dist)
+    event = fed_event(prices={**DEFAULT_PRICES, **prices})
+    file = fed_file(
+        event=event,
+        order_books=books_for(event, depth="5000"),
+        scheduled_events=[JOBS_DEC],
+        config_overrides={"forecast": {"beam_width": 1}, "sizing": {"kelly_fraction": kelly}},
+    )
+    record, world = run_episode(file, Script(tree=tree, scores=specs))
+    nodes = {n.claim: n for n in world.store.get_nodes(record.episode_id) if n.depth == 1}
+    return record, nodes
+
+
+def test_06_a_tail_scenario_whose_removal_flips_the_side_takes_the_protected_slot():
+    """Without the cut scenario sizing buys C25 NO instead of C25 YES. At this Kelly fraction
+    the cost move stays under one risk unit, so only the flip rule protects it."""
+    prices = {"H0": ("0.65", "0.67"), "C25": ("0.19", "0.21"), "H25": ("0.09", "0.11")}
+    record, nodes = jobs_level_episode(
+        {
+            "Payrolls come in strong": (0.58, HOLD_DIST),
+            "Payrolls collapse": (0.27, B_DIST),
+            "Payrolls are mixed": (0.15, HOLD_DIST),
+        },
+        prices,
+        kelly="0.1",
+    )
+    collapse = nodes["Payrolls collapse"]
+    assert (collapse.status, collapse.reason) == (NodeStatus.EXPANDED, "protected")
+    assert nodes["Payrolls are mixed"].status is NodeStatus.FROZEN
+    assert record.forecast is not None and record.forecast.protected_node_id == collapse.node_id
+    assert not record.forecast.protected_drove_size  # the move is within one risk unit
+
+
+def test_06_of_two_trade_changing_tail_scenarios_the_one_that_moves_the_size_most_is_protected():
+    """Removing the cut scenario moves the trade by about $22 (H0 NO to C25 NO); removing the
+    hike scenario flips it to C25 YES, a move of about $6. Both qualify; the larger wins."""
+    prices = {"H0": ("0.63", "0.65"), "C25": ("0.19", "0.21"), "H25": ("0.09", "0.11")}
+    _record, nodes = jobs_level_episode(
+        {
+            "Payrolls come in strong": (0.60, A_DIST),
+            "Payrolls collapse": (0.24, B_DIST),
+            "Payrolls surge": (0.16, HIKE_DIST),
+        },
+        prices,
+    )
+    collapse, surge = nodes["Payrolls collapse"], nodes["Payrolls surge"]
+    assert (collapse.status, collapse.reason) == (NodeStatus.EXPANDED, "protected")
+    assert surge.status is NodeStatus.FROZEN
+
+
+def test_06_a_tail_scenario_that_changes_nothing_is_frozen_and_nothing_is_protected():
+    prices = {"H0": ("0.63", "0.65"), "C25": ("0.19", "0.21")}
+    record, nodes = jobs_level_episode(
+        {"Payrolls come in strong": (0.85, A_DIST), "Payrolls are mixed": (0.15, A_DIST)}, prices
+    )
+    assert nodes["Payrolls are mixed"].status is NodeStatus.FROZEN
+    assert all(n.reason != "protected" for n in nodes.values())
+    assert record.forecast is not None and record.forecast.protected_node_id is None
 
 
 # --------------------------------------------------------------------------- 7
@@ -916,3 +992,364 @@ def test_a_human_approved_fill_is_not_fill_tagged():
     with controller:
         record = controller.resume(paused.episode_id, approve(paused, world))
     assert record.exit is Exit.EXECUTED and not record.fill_tagged
+
+
+# --------------------------------------------------------------------------- prices and recompute
+
+
+def test_08_after_a_recompute_the_ledger_keeps_the_forecast_time_price_and_no_tier():
+    """The recompute re-reads the execution books, but the ledger's price is the one at
+    forecast time, and the cancelled first proposal's routing tier does not stay on it."""
+    file = fed_file(execution_books={C25: no_book(C25, [("0.27", "1000")])})
+    record, world = run_episode(file, hawkish_script())
+    assert record.exit is Exit.NO_EDGE
+    assert record.routing is None and record.gate is None
+    ledger = {e.market_ticker: e for e in world.store.ledger()}
+    assert ledger[C25].market_price == pytest.approx(0.33)  # the as-of mid, not 0.305
+    assert ledger[C25].tier == ""
+
+
+def thin_hold_world(policy):
+    """Only C25 qualifies (H0 is thin), at a small Kelly fraction, at the autonomous stage."""
+    dist = {"hike_gt25": 0.01, "hike_25": 0.01, "hold": 0.90, "cut_25": 0.03, "cut_gt25": 0.05}
+    books = books_for(fed_event())
+    books[H0] = book(H0, [("0.61", "5")], [("0.37", "5")])
+    file = autonomous_file(
+        order_books=books, config_overrides={"sizing": {"kelly_fraction": "0.05"}}
+    )
+    return make_world(file, hawkish_script(dist), policy=policy), file
+
+
+def move_after_first_read(world, moved):
+    """C25's execution book is the as-of one on its first read (routing's), then ``moved``."""
+    inner = world.executor.books
+    reads = {"n": 0}
+
+    def books(ticker):
+        if ticker == C25:
+            reads["n"] += 1
+            if reads["n"] >= 2:
+                return moved
+        return inner(ticker)
+
+    world.executor.books = books
+
+
+def test_auto_routing_measures_the_price_move_from_the_forecast_time_price_after_a_recompute():
+    # The market moves 7 cents (mid 0.33 -> 0.26) between routing's read and execute's.
+    world, file = thin_hold_world(ReviewPolicy.PAUSE)
+    move_after_first_read(world, no_book(C25, [("0.25", "1000")], yes_ask="0.27"))
+    with EpisodeController(world) as controller:
+        record = controller.run(file.trigger)
+    check_trace(record)
+    routes = [s for s in record.trace if s.node == "route" and s.kind == "action"]
+    assert len(routes) == 2  # routed, recomputed, routed again
+    assert record.routing is not None and record.routing.tier is RoutingTier.APPROVE
+    assert "price_stable" in record.routing.reasons
+    assert record.status is EpisodeStatus.PENDING_REVIEW and orders(world) == []
+
+
+def test_after_a_recompute_that_trades_the_ledger_price_is_still_the_forecast_time_price():
+    world, file = thin_hold_world(ReviewPolicy.FILL_TAGGED)
+    move_after_first_read(world, no_book(C25, [("0.25", "1000")], yes_ask="0.27"))
+    with EpisodeController(world) as controller:
+        record = controller.run(file.trigger)
+    assert record.exit is Exit.EXECUTED and record.fill_tagged
+    ledger = {e.market_ticker: e for e in world.store.ledger()}
+    assert ledger[C25].market_price == pytest.approx(0.33)
+    assert ledger[C25].traded
+
+
+def test_auto_needs_a_stable_price_during_the_episode():
+    # NO is still offered at the limit, but the YES mid moved 0.33 -> 0.37: more than 3 cents.
+    moved = no_book(C25, [("0.32", "1000")], yes_ask="0.42")
+    file = autonomous_file(execution_books={C25: moved})
+    record, world = run_episode(file, hawkish_script(), policy=ReviewPolicy.PAUSE)
+    assert record.routing is not None and record.routing.tier is RoutingTier.APPROVE
+    assert record.routing.reasons == ["price_stable"]
+    assert record.status is EpisodeStatus.PENDING_REVIEW and orders(world) == []
+
+
+# --------------------------------------------------------------------------- every exit is named
+
+
+def test_a_named_event_whose_outcome_space_cannot_be_built_exits_no_match():
+    event = fed_event()
+    bad = [
+        m.model_copy(update={"custom_strike": {"Hike": "0"}}) if m.ticker.endswith("-H26") else m
+        for m in event.markets
+    ]
+    event = event.model_copy(update={"markets": bad})
+    trigger = Trigger(trigger_id="sched-dup", kind=TriggerKind.SCHEDULE, at=AS_OF, event_ticker=FED)
+    file = fed_file(event=event, order_books=books_for(event), trigger=trigger)
+    world = make_world(file, hawkish_script())
+    with EpisodeController(world) as controller:
+        record = controller.run(trigger)
+        again = controller.run(trigger)
+    check_trace(record)
+    assert record.exit is Exit.NO_MATCH and "mean hold" in record.exit_detail
+    assert record.status is EpisodeStatus.DONE and record.finished_at is not None
+    assert again == record and orders(world) == []
+
+
+def test_an_unknown_fee_type_ends_the_episode_in_error_with_no_order():
+    series = fed_series().model_copy(update={"fee_type": "some_new_fee_type"})
+    record, world = run_episode(fed_file(series=[series]), hawkish_script())
+    assert record.exit is Exit.ERROR and "UnknownFeeType" in record.exit_detail
+    assert record.status is EpisodeStatus.DONE and orders(world) == []
+    [stored] = world.store.list_episodes()
+    assert stored == record
+
+
+# --------------------------------------------------------------------------- orders and the exchange
+
+
+class SpyExecutor:
+    """The paper executor reporting itself as real (as the demo's is), recording every
+    ``place`` call. ``on_book`` runs after each book read; ``on_place`` replaces placing."""
+
+    simulated = False
+
+    def __init__(self, inner, *, on_book=None, on_place=None) -> None:
+        self._inner = inner
+        self.placed: list = []
+        self.on_book = on_book
+        self.on_place = on_place
+
+    def execution_book(self, ticker):
+        found = self._inner.execution_book(ticker)
+        if self.on_book is not None:
+            self.on_book(ticker)
+        return found
+
+    def place(self, intent):
+        self.placed.append(intent)
+        if self.on_place is not None:
+            return self.on_place(intent)
+        return self._inner.place(intent)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class FlakyExchange(SpyExecutor):
+    """Accepts and fills the order on a separate ledger (the exchange's), then fails before
+    answering, as a fills read that errors after the order POST would."""
+
+    def __init__(self, inner, exchange) -> None:
+        super().__init__(inner, on_place=self._accept_then_fail)
+        self.exchange = exchange
+
+    def _accept_then_fail(self, intent):
+        from pmfa.errors import ExchangeError
+
+        self.exchange.place(intent)
+        raise ExchangeError("GET /portfolio/fills -> 503 service_unavailable")
+
+
+class FlakyExchangeWithLookup(FlakyExchange):
+    def find_order(self, intent):
+        for o in self.exchange.store.list_orders():
+            if o.client_order_id == intent.client_order_id:
+                return o
+        return None
+
+
+def exchange_side(world):
+    """A second paper account standing in for the exchange's own record of orders."""
+    from pmfa.execution.paper import PaperExecutor
+    from pmfa.state.store import MEMORY, SqliteStore
+    from pmfa.world.recorded import RecordedBooks
+
+    return PaperExecutor(
+        SqliteStore(MEMORY), world.clock, world.config, world.exchange, RecordedBooks(world.file)
+    )
+
+
+def spied_world(file, wrap, policy=ReviewPolicy.FILL_TAGGED, mode=RunMode.SHADOW):
+    world = make_world(file, hawkish_script(), policy=policy, mode=mode)
+    return dataclasses.replace(world, executor=wrap(world))
+
+
+def test_an_exchange_error_after_the_order_was_accepted_records_the_order_found_by_its_id():
+    world = spied_world(fed_file(), lambda w: FlakyExchangeWithLookup(w.executor, exchange_side(w)))
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    check_trace(record)
+    assert record.exit is Exit.EXECUTED and record.status is EpisodeStatus.DONE
+    [order] = orders(world)
+    assert order.status is OrderStatus.FILLED and record.orders == [order]
+    assert order.client_order_id == world.executor.placed[0].client_order_id
+    assert len(world.executor.placed) == 1
+    assert ledger_traded(world, C25)
+
+
+def test_an_exchange_error_while_sending_with_no_order_found_ends_in_error_and_is_recorded():
+    world = spied_world(fed_file(), lambda w: FlakyExchange(w.executor, exchange_side(w)))
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+        again = controller.run(world.file.trigger)
+    check_trace(record)
+    assert record.exit is Exit.ERROR and record.status is EpisodeStatus.DONE
+    intent = world.executor.placed[0]
+    assert "503" in record.exit_detail and intent.client_order_id in record.exit_detail
+    assert again == record and len(world.executor.placed) == 1
+
+
+def ledger_traded(world, ticker) -> bool:
+    return next(e for e in world.store.ledger() if e.market_ticker == ticker).traded
+
+
+def test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled():
+    def reject(intent):
+        return OrderResult(
+            order_id="",
+            client_order_id=intent.client_order_id,
+            episode_id=intent.episode_id,
+            market_ticker=intent.market_ticker,
+            side=intent.side,
+            requested_contracts=intent.contracts,
+            limit_price=intent.limit_price,
+            status=OrderStatus.REJECTED,
+            error="POST /portfolio/events/orders -> 400 invalid_order: price out of range",
+            placed_at=AS_OF,
+        )
+
+    world = spied_world(fed_file(), lambda w: SpyExecutor(w.executor, on_place=reject))
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    check_trace(record)
+    assert record.exit is Exit.ERROR and "invalid_order" in record.exit_detail
+    [(_, status)] = world.store.list_proposals()
+    assert status is ProposalStatus.CANCELLED
+    [order] = orders(world)  # kept: a rejection counts toward the fill-failure halt
+    assert order.status is OrderStatus.REJECTED and order.filled_contracts == 0
+
+
+def test_an_unfilled_order_the_exchange_accepted_still_exits_executed():
+    def unfilled(intent):
+        return OrderResult(
+            order_id="ord-unfilled",
+            client_order_id=intent.client_order_id,
+            episode_id=intent.episode_id,
+            market_ticker=intent.market_ticker,
+            side=intent.side,
+            requested_contracts=intent.contracts,
+            limit_price=intent.limit_price,
+            status=OrderStatus.UNFILLED,
+            placed_at=AS_OF,
+        )
+
+    file = fed_file()
+    world = spied_world(file, lambda w: SpyExecutor(w.executor, on_place=unfilled))
+    with EpisodeController(world) as controller:
+        record = controller.run(file.trigger)
+    assert record.exit is Exit.EXECUTED and "unfilled" in record.exit_detail
+
+
+# --------------------------------------------------------------------------- 10, at execute
+
+
+def test_10_b_a_halt_set_after_the_gate_approved_stops_the_order_before_it_is_sent(monkeypatch):
+    """``pmfa halt`` from another process between the gate and execute: the execute node's
+    own check is the last one before a real (non-simulated) executor."""
+    import pmfa.episode.pipeline as pipeline
+
+    real_route = pipeline.Pipeline.route
+
+    def route_then_halt(self, state):
+        update = real_route(self, state)
+        self.world.store.set_halt("operator halt", self.world.clock.now())
+        return update
+
+    monkeypatch.setattr(pipeline.Pipeline, "route", route_then_halt)
+    world = spied_world(fed_file(), lambda w: SpyExecutor(w.executor))
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    check_trace(record)
+    assert record.gate is not None and record.gate.approved
+    assert record.exit is Exit.HALTED and "operator halt" in record.exit_detail
+    assert world.executor.placed == [] and orders(world) == []
+
+
+def test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order(transport):
+    world = spied_world(with_transport(fed_file(), transport), lambda w: SpyExecutor(w.executor))
+    reads = {"n": 0}
+
+    def halt_on_executes_read(ticker):
+        reads["n"] += 1
+        if reads["n"] == 2:  # routing reads the book first; execute's read is the second
+            world.store.set_halt("operator halt", world.clock.now())
+
+    world.executor.on_book = halt_on_executes_read
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    assert record.exit is Exit.HALTED
+    assert world.executor.placed == [] and orders(world) == []
+
+
+# --------------------------------------------------------------------------- 9, the gate re-run
+
+
+def test_09_approval_re_runs_the_gate_at_the_current_price():
+    """After the pause the YES mid rises to 0.40 while NO is still offered at the 0.68
+    limit: the edge at the current price is gone, so the approved order is not sent."""
+    controller, world, paused = paused_episode()
+    with controller:
+        world.file.execution_books[C25] = no_book(C25, [("0.32", "1000")], yes_ask="0.48")
+        advance(world, 60)
+        record = controller.resume(paused.episode_id, approve(paused, world))
+    check_trace(record)
+    assert record.exit is Exit.GATE_REJECTED
+    assert record.gate is not None and {"edge_bound", "min_edge"} & set(record.gate.reasons)
+    assert orders(world) == []
+
+
+# --------------------------------------------------------------------------- 5, 12: the guards
+
+
+def test_05_one_first_level_scenario_passing_the_rules_check_is_not_a_rules_mismatch():
+    hold = "The Committee holds the rate in December"
+    tree = {(RESOLUTION, None): [T(hold, ("hold",)), T("The Committee pauses", ("pause",))]}
+    script = Script(matches=[FED], tree=tree, scores={hold: Spec(1.0, HAWKISH)})
+    record, world = run_episode(fed_file(), script)
+    assert record.exit is not Exit.RULES_MISMATCH
+    assert record.forecast is not None
+    assert len(world.models.calls_for(RoleTask.MATCH)) == 1  # no re-match
+
+
+def test_12_the_fast_path_skips_a_calendar_level_inside_the_last_hour():
+    at = FED_CLOSE - timedelta(minutes=30)
+    inside = ScheduledEvent(
+        scheduled_event_id="speech:2026-12-09",
+        kind="speech",
+        title="Remarks ten minutes before the close",
+        scheduled_at=FED_CLOSE - timedelta(minutes=10),
+    )
+    file = fed_file(trigger=doc_trigger(MINUTES, at=at), scheduled_events=[inside])
+    script = hawkish_script()
+    script.tree[(inside.scheduled_event_id, None)] = [T("The remarks are hawkish")]
+    script.scores["The remarks are hawkish"] = Spec(1.0, HAWKISH)
+    record, world = run_episode(file, script)
+    forecast = record.forecast
+    assert forecast is not None and forecast.fast_path and forecast.depth_reached == 1
+    generated = [c.payload.level for c in world.models.calls_for(RoleTask.GENERATE)]
+    assert generated and all(level.is_resolution for level in generated)
+
+
+# --------------------------------------------------------------------------- the loss stop
+
+
+def test_the_daily_loss_stop_is_a_fraction_of_the_day_start_equity():
+    """Day start 1,000 and equity 970.50 now: a 29.50 loss, under 3% of 1,000 (30), though
+    over 3% of the current equity (29.115). The stage manager counts the same base."""
+    from pmfa.execution.stages import StageManager
+
+    world = make_world(fed_file(bankroll="970.50"), hawkish_script())
+    world.store.record_equity(AS_OF - timedelta(hours=5), Decimal("1000"))
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    assert record.exit is Exit.EXECUTED
+    check = next(c for c in record.gate.checks if c.name == "daily_loss_stop")
+    assert check.passed
+    assert StageManager(world.store, world.config, world.clock).stop_days() == []

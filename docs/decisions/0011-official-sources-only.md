@@ -16,4 +16,4 @@ Committed text is public domain, with credit to both agencies. The `Evidence` po
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 11.
+Spec, Further Notes, "Changes from the checkpoint documents", item 11. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

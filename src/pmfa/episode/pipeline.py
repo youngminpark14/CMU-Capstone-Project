@@ -31,7 +31,15 @@ from pmfa.decision import (
     size_event,
     size_fn,
 )
-from pmfa.errors import BudgetExhausted, ModelOutputError, NotFound, RunBudgetExhausted
+from pmfa.errors import (
+    BudgetExhausted,
+    CassetteMiss,
+    ExchangeError,
+    ModelOutputError,
+    NotFound,
+    PmfaError,
+    RunBudgetExhausted,
+)
 from pmfa.forecast import (
     EvidenceBatch,
     ForecastEngine,
@@ -60,7 +68,14 @@ from pmfa.records.decision import (
     Routing,
     RoutingTier,
 )
-from pmfa.records.episode import EpisodeRecord, EpisodeStatus, Exit, LedgerEntry, Usage
+from pmfa.records.episode import (
+    EpisodeRecord,
+    EpisodeStatus,
+    Exit,
+    LedgerEntry,
+    RiskState,
+    Usage,
+)
 from pmfa.records.evidence import (
     Document,
     Origin,
@@ -114,7 +129,12 @@ class EpisodeState(TypedDict, total=False):
     search: dict[str, Any] | None
     """The forecast engine's ``SearchState`` between beam steps."""
     sizing: dict[str, Any] | None
-    """``SizingInputs`` read when the forecast started: books, holdings, bankroll."""
+    """``SizingInputs`` for the current proposal: books, holdings, bankroll. Read when the
+    forecast started, and read again (execution books) by the one recompute."""
+    forecast_mids: dict[str, str | None] | None
+    """Each market's YES mid when the forecast started, as a decimal string. Nothing
+    overwrites it, the recompute included: it is the ledger's price at forecast time and
+    the base of routing's price-move check."""
     refresh_books: bool
     recomputed: bool
     forecast: dict[str, Any] | None
@@ -219,7 +239,7 @@ class Pipeline:
     # ------------------------------------------------------------------ plumbing
 
     def nodes(self) -> dict[str, Node]:
-        """Every node, wrapped so a model failure ends the episode in ``error`` with no order."""
+        """Every node, wrapped so one of the project's errors ends the episode in ``error``."""
         steps: dict[str, Node] = {
             "trigger": self.trigger,
             "match": self.match,
@@ -238,6 +258,18 @@ class Pipeline:
         return {name: self._guarded(name, fn) for name, fn in steps.items()}
 
     def _guarded(self, name: str, fn: Node) -> Node:
+        """``fn`` with the project's own errors turned into exit ``error``, so ``record`` runs.
+
+        Every episode ends in exactly one named exit, so any ``PmfaError`` raised by a
+        node (a model or budget error, an outcome space that cannot be built, an unknown
+        fee type, an exchange failure) ends it in ``error`` with nothing sent. Three are
+        not caught: a replay that no longer matches its recording (``CassetteMiss``,
+        ``RecordedKnowledgeMiss``) stops the replay, and an error in ``record`` itself
+        has no later node to record it. Other exceptions, LangGraph's review pause among
+        them, pass through.
+        """
+        from pmfa.world.recorded import RecordedKnowledgeMiss
+
         trace_node = "forecast" if name.startswith("forecast") else name
 
         def run(state: EpisodeState) -> dict[str, Any]:
@@ -253,6 +285,12 @@ class Pipeline:
                 return {**update, "run_budget_exhausted": True}
             except BudgetExhausted as exc:
                 return self._exit(state, trace_node, Exit.ERROR, f"budget exhausted: {exc}")
+            except (CassetteMiss, RecordedKnowledgeMiss):
+                raise
+            except PmfaError as exc:
+                if name == "record":
+                    raise
+                return self._exit(state, trace_node, Exit.ERROR, f"{type(exc).__name__}: {exc}")
 
         return run
 
@@ -340,6 +378,41 @@ class Pipeline:
             series_config=sc,
             created_at=world.clock.now(),
         )
+
+    def _risk(self, now: datetime) -> RiskState:
+        """The risk state at ``now``, with the daily loss stop a fraction of day-start equity.
+
+        Every caller (the gate, routing, the self-halt check, and the stage manager's
+        loss-stop days) uses that one base. Only an empty equity series, which has no
+        day start, falls back to the current equity.
+        """
+        series = self.world.store.equity_series()
+        if series:
+            return risk_state(series, now, self.config)
+        return risk_state(series, now, self.config, bankroll=self.world.executor.balance().equity)
+
+    @staticmethod
+    def _mids(sizing: SizingInputs) -> dict[str, str | None]:
+        """Each market's YES mid in ``sizing``: its book's, else the market's own quote."""
+        mids: dict[str, str | None] = {}
+        for market in sizing.markets:
+            book = sizing.books.get(market.ticker)
+            mid = book.mid_yes() if book is not None else None
+            if mid is None:
+                mid = market.mid
+            mids[market.ticker] = str(mid) if mid is not None else None
+        return mids
+
+    def _forecast_mid(self, state: EpisodeState, ticker: str) -> Decimal | None:
+        """``ticker``'s YES mid when the forecast started, which no recompute changes.
+
+        A checkpoint written before ``forecast_mids`` existed falls back to the sizing books.
+        """
+        mids = state.get("forecast_mids")
+        if mids is None:
+            mids = self._mids(SizingInputs.model_validate(state["sizing"]))
+        value = mids.get(ticker)
+        return Decimal(value) if value is not None else None
 
     def _engine(self, state: EpisodeState) -> ForecastEngine:
         world, config = self.world, self.config
@@ -460,6 +533,11 @@ class Pipeline:
                 return self._exit(
                     state, "match", Exit.NO_MATCH, f"series {event.series_ticker} is not followed"
                 )
+            try:
+                self._brief(event)
+            except OutcomeSpaceError as exc:
+                # The document path skips such a candidate; a named event has no other.
+                return self._exit(state, "match", Exit.NO_MATCH, f"outcome space: {exc}")
             self.tracer.observation(eid, "match", f"event {event.event_ticker}: {event.title}")
             return {
                 "event_ticker": event.event_ticker,
@@ -670,7 +748,7 @@ class Pipeline:
             bankroll=sizing.bankroll,
             fast_path=is_fast_path(event, as_of, config),
         )
-        update: dict[str, Any] = {"sizing": dump(sizing)}
+        update: dict[str, Any] = {"sizing": dump(sizing), "forecast_mids": self._mids(sizing)}
         engine = self._engine({**state, **update})  # type: ignore[typeddict-item]
         search = engine.start(request)
         self.tracer.action(
@@ -749,6 +827,7 @@ class Pipeline:
                     "origins": None,
                     "search": None,
                     "sizing": None,
+                    "forecast_mids": None,
                 }
             why = (
                 "after one re-match"
@@ -832,14 +911,7 @@ class Pipeline:
         # The self-halt conditions run first, so a tripped loss stop or drawdown sets the
         # persisted flag and cancels open orders; the gate re-checks both on its own.
         self.tracer.action(eid, "gate", "check the self-halt conditions")
-        stops = enforce(
-            world.store,
-            world.executor,
-            self.config,
-            world.clock,
-            world.evidence,
-            bankroll=world.executor.balance().equity,
-        )
+        stops = enforce(world.store, world.executor, self.config, world.clock, world.evidence)
         if stops:
             world.store.save_proposal(p, ProposalStatus.CANCELLED)
             return self._exit(state, "gate", Exit.HALTED, "self-halt: " + "; ".join(stops))
@@ -850,7 +922,6 @@ class Pipeline:
             else sizing.books[p.market_ticker]
         )
         now = world.clock.now()
-        equity = world.executor.balance().equity
         origins = [Origin.model_validate(o) for o in state.get("origins") or []]
         search = SearchState.model_validate(state["search"])
         origins += [
@@ -870,7 +941,7 @@ class Pipeline:
             origins=origins,
             liquidity_dollars=world.exchange.liquidity_dollars(p.market_ticker, p.side),
             positions=world.executor.positions(p.event_ticker),
-            risk=risk_state(world.store.equity_series(), now, self.config, bankroll=equity),
+            risk=self._risk(now),
         )
         self.tracer.action(
             eid,
@@ -907,17 +978,17 @@ class Pipeline:
         eid = state["episode_id"]
         p = Proposal.model_validate(state["proposal"])
         sizing = SizingInputs.model_validate(state["sizing"])
-        equity = world.executor.balance().equity
 
         now = world.clock.now()
-        before = sizing.books[p.market_ticker].mid_yes()
+        # Measured from the forecast-time price, so a recompute cannot re-base the check.
+        before = self._forecast_mid(state, p.market_ticker)
         current = world.executor.execution_book(p.market_ticker).mid_yes()
         move = abs(current - before) if before is not None and current is not None else Decimal(1)
         context = RoutingContext(
             config=config,
             stage=self._stage(),
             halted=world.store.get_halt().halted,
-            risk=risk_state(world.store.equity_series(), now, config, bankroll=equity),
+            risk=self._risk(now),
             liquidity_dollars=world.exchange.liquidity_dollars(p.market_ticker, p.side),
             calibration=world.store.calibration(sizing.series_config.category, as_of=now),
             price_move=move,
@@ -1019,14 +1090,47 @@ class Pipeline:
     # ------------------------------------------------------------------ 9. execute
 
     def execute(self, state: EpisodeState) -> dict[str, Any]:
+        """Send the approved proposal as one immediate-or-cancel limit order, at most once.
+
+        The order is looked up by its client order id first (in the store, then on the
+        exchange when the executor can look one up), so a thread continued after a crash
+        records the order it already sent instead of sending another. The halt flag is
+        read before the book and again immediately before sending. An exchange error
+        while sending ends the episode: with the order looked up when it can be found,
+        else in ``error``, the outcome unknown. An order the exchange rejected ends in
+        ``error`` with the exchange's reason; any order it accepted (filled, partly
+        filled or unfilled) ends ``executed``.
+        """
         world = self.world
         eid = state["episode_id"]
         p = Proposal.model_validate(state["proposal"])
-        halt_state = world.store.get_halt()
-        if halt_state.halted:
-            world.store.save_proposal(p, ProposalStatus.CANCELLED)
+        intent = OrderIntent(
+            client_order_id=client_order_id(eid, p),
+            episode_id=eid,
+            proposal_id=p.proposal_id,
+            market_ticker=p.market_ticker,
+            side=p.side,
+            contracts=p.contracts,
+            limit_price=p.limit_price,
+        )
+        found = self._find_order(eid, intent)
+        if found is not None:
+            order: OrderResult = found
+            world.store.save_order(order)
+            self.tracer.observation(eid, "execute", f"order {order.order_id} was already placed")
+            return self._order_outcome(state, p, order)
+
+        halted = self._halted(state, p)
+        if halted is not None:
+            return halted
+        if world.clock.now() > p.expires_at:
+            # Only a thread continued long after its approval gets here: the gate just ran.
+            world.store.save_proposal(p, ProposalStatus.EXPIRED)
             return self._exit(
-                state, "execute", Exit.HALTED, f"the halt flag is set: {halt_state.reason}"
+                state,
+                "execute",
+                Exit.EXPIRED,
+                f"the proposal expired at {p.expires_at.isoformat()} before its order was sent",
             )
         self.tracer.action(eid, "execute", f"re-read the {p.side.value.upper()} offers")
         book = world.executor.execution_book(p.market_ticker)
@@ -1044,7 +1148,14 @@ class Pipeline:
                     f"nothing offered at or below {p.limit_price} ({seen}): no order; recompute once",
                     book=dump(book),
                 )
-                return {"recomputed": True, "refresh_books": True, "goto": "size"}
+                # The cancelled proposal's gate and routing do not describe what follows.
+                return {
+                    "recomputed": True,
+                    "refresh_books": True,
+                    "gate": None,
+                    "routing": None,
+                    "goto": "size",
+                }
             world.store.save_proposal(p, ProposalStatus.CANCELLED)
             return self._exit(
                 state,
@@ -1053,34 +1164,77 @@ class Pipeline:
                 f"nothing offered at or below the limit {p.limit_price} ({seen}): no order sent",
             )
 
-        intent = OrderIntent(
-            client_order_id=client_order_id(eid, p),
-            episode_id=eid,
-            proposal_id=p.proposal_id,
-            market_ticker=p.market_ticker,
-            side=p.side,
-            contracts=p.contracts,
-            limit_price=p.limit_price,
+        # The book read above can take a while on a live exchange: read the flag again.
+        halted = self._halted(state, p)
+        if halted is not None:
+            return halted
+        self.tracer.action(
+            eid,
+            "execute",
+            f"place an immediate-or-cancel limit order: buy {p.contracts} "
+            f"{p.side.value.upper()} {p.market_ticker} at <= {p.limit_price}",
+            intent=dump(intent),
         )
-        placed = [
-            o
-            for o in world.store.list_orders(episode_id=eid)
-            if o.client_order_id == intent.client_order_id
-        ]
-        if placed:
-            order: OrderResult = placed[0]
-            self.tracer.observation(eid, "execute", f"order {order.order_id} was already placed")
-        else:
-            self.tracer.action(
+        try:
+            order = world.executor.place(intent)
+        except ExchangeError as exc:
+            found = self._find_order(eid, intent)
+            if found is None:
+                return self._exit(
+                    state,
+                    "execute",
+                    Exit.ERROR,
+                    f"the exchange failed while the order was sent ({exc}); no order with "
+                    f"client order id {intent.client_order_id} was found, so its outcome "
+                    "is unknown: check the exchange",
+                )
+            order = found
+            self.tracer.observation(
                 eid,
                 "execute",
-                f"place an immediate-or-cancel limit order: buy {p.contracts} "
-                f"{p.side.value.upper()} {p.market_ticker} at <= {p.limit_price}",
-                intent=dump(intent),
+                f"the exchange failed while the order was sent ({exc}); order "
+                f"{order.order_id} was found by its client order id",
             )
-            order = world.executor.place(intent)
-            if order.status is not OrderStatus.REJECTED or not order.error.startswith("halted"):
-                world.store.save_order(order)
+        if order.status is not OrderStatus.REJECTED or not order.error.startswith("halted"):
+            world.store.save_order(order)
+        return self._order_outcome(state, p, order)
+
+    def _halted(self, state: EpisodeState, p: Proposal) -> dict[str, Any] | None:
+        """The ``halted`` exit when the persisted flag is set now, else None."""
+        halt_state = self.world.store.get_halt()
+        if not halt_state.halted:
+            return None
+        self.world.store.save_proposal(p, ProposalStatus.CANCELLED)
+        return self._exit(
+            state, "execute", Exit.HALTED, f"the halt flag is set: {halt_state.reason}"
+        )
+
+    def _find_order(self, eid: str, intent: OrderIntent) -> OrderResult | None:
+        """The order already sent for ``intent``, by its client order id, if one can be found.
+
+        The store is asked first. An executor that can look an order up on the exchange
+        (an optional ``find_order(intent)`` method returning an ``OrderResult`` or None)
+        is asked next, since a crash or an exchange error can come between the exchange
+        accepting an order and the store recording it.
+        """
+        for o in self.world.store.list_orders(episode_id=eid):
+            if o.client_order_id == intent.client_order_id:
+                return o
+        find = getattr(self.world.executor, "find_order", None)
+        if not callable(find):
+            return None
+        try:
+            found = find(intent)
+        except (ExchangeError, NotFound):
+            return None
+        return found if isinstance(found, OrderResult) else None
+
+    def _order_outcome(
+        self, state: EpisodeState, p: Proposal, order: OrderResult
+    ) -> dict[str, Any]:
+        """Trace the order and end the episode by what the exchange did with it."""
+        world = self.world
+        eid = state["episode_id"]
         filled = order.filled_contracts
         self.tracer.observation(
             eid,
@@ -1089,9 +1243,16 @@ class Pipeline:
             f"fees ${order.fees}" + (f", {order.error}" if order.error else ""),
             order=dump(order),
         )
-        if order.status is OrderStatus.REJECTED and order.error.startswith("halted"):
+        if order.status is OrderStatus.REJECTED:
             world.store.save_proposal(p, ProposalStatus.CANCELLED)
-            return self._exit(state, "execute", Exit.HALTED, order.error)
+            if order.error.startswith("halted"):
+                return self._exit(state, "execute", Exit.HALTED, order.error)
+            return self._exit(
+                state,
+                "execute",
+                Exit.ERROR,
+                f"the exchange rejected the order: {order.error or 'no reason given'}",
+            )
         world.store.save_proposal(p, ProposalStatus.EXECUTED)
         detail = (
             f"{order.status.value}: {filled} of {order.requested_contracts} at <= {p.limit_price}"
@@ -1137,10 +1298,7 @@ class Pipeline:
             market = markets.get(ticker)
             if market is None:
                 continue
-            book = sizing.books.get(ticker)
-            mid = book.mid_yes() if book is not None else None
-            if mid is None:
-                mid = market.mid
+            mid = self._forecast_mid(state, ticker)
             ours = proposal is not None and proposal.market_ticker == ticker
             override = ""
             if ours and review is not None and review.decision is not ReviewDecision.APPROVE:

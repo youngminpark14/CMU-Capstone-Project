@@ -16,4 +16,4 @@ Five candidates are five different events. The rules shown to the roles are the 
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 2.
+Spec, Further Notes, "Changes from the checkpoint documents", item 2. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

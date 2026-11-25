@@ -354,3 +354,100 @@ def test_cancel_all_still_cancels_when_the_count_cannot_be_read() -> None:
     with pytest.raises(ExchangeError):
         executor(fake).cancel_all()
     assert len(fake.sent("DELETE", ORDERS)) == 1
+
+
+# -- review fixes: distinct rejection ids, a failed fills read, the halt flag
+
+
+def test_rejected_orders_get_distinct_deterministic_order_ids() -> None:
+    rejected = (400, {"error": {"code": "insufficient_balance", "message": "insufficient balance"}})
+    ex = executor(trading_fake(rejected))
+    first = ex.place(intent())
+    second = ex.place(intent().model_copy(update={"client_order_id": "ord-other"}))
+    again = ex.place(intent())
+    assert first.status is second.status is OrderStatus.REJECTED
+    assert first.order_id and second.order_id
+    assert first.order_id != second.order_id
+    assert again.order_id == first.order_id  # deterministic: the same intent, the same key
+    invalid = ex.place(intent(limit="1.00").model_copy(update={"client_order_id": "ord-bad"}))
+    assert invalid.order_id not in {"", first.order_id, second.order_id}
+
+
+def test_a_failed_fills_read_after_an_accepted_order_still_records_the_order() -> None:
+    fake = trading_fake("constructed_order_partial_201")
+    fake.add(
+        "GET",
+        "/portfolio/fills",
+        (503, {"error": {"code": "service_unavailable", "message": "unavailable"}}),
+        order_id=ORDER_ID,
+        subaccount=1,
+    )
+    result = executor(fake).place(intent())
+    assert len(fake.sent("POST", ORDERS)) == 1
+    assert (result.order_id, result.client_order_id) == (ORDER_ID, CLIENT_ID)
+    assert result.status is OrderStatus.PARTIALLY_FILLED
+    (fill,) = result.fills
+    assert (fill.contracts, fill.price) == (Decimal("4.00"), Decimal("0.96"))
+    assert "fills could not be read" in result.error
+
+
+def test_a_halted_executor_sends_no_order() -> None:
+    from pmfa.records.episode import HaltState
+
+    flag = {"halted": False}
+
+    def halt_check() -> HaltState:
+        return HaltState(halted=flag["halted"], reason="manual" if flag["halted"] else "")
+
+    fake = trading_fake("constructed_order_partial_201")
+    ex = executor(fake)
+    ex.halt_check = halt_check
+    flag["halted"] = True
+    result = ex.place(intent())
+    assert result.status is OrderStatus.REJECTED
+    assert result.error.startswith("halted")
+    assert not fake.sent("POST", ORDERS)
+    flag["halted"] = False
+    assert ex.place(intent()).status is OrderStatus.PARTIALLY_FILLED
+    assert len(fake.sent("POST", ORDERS)) == 1
+
+
+def test_the_halt_flag_is_read_again_right_before_the_order_is_sent() -> None:
+    from pmfa.records.episode import HaltState
+
+    reads: list[int] = []
+
+    def halt_check() -> HaltState:
+        # Clear at the first read, set by the time the order would be sent (as `pmfa halt`
+        # from another terminal would while the order group is being looked up).
+        reads.append(1)
+        return HaltState(halted=len(reads) > 1, reason="manual")
+
+    fake = trading_fake("constructed_order_partial_201")
+    ex = DemoExecutor(
+        client(fake, DEMO, signer=FakeSigner(), sleeps=Sleeps()),
+        clock(),
+        config(),
+        sleep=Sleeps().sleep,
+        halt_check=halt_check,
+    )
+    result = ex.place(intent())
+    assert result.status is OrderStatus.REJECTED and result.error.startswith("halted")
+    assert not fake.sent("POST", ORDERS)
+
+
+def test_repeated_demo_rejections_trip_the_fill_failure_halt() -> None:
+    from pmfa.execution.halt import stop_reasons
+    from pmfa.state.store import MEMORY, SqliteStore
+    from pmfa.world.recorded import RecordedEvidence
+    from tests.world.recorded.factories import world_file
+
+    rejected = (400, {"error": {"code": "insufficient_balance", "message": "insufficient balance"}})
+    ex = executor(trading_fake(rejected))
+    store = SqliteStore(MEMORY)
+    for i in range(10):
+        # Saved as the pipeline saves every rejection that is not a halt.
+        store.save_order(ex.place(intent().model_copy(update={"client_order_id": f"cid-{i}"})))
+    assert len(store.list_orders()) == 10
+    found = stop_reasons(store, config(), clock(), RecordedEvidence(world_file()))
+    assert [r.split(":")[0] for r in found] == ["fill failures"]

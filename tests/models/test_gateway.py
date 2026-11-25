@@ -156,6 +156,33 @@ def test_the_seconds_cap_applies_only_when_enforced():
     assert len(backend.requests) == 1
 
 
+def test_an_enforced_seconds_cap_bounds_each_calls_timeout_by_the_time_left():
+    config = make_config(
+        budget={"max_seconds_per_episode": 90}, models={"request_timeout_seconds": 180}
+    )
+    answers = [ok(MATCH_OUT)] * 3
+    strict, backend = gateway(answers, config=config, timer=Ticker(30.0), enforce_seconds=True)
+    strict.call(RoleTask.MATCH, MATCH_IN, episode_id="e")  # 30 s spent
+    strict.call(RoleTask.MATCH, MATCH_IN, episode_id="e")  # 60 s spent
+    assert [r["timeout"] for r in backend.requests] == [pytest.approx(90.0), pytest.approx(60.0)]
+    strict.call(RoleTask.MATCH, MATCH_IN, episode_id="other")
+    assert backend.requests[-1]["timeout"] == pytest.approx(90.0)  # a fresh episode
+
+    lax, backend = gateway([ok(MATCH_OUT)] * 2, config=config, timer=Ticker(30.0))
+    lax.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    lax.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert [r["timeout"] for r in backend.requests] == [180.0, 180.0]  # not enforced
+
+
+def test_a_short_seconds_cap_never_lengthens_the_request_timeout():
+    config = make_config(
+        budget={"max_seconds_per_episode": 600}, models={"request_timeout_seconds": 180}
+    )
+    gw, backend = gateway([ok(MATCH_OUT)], config=config, enforce_seconds=True)
+    gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert backend.requests[0]["timeout"] == 180.0
+
+
 def test_the_run_dollar_cap_raises_run_budget_exhausted():
     config = make_config(budget={"max_usd_per_episode": "0.10", "max_usd_per_run": "0.10"})
     answer = ok(OUTPUTS[RoleTask.SCORE], tokens=(40_000, 2_000))  # $0.10

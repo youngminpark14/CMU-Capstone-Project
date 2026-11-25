@@ -3,7 +3,7 @@
 ``pmfa replay PATH`` runs one recorded episode offline (no account, key or
 network) and prints its full trace: a header saying what the episode is and
 where it came from, every trace step in order, the forecast against the market
-price, the proposal, the gate's checks, the routing tier, the review card and
+price with each cited passage's source, URL and publish time, the proposal, the gate's checks, the routing tier, the review card and
 decision, the orders and fills, and the exit. ``pmfa trace EPISODE_ID`` prints
 a stored episode from a state database in the same format.
 
@@ -225,7 +225,44 @@ def render_forecast(
         "no role saw it."
     )
     if forecast.passage_ids:
-        console.print(f"Cited passages: {', '.join(forecast.passage_ids)}")
+        render_citations(console, forecast.passage_ids, episode.trace)
+
+
+def cited_passages(trace: list[TraceStep]) -> dict[str, dict[str, Any]]:
+    """Source, URL and publish time of each passage the trace's retrieval steps observed.
+
+    The forecast record stores only passage ids; the research step's observation
+    records each retrieved passage with its source, URL and publish time, so the
+    citations are read back from there.
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for step in trace:
+        passages = (step.data or {}).get("passages")
+        if not isinstance(passages, list):
+            continue
+        for passage in passages:
+            if isinstance(passage, dict) and isinstance(passage.get("passage_id"), str):
+                found.setdefault(passage["passage_id"], passage)
+    return found
+
+
+def render_citations(console: Console, passage_ids: list[str], trace: list[TraceStep]) -> None:
+    """One citation per passage the forecast rests on: id, source, publish time, then URL."""
+    from rich.markup import escape
+
+    known = cited_passages(trace)
+    console.print("Cited passages:")
+    for passage_id in passage_ids:
+        passage = known.get(passage_id)
+        if passage is None:
+            console.print(f"  - {escape(passage_id)} (not in this trace's retrieval steps)")
+            continue
+        console.print(
+            f"  - {escape(passage_id)} ({escape(str(passage.get('source', '')))}, "
+            f"published {escape(str(passage.get('published_at', '')))})"
+        )
+        # soft_wrap: a URL is printed whole on its own line, never folded.
+        console.print(f"    {escape(str(passage.get('url', '')))}", soft_wrap=True)
 
 
 def render_decision(console: Console, episode: EpisodeRecord, card: ReviewCard | None) -> None:
@@ -340,7 +377,9 @@ def replay_command(
     if list_examples:
         found = examples.list_examples()
         if not found:
-            typer.echo(f"no examples under {examples.examples_root()}")
+            root = examples.examples_root()
+            hint = "" if root.is_dir() else f"\n{examples.NO_CHECKOUT_HINT}"
+            typer.echo(f"no examples under {root}{hint}")
             raise typer.Exit(1)
         for directory in found:
             typer.echo(examples.summary_line(directory))
@@ -430,7 +469,9 @@ def register(app: typer.Typer) -> None:
 
 
 __all__ = [
+    "cited_passages",
     "register",
+    "render_citations",
     "render_decision",
     "render_episode",
     "render_forecast",

@@ -2,17 +2,18 @@
 
 The default variant (``recency_origin``) is the design from the checkpoints:
 
-1. Merge duplicates. The same passage found by several queries is one
+1. Drop candidates below the similarity floor. This comes first, so a weak
+   copy can never stand in for, and then remove, a copy that qualifies.
+2. Merge duplicates. The same passage found by several queries is one
    candidate; so are near-duplicate passages of the same origin (a syndicated
    copy of a paragraph). The best-scoring copy is kept.
-2. Drop candidates below the similarity floor.
 3. Score = similarity x recency, recency = ``0.5 ** (age_days / half_life_days)``.
 4. Keep at most ``max_per_origin`` passages per origin, so one source cannot
    fill the context by repetition.
 5. Return the top ``k``.
 
 The ``similarity`` variant is the ablation: no recency factor and no
-per-origin limit; merging and the floor still apply. Ties are broken by passage
+per-origin limit; the floor and merging still apply. Ties are broken by passage
 id, so the same candidates always give the same ranking.
 """
 
@@ -71,7 +72,7 @@ def rank(
     near_duplicate_similarity: float = 0.92,
     mode: RankingMode = "recency_origin",
 ) -> list[RetrievedPassage]:
-    """Merge, filter, score and cut ``candidates`` to the top ``k``."""
+    """Filter, merge, score and cut ``candidates`` to the top ``k``."""
     use_recency = mode == "recency_origin"
 
     def scored(c: Candidate) -> tuple[float, float]:
@@ -81,7 +82,8 @@ def rank(
         return c.similarity * recency, recency
 
     # Best first, so the first copy kept of any duplicate group is its best one.
-    ordered = sorted(candidates, key=lambda c: (-scored(c)[0], -c.similarity, c.passage.passage_id))
+    qualifying = [c for c in candidates if c.similarity >= similarity_floor]
+    ordered = sorted(qualifying, key=lambda c: (-scored(c)[0], -c.similarity, c.passage.passage_id))
     kept: list[Candidate] = []
     seen_ids: set[str] = set()
     for candidate in ordered:
@@ -96,8 +98,6 @@ def rank(
     results: list[RetrievedPassage] = []
     per_origin: dict[str, int] = {}
     for candidate in kept:
-        if candidate.similarity < similarity_floor:
-            continue
         origin = candidate.passage.origin_id
         if use_recency and per_origin.get(origin, 0) >= max_per_origin:
             continue

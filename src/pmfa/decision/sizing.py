@@ -1,8 +1,8 @@
 """Shrinkage, edge, and size for one event.
 
 Sizing picks the one market-and-side with the best fee-adjusted edge among
-those that meet the liquidity floor, computes a quarter-Kelly target, and
-proposes the difference from the current holding. Everything is decimal; the
+those that meet the liquidity floor and are not blocklisted, computes a
+quarter-Kelly target, and proposes the difference from the current holding. Everything is decimal; the
 only floats are the forecast probabilities and confidence handed in, which
 are converted through ``str`` so they round-trip exactly as written.
 """
@@ -27,6 +27,7 @@ NO_LIQUIDITY = "no market meets the liquidity floor"
 NO_EDGE = "best edge after fees is below the minimum"
 AT_TARGET = "the holding is already at or above the target"
 NO_ROOM = "caps, displayed depth, or fee rounding leave no size with the minimum edge"
+BLOCKED = "every market in the event is blocklisted"
 
 
 def _dec(value: float) -> Decimal:
@@ -76,14 +77,30 @@ def edge_bound(
     return ticks[lo - 1] if lo > 0 else None
 
 
+def _whole(level: BookLevel) -> int:
+    """The whole contracts a level offers: a fractional size rounds down, as fills do."""
+    return math.floor(level.contracts)
+
+
 def _level_for(levels: Sequence[BookLevel], contracts: int) -> BookLevel | None:
     """The highest level an order for ``contracts`` must reach, walking cheapest first."""
-    filled = ZERO
+    filled = 0
     for level in levels:
-        filled += level.contracts
+        filled += _whole(level)
         if filled >= contracts:
             return level
     return None
+
+
+def _blocked(inputs: SizingInputs, config: Config) -> Callable[[Market], bool]:
+    """Whether a market's ticker, event, or series is on the blocklist.
+
+    Sizing skips these so a blocked market with the best edge does not take the
+    proposal from the event's tradable ones; the gate still re-verifies.
+    """
+    blocklist = set(config.follow.blocklist)
+    whole_event = inputs.series.ticker in blocklist or inputs.event_ticker in blocklist
+    return lambda m: whole_event or m.ticker in blocklist or m.event_ticker in blocklist
 
 
 def _position_in(positions: Sequence[Position], market_ticker: str) -> Position | None:
@@ -96,8 +113,11 @@ def _position_in(positions: Sequence[Position], market_ticker: str) -> Position 
 def _candidates(inputs: SizingInputs, config: Config) -> list[Candidate]:
     fee_type, multiplier = inputs.series.fee_type, inputs.series.fee_multiplier
     floor = config.caps.liquidity_floor_dollars
+    blocked = _blocked(inputs, config)
     found: list[Candidate] = []
     for market in sorted(inputs.markets, key=lambda m: m.ticker):
+        if blocked(market):
+            continue
         forecast = inputs.forecast_yes.get(market.ticker)
         book = inputs.books.get(market.ticker)
         if forecast is None or book is None:
@@ -153,7 +173,11 @@ def size_event(inputs: SizingInputs, config: Config) -> SizingDecision:
     candidates = _candidates(inputs, config)
     eligible = [c for c in candidates if c.meets_liquidity]
     if not eligible:
-        return SizingDecision(reason=NO_LIQUIDITY, candidates=candidates)
+        blocked = _blocked(inputs, config)
+        all_blocked = bool(inputs.markets) and all(blocked(m) for m in inputs.markets)
+        return SizingDecision(
+            reason=BLOCKED if all_blocked else NO_LIQUIDITY, candidates=candidates
+        )
     # Best edge first; ties go to the lower ticker, then YES, so the choice is deterministic.
     best = min(eligible, key=lambda c: (-c.edge, c.market_ticker, c.side is Side.NO))
     if best.edge < min_edge:
@@ -171,7 +195,9 @@ def size_event(inputs: SizingInputs, config: Config) -> SizingDecision:
     position = _position_in(inputs.positions, market.ticker)
     held_same = position.contracts if position and position.side is side else 0
     held_opposite = position.contracts if position and position.side is not side else 0
-    if target <= held_same:
+    # An opposite holding is covered even when the target floors to zero: the
+    # other side has the better edge, so the order is at least the holding.
+    if held_opposite == 0 and target <= held_same:
         return SizingDecision(reason=AT_TARGET, best=best, candidates=candidates)
     wanted = target - held_same + held_opposite
 
@@ -179,7 +205,7 @@ def size_event(inputs: SizingInputs, config: Config) -> SizingDecision:
     if bound is None:
         return SizingDecision(reason=NO_ROOM, best=best, candidates=candidates)
     levels = [lvl for lvl in book.asks(side) if lvl.price <= bound]
-    depth = math.floor(sum((lvl.contracts for lvl in levels), ZERO))
+    depth = sum(_whole(lvl) for lvl in levels)
     most = min(wanted, config.caps.max_contracts_per_order, depth)
 
     market_cap = config.caps.per_market_fraction * inputs.bankroll

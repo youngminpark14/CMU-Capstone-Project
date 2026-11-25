@@ -6,8 +6,9 @@ from decimal import Decimal as D
 
 import pytest
 
+from pmfa.config import Config, FollowConfig
 from pmfa.decision import UnknownFeeType, edge_bound, shrink, size_event, size_fn, summarize
-from pmfa.decision.sizing import AT_TARGET, NO_EDGE, NO_LIQUIDITY, NO_ROOM
+from pmfa.decision.sizing import AT_TARGET, BLOCKED, NO_EDGE, NO_LIQUIDITY, NO_ROOM
 from pmfa.records.decision import SizingSummary
 from pmfa.records.forecast import Forecast
 from pmfa.records.market import Side
@@ -97,6 +98,17 @@ def test_the_best_edge_wins_across_markets():
     assert p is not None and p.market_ticker == CUT
 
 
+def test_a_blocklisted_market_does_not_take_the_proposal_from_the_others():
+    books = {HOLD: book(HOLD), CUT: book(CUT)}
+    sized = inputs(forecast={HOLD: 0.60, CUT: 0.90}, books=books)
+    p = size_event(sized, Config(follow=FollowConfig(blocklist=[CUT]))).proposal
+    assert p is not None and p.market_ticker == HOLD
+
+    for blocked in ([HOLD, CUT], [EVENT], ["KXFEDDECISION"]):
+        decision = size_event(sized, Config(follow=FollowConfig(blocklist=blocked)))
+        assert decision.proposal is None and decision.reason == BLOCKED
+
+
 def test_the_edge_bound_is_the_last_tick_that_keeps_the_minimum_edge():
     p_side = D("0.60")
     bound = edge_bound(p_side, market(), Side.YES, "quadratic", D("1"), D("0.02"))
@@ -118,6 +130,21 @@ def test_depth_beyond_the_edge_bound_is_not_used():
     assert p.edge_bound_price == D("0.56")
 
 
+def test_fractional_levels_offer_only_their_whole_contracts():
+    # YES asks 0.50 x 10.5 and 0.51 x 10.5: each level fills 10 whole contracts, so 20
+    # in all, not floor(21.0) = 21; the limit is the second level.
+    frac = book(no_bids=[("0.50", "10.5"), ("0.49", "10.5")])
+    p = size_event(inputs(forecast={HOLD: 0.80}, books={HOLD: frac}), CONFIG).proposal
+    assert p is not None
+    assert (p.contracts, p.limit_price) == (20, D("0.51"))
+
+    # A level of 10.5 alone covers 10 contracts at its own price, not 11.
+    p = size_event(
+        inputs(forecast={HOLD: 0.80}, books={HOLD: book(no_bids=[("0.50", "10.5")])}), CONFIG
+    ).proposal
+    assert p is not None and (p.contracts, p.limit_price) == (10, D("0.50"))
+
+
 def test_the_limit_is_the_highest_level_needed_to_fill():
     deep = book(no_bids=[("0.50", "10"), ("0.48", "10"), ("0.40", "100")])
     p = size_event(inputs(forecast={HOLD: 0.70}, books={HOLD: deep}), CONFIG).proposal
@@ -135,6 +162,17 @@ def test_buying_the_other_side_nets_against_a_holding():
     assert p.position_before == -10
     assert p.position_target == p.position_before + p.contracts
     assert p.contracts == 25  # 10 to close the NO holding, then YES, clipped to the order cap
+
+
+def test_an_opposite_holding_is_covered_when_the_target_floors_to_zero():
+    # YES has the best edge; at confidence 0.001 Kelly floors to 0 contracts, so the
+    # order covers the 10 NO held and nothing more.
+    held = position(side=Side.NO, contracts=10, avg="0.50")
+    decision = size_event(inputs(confidence=0.001, positions=[held]), CONFIG)
+    p = decision.proposal
+    assert p is not None, decision.reason
+    assert (p.side, p.contracts) == (Side.YES, 10)
+    assert (p.position_before, p.position_target) == (-10, 0)
 
 
 def test_a_holding_whose_side_still_has_edge_is_not_trimmed():

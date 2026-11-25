@@ -16,4 +16,4 @@ The forecast keeps tail mass, and coverage counts it. The pruning audit can late
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 6.
+Spec, Further Notes, "Changes from the checkpoint documents", item 6. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

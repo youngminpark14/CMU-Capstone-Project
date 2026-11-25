@@ -16,4 +16,4 @@ A full depth-3 tree makes at most 9 Generator and 9 Critic calls, inside the 30-
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 7.
+Spec, Further Notes, "Changes from the checkpoint documents", item 7. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

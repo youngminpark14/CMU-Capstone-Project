@@ -8,6 +8,11 @@ The meter is checked before every call, so a capped call is never sent:
   when ``enforce_seconds`` is on (the live modes turn it on; backtests use the
   call budget alone);
 - the run's dollar cap: ``max_usd_per_run`` is reached.
+
+A call's cost is known only after it returns, so the dollar caps can be overrun
+by the last call let through, by at most that call's cost. The seconds cap is
+held tighter: when it is enforced, the gateway gives each call a timeout no
+longer than :meth:`Meter.seconds_left`. Seconds are model-call seconds only.
 """
 
 from __future__ import annotations
@@ -66,6 +71,14 @@ class Meter:
                 f"episode {episode_id}: seconds cap reached ({episode.seconds:.1f}s of "
                 f"{b.max_seconds_per_episode:.1f}s)"
             )
+
+    def seconds_left(self, episode_id: str) -> float | None:
+        """Seconds the episode may still spend on model calls, or None when that cap is off."""
+        if not self.enforce_seconds:
+            return None
+        with self._lock:
+            spent = self._episodes.get(episode_id, Usage()).seconds
+        return max(0.0, self.budget.max_seconds_per_episode - spent)
 
     def add(self, episode_id: str, episode_delta: Usage, run_delta: Usage | None = None) -> None:
         """Charge a call to the episode and to the run (the run gets ``episode_delta`` unless told otherwise)."""

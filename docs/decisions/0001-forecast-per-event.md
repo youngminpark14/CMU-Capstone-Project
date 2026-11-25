@@ -16,4 +16,4 @@ Strikes on one ladder are always monotone, because each market's probability is 
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 1.
+Spec, Further Notes, "Changes from the checkpoint documents", item 1. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

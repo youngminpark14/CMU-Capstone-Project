@@ -375,6 +375,47 @@ def test_only_events_open_at_as_of_are_returned(knowledge: ChromaKnowledge) -> N
     assert {h.event_ticker for h in later} == {"KXFEDDECISION-26DEC", "KXFEDDECISION-27JAN"}
 
 
+def test_the_event_document_lists_only_strikes_open_at_as_of(
+    knowledge: ChromaKnowledge,
+) -> None:
+    """A ladder strike added later is not in the document matched before it opened."""
+    ticker = "KXFEDDECISION-26DEC"
+    first = datetime(2026, 10, 29, tzinfo=UTC)
+    closes = datetime(2026, 12, 9, 19, tzinfo=UTC)
+    added = AS_OF + timedelta(hours=1)
+    ladder = event(ticker, "Fed decision in December 2026", first, closes)
+    ladder = ladder.model_copy(
+        update={
+            "markets": [
+                *ladder.markets,
+                market(f"{ticker}-C50", ticker, added, closes),
+                market(f"{ticker}-C75", ticker, added + timedelta(days=1), closes),
+            ]
+        }
+    )
+    assert knowledge.index_events([ladder]) == 1
+    assert knowledge.index_events([ladder]) == 1  # re-indexing changes nothing
+
+    def document(as_of: datetime) -> str:
+        vector = knowledge.index.embed(["Fed decision C50"])[0]
+        hits = knowledge.index.query_events(vector, as_of=as_of, n=10)
+        assert [h.id.split("@")[0] for h in hits] == [ticker]  # one document at a time
+        return hits[0].document
+
+    for before in (first, AS_OF, added - timedelta(microseconds=500_000)):
+        text = document(before)
+        assert "H0" in text and "C25" in text and "C50" not in text and "C75" not in text
+    for after in (added, added + timedelta(hours=1)):
+        text = document(after)
+        assert "C50" in text and "C75" not in text
+    assert "C75" in document(closes - timedelta(seconds=1))
+
+    for as_of in (AS_OF, added, closes - timedelta(seconds=1)):
+        hits = knowledge.search_events("Fed decision", as_of=as_of)
+        assert [h.event_ticker for h in hits] == [ticker]
+    assert knowledge.search_events("Fed decision", as_of=closes) == []
+
+
 # -- ledger
 
 

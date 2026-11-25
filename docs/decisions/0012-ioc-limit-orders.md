@@ -16,4 +16,4 @@ An order's worst case is its own size at its own limit. A partial fill is record
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 12.
+Spec, Further Notes, "Changes from the checkpoint documents", item 12. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

@@ -1,7 +1,11 @@
 """The book a backtest order meets: what the paper executor fills against in backtests.
 
 The exchange's history has no depth data, only candles, so the book is built
-from one candle after the order is sent, priced conservatively:
+from one candle after the order is sent, priced conservatively. It is for
+filling only: no decision reads it. The pipeline decides with the as-of book
+(``SnapshotExchange.get_order_book``, which the backtest world's
+``Executor.execution_book`` returns), so nothing priced after the as-of time
+reaches the re-read, the recompute, the gate or routing.
 
 1. The order arrives at ``t = as_of + execution.backtest_latency_seconds``.
 2. The candle used is the one-minute candle whose period contains ``t`` (the

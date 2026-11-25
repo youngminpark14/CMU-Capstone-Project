@@ -37,12 +37,16 @@ class PnlSummary(Record):
 
 
 class EquityPoint(Record):
-    """The account after one fill or one settlement.
+    """The account at one moment, after every fill and settlement at that moment.
 
     ``cash`` is the bankroll less what was paid for fills plus what settlements
     paid out. ``equity`` carries open positions at what their contracts cost
     (``contracts x price``), so a fill lowers equity only by its fee and a
     settlement moves it by the trade's result. There are no price marks here.
+
+    When several changes share a moment (the markets of one event settling
+    together, say), there is one point for all of them; ``kind``,
+    ``episode_id`` and ``market_ticker`` are those of the last change applied.
     """
 
     at: UtcTime
@@ -117,13 +121,16 @@ def total_pnl(trades: Sequence[TradeRow]) -> Decimal:
 
 
 def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPoint]:
-    """The account after every fill and every settlement, in time order, from ``bankroll``.
+    """The account at every distinct fill or settlement time, in time order, from ``bankroll``.
 
     Cash falls by a trade's cost at its fill and rises by its payout at
     settlement. Equity carries open contracts at their price, so it falls by the
     fee at the fill and moves by ``payout - contracts x price`` at settlement;
-    once everything settles, equity equals cash. Simultaneous changes are
-    applied fills first, then in input order.
+    once everything settles, equity equals cash. All the changes at one time
+    are applied (fills first, then in input order) before that time's single
+    point is taken, as ``pmfa.execution.portfolio.account(..., as_of=t)`` sees
+    the account: a winning and a losing leg settling together, or a hedged
+    pair, never shows a trough that did not exist.
     """
     changes: list[tuple[UtcTime, int, int, TradeRow]] = []
     for i, t in enumerate(trades):
@@ -133,7 +140,7 @@ def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPo
     changes.sort(key=lambda c: (c[0], c[1], c[2]))
     cash = equity = bankroll
     points: list[EquityPoint] = []
-    for at, order, _, t in changes:
+    for n, (at, order, _, t) in enumerate(changes):
         basis = t.contracts * t.price
         if order == 0:
             cash -= trade_cost(t)
@@ -142,6 +149,8 @@ def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPo
             payout = trade_payout(t) or ZERO
             cash += payout
             equity += payout - basis
+        if n + 1 < len(changes) and changes[n + 1][0] == at:
+            continue  # more changes at this moment: one point after all of them
         points.append(
             EquityPoint(
                 at=at,

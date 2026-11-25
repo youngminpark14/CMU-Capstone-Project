@@ -180,13 +180,24 @@ def config_problems(exc: Exception) -> list[str]:
 def config_check(
     path: Path | None = CHECK_PATH,
 ) -> None:
-    """Validate a configuration file and print its problems (exit 1 when there are any)."""
+    """Validate a configuration file and print its problems (exit 1 when there are any).
+
+    With no path, the file ``load_config`` would read is checked: ``$PMFA_CONFIG``,
+    else ``./pmfa.toml``. When neither exists only the built-in defaults are
+    checked, and the output says so rather than naming a file that is not there.
+    """
     import os
 
     from pmfa.config import CONFIG_ENV, DEFAULT_CONFIG_FILE, load_config
     from pmfa.errors import ConfigError
 
-    shown = path or os.environ.get(CONFIG_ENV) or DEFAULT_CONFIG_FILE
+    shown = path or os.environ.get(CONFIG_ENV) or None
+    if shown is None:
+        shown = (
+            DEFAULT_CONFIG_FILE
+            if Path(DEFAULT_CONFIG_FILE).exists()
+            else f"no {DEFAULT_CONFIG_FILE} here; built-in defaults"
+        )
     try:
         load_config(path)
     except ConfigError as exc:

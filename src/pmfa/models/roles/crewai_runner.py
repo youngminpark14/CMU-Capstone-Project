@@ -13,7 +13,9 @@ aborts the kickoff with an exception CrewAI's rate-limit retry does not match;
 the runner hands the completion to the gateway, which owns the repair retry.
 
 Telemetry, tracing, the version check, and console output are turned off before
-CrewAI is first imported.
+CrewAI is first imported, whatever the inherited environment says, and CrewAI's
+import-time ``load_dotenv()`` is switched off (``PYTHON_DOTENV_DISABLED``): secrets
+come from the process environment only, never from a ``.env`` file.
 """
 
 from __future__ import annotations
@@ -38,8 +40,14 @@ QUIET_ENV: dict[str, str] = {
     "OTEL_SDK_DISABLED": "true",
     "CREWAI_TRACING_ENABLED": "false",
     "CREWAI_DISABLE_VERSION_CHECK": "true",
+    "PYTHON_DOTENV_DISABLED": "1",
 }
-"""Set (unless already set) before CrewAI is imported."""
+"""Assigned before CrewAI is imported, overriding any inherited value.
+
+An inherited ``CREWAI_TRACING_ENABLED=true`` would otherwise turn tracing back on,
+and CrewAI calls ``load_dotenv()`` on import, which would read a ``.env`` file
+found above the installed package (the project root for an in-repository venv).
+"""
 
 CONTEXT_WINDOW = 1_000_000
 """Reported to CrewAI so it never summarizes a long prompt behind the gateway's back."""
@@ -59,7 +67,7 @@ def _load_crewai() -> type:
         if _adapter_class is not None:
             return _adapter_class
         for name, value in QUIET_ENV.items():
-            os.environ.setdefault(name, value)
+            os.environ[name] = value
         logging.getLogger("crewai").addHandler(logging.NullHandler())
         from crewai import BaseLLM
         from crewai.events.event_listener import EventListener

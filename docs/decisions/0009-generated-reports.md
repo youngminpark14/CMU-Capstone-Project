@@ -16,4 +16,4 @@ Everything a report shows can be recomputed from committed artifacts.
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 9.
+Spec, Further Notes, "Changes from the checkpoint documents", item 9. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.

@@ -20,7 +20,7 @@ funds. Nothing here is investment or trading advice.
 
 | Area | State |
 | --- | --- |
-| Pipeline and tests | Built end to end. The offline suite runs with no keys and no network: 853 tests pass and 2 are skipped (an opt-in Kalshi smoke test, and a test that needs a locally cached embedding model), in under two minutes on one machine. |
+| Pipeline and tests | Built end to end. The offline suite runs with no keys and no network in about two minutes on one machine. Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
 | Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-25-market-baseline/manifest.json). |
@@ -141,9 +141,11 @@ and where each input came from.
 ## Setup
 
 Python 3.12 and uv. `uv sync` installs the default environment (see
-[Dependencies](#dependencies-and-the-two-environments)). Secrets are read only from the environment:
-nothing reads a `.env` file for you, nothing logs or stores a key, and git ignores `.env` and key
-files. [.env.example](.env.example) lists every variable.
+[Dependencies](#dependencies-and-the-two-environments)). Secrets are read only from the process
+environment: export each variable you use in the shell that runs `pmfa` (for example
+`export ANTHROPIC_API_KEY=...`). Nothing reads a `.env` file, not even CrewAI, whose own `.env`
+loading is switched off; nothing logs or stores a key; and git ignores `.env` and key files.
+[.env.example](.env.example) lists every variable the code reads, as a list to copy from.
 
 ### No keys: replay and the test suite
 
@@ -212,8 +214,15 @@ uv run pmfa demo
 
 Every demo order waits for you: `pmfa review list --mode demo`, then approve, resize or reject.
 
-Export only the variables you use. An exported but empty `PMFA_CONFIG` makes configuration loading
-fail, so do not load `.env.example` unchanged into your shell.
+Export only the variables you use; an empty `PMFA_CONFIG` counts as not set.
+
+### Opt-in smoke tests
+
+`PMFA_SMOKE=1 uv run pytest -m smoke` runs the three tests that call live services: one read of
+a series from Kalshi production, a read-only check of the demo exchange (the balance and one
+market, no orders; needs the `KALSHI_DEMO_*` variables) and one model call through the gateway
+(needs `ANTHROPIC_API_KEY`). Each is skipped when its keys are missing, and CI never sets
+`PMFA_SMOKE`.
 
 ## Run modes
 

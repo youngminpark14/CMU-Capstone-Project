@@ -390,6 +390,9 @@ class Config(Section):
             problems.append("execution.notional_bankroll must be positive")
         if not (0 < self.execution.backtest_volume_share <= 1):
             problems.append("execution.backtest_volume_share must be in (0, 1]")
+        if self.execution.backtest_latency_seconds < 0:
+            # A negative latency would price fills from candles before the as-of time.
+            problems.append("execution.backtest_latency_seconds cannot be negative")
         tickers = [s.ticker for s in self.follow.series]
         if len(set(tickers)) != len(tickers):
             problems.append("follow.series lists a ticker twice")

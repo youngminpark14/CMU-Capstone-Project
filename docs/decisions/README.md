@@ -1,21 +1,21 @@
 # Decision records
 
-Each record says what was decided, why, what follows from it, and where it came from: a capstone checkpoint the specification names, a section of [spec.md](../spec.md), or the build itself. Records 0001 to 0012 are the specification's "Changes from the checkpoint documents"; the rest were made while building and checked against the code.
+Each record says what was decided, why, what follows from it, and where it came from: a capstone checkpoint the specification names, a section of [spec.md](../spec.md), or the build itself. Records 0001 to 0012 are the specification's "Changes from the checkpoint documents". The checkpoint documents themselves are not available to this project, so a record names a checkpoint only where the specification does (0005, 0008, 0010) and otherwise says it is not named. Records 0013 onward were made while building and checked against the code.
 
 | # | Decision | Origin |
 | --- | --- | --- |
-| [0001](0001-forecast-per-event.md) | Forecast per event, not per market | spec |
-| [0002](0002-events-index-per-event.md) | The events index holds one document per event | spec |
-| [0003](0003-record-only-roles.md) | Roles are record-only | spec |
-| [0004](0004-origin-rule-primary-case.md) | The origin rule gains a primary-source case | spec |
+| [0001](0001-forecast-per-event.md) | Forecast per event, not per market | spec; checkpoint not named |
+| [0002](0002-events-index-per-event.md) | The events index holds one document per event | spec; checkpoint not named |
+| [0003](0003-record-only-roles.md) | Roles are record-only | spec; checkpoint not named |
+| [0004](0004-origin-rule-primary-case.md) | The origin rule gains a primary-source case | spec; checkpoint not named |
 | [0005](0005-protected-slot-only-tail-rule.md) | The protected slot is the only tail rule | checkpoints 4.1 and 5.1 |
-| [0006](0006-frozen-not-discarded.md) | Scenarios outside the beam are frozen, not discarded | spec |
-| [0007](0007-critic-scores-siblings.md) | The Critic scores sibling scenarios together | spec |
+| [0006](0006-frozen-not-discarded.md) | Scenarios outside the beam are frozen, not discarded | spec; checkpoint not named |
+| [0007](0007-critic-scores-siblings.md) | The Critic scores sibling scenarios together | spec; checkpoint not named |
 | [0008](0008-depth1-critic-fable-5-2.md) | The depth-1 Critic defaults to Fable 5.2 | checkpoint 4.1 |
-| [0009](0009-generated-reports.md) | Dashboards are generated reports | spec |
+| [0009](0009-generated-reports.md) | Dashboards are generated reports | spec; checkpoint not named |
 | [0010](0010-no-real-money.md) | Real-money trading is out of scope | spec; checkpoint 6.1 |
-| [0011](0011-official-sources-only.md) | Evidence is official sources only in v1 | spec |
-| [0012](0012-ioc-limit-orders.md) | Orders are immediate-or-cancel limit orders | spec |
+| [0011](0011-official-sources-only.md) | Evidence is official sources only in v1 | spec; checkpoint not named |
+| [0012](0012-ioc-limit-orders.md) | Orders are immediate-or-cancel limit orders | spec; checkpoint not named |
 | [0013](0013-two-dependency-sets.md) | Two dependency sets: CrewAI with MCP SDK 1.x, or MCP SDK 2.x without CrewAI | build, November 2026 |
 | [0014](0014-crewai-single-agent-kickoffs.md) | Roles run as single-agent CrewAI kickoffs bound to the gateway | build, November 2026 |
 | [0015](0015-claude-api-usage.md) | How the Claude API is called | build, November 2026 |

@@ -219,13 +219,16 @@ class ChromaIndex:
         return _rows(result)
 
     def query_events(self, vector: np.ndarray, *, as_of: datetime, n: int) -> list[Hit]:
-        """Events with ``open_time <= as_of < close_time``, nearest first."""
-        where = _all_of(
-            [
-                {"open_ts": {"$lte": floor_ts(as_of)}},
-                {"close_ts": {"$gt": ceil_ts(as_of)}},
-            ]
-        )
+        """Event listings with ``open_ts <= as_of < close_ts``, nearest first.
+
+        Both bounds compare with the as-of time rounded down. That is still safe
+        at the close, because ``close_ts`` is stored rounded down too, and
+        ``floor(close) > floor(as_of)`` implies ``close > as_of``. Using one
+        rounding for both makes back-to-back listings of an event meet without
+        a gap or an overlap.
+        """
+        at = floor_ts(as_of)
+        where = _all_of([{"open_ts": {"$lte": at}}, {"close_ts": {"$gt": at}}])
         return self._query(EVENTS, vector, n, where)
 
     def query_ledger(
