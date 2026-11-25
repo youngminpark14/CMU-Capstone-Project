@@ -1,0 +1,457 @@
+{
+  "run_id": "2026-11-25-market-baseline",
+  "name": "2026-11-25-market-baseline",
+  "status": "complete",
+  "created_at": "2026-11-25T10:03:46.226217Z",
+  "finished_at": "2026-11-25T10:03:47.738438Z",
+  "git_commit": "9aae03c3e214f1ce89d7940313001109fbe937aa",
+  "git_dirty": true,
+  "seed": 20261124,
+  "window_start": "2026-07-01",
+  "window_end": "2026-11-25T09:12:38.877766Z",
+  "systems_requested": [
+    "market"
+  ],
+  "systems": {
+    "market": "run",
+    "prompt_only": "not run: no API key",
+    "single_pass": "not run: no API key",
+    "single_pass_similarity": "not run: no API key",
+    "pipeline": "not run: no API key"
+  },
+  "models": {
+    "baseline": {
+      "model": "claude-fable-5-2",
+      "effort": "high",
+      "max_tokens": 16000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "critic_deep": {
+      "model": "claude-sonnet-5-5",
+      "effort": "high",
+      "max_tokens": 16000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "critic_depth1": {
+      "model": "claude-fable-5-2",
+      "effort": "high",
+      "max_tokens": 16000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "fast_path": {
+      "model": "claude-haiku-5-5",
+      "effort": "low",
+      "max_tokens": 4000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "generator": {
+      "model": "claude-haiku-5-5",
+      "effort": "medium",
+      "max_tokens": 8000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "monitor": {
+      "model": "claude-haiku-5-5",
+      "effort": "low",
+      "max_tokens": 4000,
+      "knowledge_cutoff": "2026-06-30"
+    },
+    "researcher": {
+      "model": "claude-haiku-5-5",
+      "effort": "medium",
+      "max_tokens": 8000,
+      "knowledge_cutoff": "2026-06-30"
+    }
+  },
+  "models_source": "none",
+  "snapshot_manifest": {
+    "built_at": "2026-11-25T09:32:48.338651Z",
+    "window_start": "2026-07-01T00:00:00Z",
+    "window_end": "2026-11-25T09:12:38.877766Z",
+    "series": [
+      "KXFEDDECISION",
+      "KXCPIYOY"
+    ],
+    "historical_cutoff": "2026-09-26T00:00:00Z",
+    "counts": {
+      "events": 7,
+      "markets": 104,
+      "candles_1m": 753670,
+      "candles_60m": 87171
+    },
+    "minute_days": null,
+    "minute_markets": 104,
+    "minute_span_days": 6310.78,
+    "source_host": "external-api.kalshi.com",
+    "elapsed_seconds": 1089.4
+  },
+  "corpus_manifest": {
+    "built_at": "2026-11-25T09:14:38.847932Z",
+    "window_start": "2026-07-01T00:00:00Z",
+    "window_end": "2026-11-25T09:12:38.877766Z",
+    "counts": {
+      "bls.gov": 10,
+      "federalreserve.gov": 45
+    },
+    "failures": [],
+    "notes": [
+      "fomc: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "bls: committed bls_schedule.json",
+      "bls: https://www.bls.gov/schedule/news_release/cpi.htm (dates from the site replace the committed ones)",
+      "bls: https://www.bls.gov/schedule/news_release/empsit.htm (dates from the site replace the committed ones)"
+    ]
+  },
+  "index": {},
+  "plan": {
+    "scoring_points": 21,
+    "triggers": 55,
+    "left_out_points": [],
+    "left_out_triggers": [],
+    "skipped_points": [],
+    "skipped_events": [],
+    "limit": null,
+    "score": true,
+    "trade": true,
+    "systems": [
+      {
+        "system": "market",
+        "status": "run",
+        "forecasts": 21,
+        "model_calls_max": 0,
+        "model_calls_min": 0,
+        "usd_max": "0",
+        "usd_min": "0",
+        "notes": []
+      }
+    ],
+    "usd_max": "0",
+    "usd_min": "0",
+    "assumptions": [
+      "Prices are the catalog's dollars per million tokens (config.models.catalog).",
+      "Answers already in the response cache cost nothing on a rerun; the estimate does not subtract them."
+    ]
+  },
+  "progress": {
+    "points_done": [
+      "KXCPIYOY-26JUN@7d/market",
+      "KXCPIYOY-26JUN@3d/market",
+      "KXCPIYOY-26JUN@1d/market",
+      "KXFEDDECISION-26JUL@7d/market",
+      "KXFEDDECISION-26JUL@3d/market",
+      "KXFEDDECISION-26JUL@1d/market",
+      "KXCPIYOY-26JUL@7d/market",
+      "KXCPIYOY-26JUL@3d/market",
+      "KXCPIYOY-26JUL@1d/market",
+      "KXCPIYOY-26AUG@7d/market",
+      "KXCPIYOY-26AUG@3d/market",
+      "KXFEDDECISION-26SEP@7d/market",
+      "KXCPIYOY-26AUG@1d/market",
+      "KXFEDDECISION-26SEP@3d/market",
+      "KXFEDDECISION-26SEP@1d/market",
+      "KXCPIYOY-26SEP@7d/market",
+      "KXCPIYOY-26SEP@3d/market",
+      "KXCPIYOY-26SEP@1d/market",
+      "KXFEDDECISION-26OCT@7d/market",
+      "KXFEDDECISION-26OCT@3d/market",
+      "KXFEDDECISION-26OCT@1d/market"
+    ],
+    "points_not_run": [],
+    "triggers_done": [],
+    "triggers_not_run": [],
+    "stopped_reason": ""
+  },
+  "usage": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cost_usd": "0",
+    "cache_answers": 0,
+    "live_answers": 0
+  },
+  "leakage_controls": [
+    "The as-of rule is inside the ports: the snapshot exchange shows quotes, listings and results only up to the simulated clock, the frozen evidence port returns only documents published at or before the as-of time, and every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search.",
+    "A canary document dated one day after the end of the window, containing the configured canary text and the words every query uses, sits in the evidence index (not in the corpus). Every retrieval result and every finished episode is checked for it; one hit aborts the run.",
+    "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, and no port in the backtest world holds an HTTP client.",
+    "The response cache key includes the as-of time, which is part of every role input.",
+    "The run refuses to start if any assigned model's listed knowledge cutoff falls on or after the window start."
+  ],
+  "cost_controls": [
+    "A dry run (--dry-run) prints the plan and a dollar estimate without any model call.",
+    "The gateway's run meter enforces budget.max_usd_per_run; on reaching it the run stops cleanly, is marked partial, and writes outputs for what it ran.",
+    "Answers are cached on disk by content (data/cache/models): a rerun of the same questions costs nothing.",
+    "--limit scores an evenly spaced subsample first; the manifest lists what was left out.",
+    "This run's dollar cap: $25.0."
+  ],
+  "fill_assumptions": [
+    "Orders are immediate-or-cancel limit orders filled against a book built from one candle: the first one-minute candle after the as-of time plus execution.backtest_latency_seconds, at the period's worst touch (the highest YES ask, or 1 minus the lowest YES bid), with each level holding execution.backtest_volume_share of that candle's volume.",
+    "One-minute candles exist only for minutes in which a quote or trade changed, so when no one-minute candle contains the arrival time the hourly candle is used (coarse), and when none exists, or the candle had no volume, the book is empty and nothing fills.",
+    "The exchange's history has no order-book depth, so liquidity is a candle-volume proxy.",
+    "Taker fees are paid on every fill; the unfilled remainder of an order is dropped."
+  ],
+  "outputs": [
+    "manifest.json",
+    "forecasts.csv",
+    "trades.csv",
+    "episodes.jsonl",
+    "metrics.json"
+  ],
+  "traces": {},
+  "notes": [],
+  "config": {
+    "follow": {
+      "series": [
+        {
+          "ticker": "KXFEDDECISION",
+          "category": "fed_decision",
+          "enabled": true,
+          "outcome_kind": "categorical",
+          "variable": "",
+          "unit": "",
+          "increment": null,
+          "primary_sources": [
+            "federalreserve.gov"
+          ],
+          "recency_half_life_days": 30.0,
+          "shrinkage": 0.5
+        },
+        {
+          "ticker": "KXCPIYOY",
+          "category": "cpi",
+          "enabled": true,
+          "outcome_kind": "ladder",
+          "variable": "CPI-U all items, 12-month percent change, not seasonally adjusted",
+          "unit": "percent",
+          "increment": 0.1,
+          "primary_sources": [
+            "bls.gov"
+          ],
+          "recency_half_life_days": 30.0,
+          "shrinkage": 0.5
+        },
+        {
+          "ticker": "KXFED",
+          "category": "fed_rate",
+          "enabled": false,
+          "outcome_kind": "ladder",
+          "variable": "upper bound of the federal funds target range after the meeting",
+          "unit": "percent",
+          "increment": 0.25,
+          "primary_sources": [
+            "federalreserve.gov"
+          ],
+          "recency_half_life_days": 30.0,
+          "shrinkage": 0.5
+        },
+        {
+          "ticker": "KXPAYROLLS",
+          "category": "payrolls",
+          "enabled": false,
+          "outcome_kind": "ladder",
+          "variable": "change in total nonfarm payroll employment",
+          "unit": "jobs",
+          "increment": 1000.0,
+          "primary_sources": [
+            "bls.gov"
+          ],
+          "recency_half_life_days": 30.0,
+          "shrinkage": 0.5
+        }
+      ],
+      "blocklist": []
+    },
+    "sources": {
+      "federal_reserve": true,
+      "bls": true,
+      "user_agent": "pmfa-research-client/0.1",
+      "min_seconds_between_requests": 2.0,
+      "manual_dir": "data/manual"
+    },
+    "triggers": {
+      "price_move_cents": 3,
+      "price_move_window_minutes": 30,
+      "daily_recheck_open_positions": false,
+      "schedule_horizons_days": [
+        7,
+        3,
+        1
+      ]
+    },
+    "retrieval": {
+      "event_candidates": 5,
+      "passage_words": 250,
+      "passage_overlap_words": 50,
+      "top_k": 8,
+      "max_per_origin": 3,
+      "similarity_floor": 0.05,
+      "near_duplicate_similarity": 0.92,
+      "ledger_k": 5,
+      "ranking": "recency_origin",
+      "embedder": "hashing"
+    },
+    "models": {
+      "slots": {
+        "monitor": {
+          "model": "claude-haiku-5-5",
+          "effort": "low",
+          "max_tokens": 4000
+        },
+        "researcher": {
+          "model": "claude-haiku-5-5",
+          "effort": "medium",
+          "max_tokens": 8000
+        },
+        "generator": {
+          "model": "claude-haiku-5-5",
+          "effort": "medium",
+          "max_tokens": 8000
+        },
+        "critic_deep": {
+          "model": "claude-sonnet-5-5",
+          "effort": "high",
+          "max_tokens": 16000
+        },
+        "critic_depth1": {
+          "model": "claude-fable-5-2",
+          "effort": "high",
+          "max_tokens": 16000
+        },
+        "fast_path": {
+          "model": "claude-haiku-5-5",
+          "effort": "low",
+          "max_tokens": 4000
+        },
+        "baseline": {
+          "model": "claude-fable-5-2",
+          "effort": "high",
+          "max_tokens": 16000
+        }
+      },
+      "catalog": {
+        "claude-fable-5-2": {
+          "input_per_mtok": "8",
+          "output_per_mtok": "40",
+          "knowledge_cutoff": "2026-06-30"
+        },
+        "claude-opus-5-5": {
+          "input_per_mtok": "4",
+          "output_per_mtok": "20",
+          "knowledge_cutoff": "2026-06-30"
+        },
+        "claude-sonnet-5-5": {
+          "input_per_mtok": "2",
+          "output_per_mtok": "10",
+          "knowledge_cutoff": "2026-06-30"
+        },
+        "claude-haiku-5-5": {
+          "input_per_mtok": "0.1",
+          "output_per_mtok": "0.5",
+          "knowledge_cutoff": "2026-06-30"
+        }
+      },
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "refusal_fallback": "default",
+      "request_timeout_seconds": 180.0,
+      "roles_runner": "auto"
+    },
+    "budget": {
+      "max_calls_per_episode": 30,
+      "max_seconds_per_episode": 90.0,
+      "max_usd_per_episode": "2.0",
+      "max_usd_per_run": "25.0"
+    },
+    "forecast": {
+      "max_depth": 3,
+      "beam_width": 3,
+      "max_thoughts_per_node": 3,
+      "coverage_floor": 0.6,
+      "tie_band": 0.05,
+      "confidence_full_origins": 3,
+      "max_evidence_followups": 3,
+      "fast_path_within_minutes": 60,
+      "quantile_levels": [
+        0.05,
+        0.25,
+        0.5,
+        0.75,
+        0.95
+      ]
+    },
+    "sizing": {
+      "kelly_fraction": "0.25",
+      "min_edge": "0.02"
+    },
+    "caps": {
+      "per_market_fraction": "0.05",
+      "per_event_fraction": "0.1",
+      "max_contracts_per_order": 25,
+      "daily_loss_stop_fraction": "0.03",
+      "drawdown_halt_fraction": "0.1",
+      "liquidity_floor_dollars": "500",
+      "liquidity_band": "0.02",
+      "order_group_contracts_limit": 50,
+      "risk_unit_fraction": "0.01"
+    },
+    "routing": {
+      "auto_max_risk_units": "1",
+      "calibration_min_resolved": 30,
+      "calibration_error_max": 0.1,
+      "max_price_move": "0.03"
+    },
+    "oversight": {
+      "proposal_ttl_minutes": 10,
+      "fill_failure_halt_fraction": 0.1,
+      "fill_failure_window": 10,
+      "calibration_halt_weeks": 2,
+      "timezone": "America/New_York"
+    },
+    "stages": {
+      "backtest_min_markets": 200,
+      "shadow_min_weeks": 4,
+      "shadow_max_drawdown_fraction": "0.1",
+      "approval_min_trades": 100,
+      "approval_max_override_fraction": 0.15,
+      "demote_after_daily_stops_in_week": 2
+    },
+    "execution": {
+      "notional_bankroll": "1000",
+      "backtest_latency_seconds": 60,
+      "backtest_volume_share": "0.1",
+      "backtest_liquidity_window_minutes": 60
+    },
+    "kalshi": {
+      "production_base_url": "https://external-api.kalshi.com/trade-api/v2",
+      "demo_base_url": "https://external-api.demo.kalshi.co/trade-api/v2",
+      "demo_key_id_env": "KALSHI_DEMO_KEY_ID",
+      "demo_private_key_env": "KALSHI_DEMO_PRIVATE_KEY",
+      "demo_private_key_path_env": "KALSHI_DEMO_PRIVATE_KEY_PATH",
+      "demo_subaccount": 1,
+      "max_requests_per_second": 2.0,
+      "request_timeout_seconds": 30.0
+    },
+    "state": {
+      "transport": "direct"
+    },
+    "evaluation": {
+      "window_start": "2026-07-01",
+      "horizons_days": [
+        7,
+        3,
+        1
+      ],
+      "systems": [
+        "market",
+        "prompt_only",
+        "single_pass",
+        "pipeline"
+      ],
+      "bootstrap_samples": 2000,
+      "seed": 20261124,
+      "reliability_bins": 10,
+      "canary_text": "CANARY-7f3a91 this document is dated after every forecast and must never be retrieved"
+    },
+    "paths": {
+      "data_dir": "data",
+      "runs_dir": "runs"
+    }
+  }
+}

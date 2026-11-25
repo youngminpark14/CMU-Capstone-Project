@@ -16,8 +16,8 @@ build/
 *.key
 
 # local data: the database, snapshot, corpus, indexes and caches are rebuilt, never committed
-data/
-runs/
+/data/
+/runs/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

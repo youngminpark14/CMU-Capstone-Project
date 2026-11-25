@@ -136,8 +136,14 @@ Node = Callable[[EpisodeState], dict[str, Any]]
 
 
 def episode_id_for(mode: RunMode, trigger: Trigger) -> str:
-    """The deterministic episode id: the same mode, trigger, and time give the same id."""
-    return stable_id("episode", RunMode(mode).value, trigger.trigger_id, trigger.at.isoformat())
+    """The deterministic episode id: the same trigger at the same time gives the same id.
+
+    The run mode is deliberately not part of it. An episode recorded in a backtest
+    or a live mode then replays under the id it was recorded with, so the scenario
+    ids the roles saw come out the same and the cassette matches. Modes never share
+    a state store, so ids cannot collide across them.
+    """
+    return stable_id("episode", trigger.trigger_id, trigger.at.isoformat())
 
 
 def _time(text: str) -> datetime:
