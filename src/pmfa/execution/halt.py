@@ -30,7 +30,7 @@ starts with its name:
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from pmfa.config import Config
@@ -124,7 +124,7 @@ def doc_id_of_passage(passage_id: str) -> str:
 
 
 def _source_reasons(
-    store: StateStore, evidence: Evidence, now, *, bankroll: Decimal | None, config: Config
+    store: StateStore, evidence: Evidence, now: datetime, *, bankroll: Decimal | None, config: Config
 ) -> list[str]:
     acct = account(
         store.list_fills(),
@@ -167,7 +167,7 @@ def _source_reasons(
     return reasons
 
 
-def _calibration_reasons(store: StateStore, config: Config, now) -> list[str]:
+def _calibration_reasons(store: StateStore, config: Config, now: datetime) -> list[str]:
     weeks = config.oversight.calibration_halt_weeks
     limit = config.routing.calibration_error_max
     minimum = config.routing.calibration_min_resolved
