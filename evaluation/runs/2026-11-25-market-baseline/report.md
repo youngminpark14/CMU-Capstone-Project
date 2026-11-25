@@ -1,6 +1,6 @@
 # Backtest report: 2026-11-25-market-baseline
 
-Run status: **complete**. Created 2026-11-25T20:11:00.705270+00:00, finished 2026-11-25T20:11:02.752513+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
+Run status: **complete**. Created 2026-11-25T22:47:01.990916+00:00, finished 2026-11-25T22:47:03.428038+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
 
 ## What was run and what was not
 
@@ -19,7 +19,7 @@ The full configuration, model assignments, snapshot and corpus manifests, plan a
 - Window: forecasts from 2026-07-01 to 2026-11-25T20:10:48.937084+00:00. The latest listed knowledge cutoff of any assigned model is 2026-06-30.
 - Horizons: 7, 3, 1 day(s) before each event's close.
 - Bootstrap: 2000 resamples of whole events, seed 20261124, 95% percentile intervals.
-- Commit: `a9bd72d1fe36d33086dbeadaf40a997332487c8a`.
+- Commit: `3603286e9aac31a53e2cb8dcbe7d1630feb60a09`.
 - Data: snapshot file SHA-256 `a9c3334dc0536a4eedecd0fc2b0e75bcee310db34e7031ea2c7ec16901d4ebf4`, corpus texts digest `22e5b3662f30374118637a09def8b0fc9a5bd70ed60bd6a85bee7975e6f46d75`.
 - Snapshot: 7 events, 104 markets, built 2026-11-25T20:10:52.303544Z from external-api.kalshi.com.
 - Corpus: 10 from bls.gov, 45 from federalreserve.gov.
@@ -41,9 +41,7 @@ The full configuration, model assignments, snapshot and corpus manifests, plan a
 
 The release calendar has 1 release(s) in the window with no event of the followed series in the snapshot, so nothing was scored for them. The exchange does not list an event for every release.
 
-- cpi_release:2026-10 (Consumer Price Index for October 2026, 2026-11-10T13:30:00+00:00): no KXCPIYOY event in the snapshot
-
-The snapshot's builder dropped events of these series (listed below); one of them may belong to one of these releases.
+- cpi_release:2026-10 (Consumer Price Index for October 2026, 2026-11-10T13:30:00+00:00): no KXCPIYOY event in the snapshot. So the exchange listed no KXCPIYOY event for this release: none of the 2 KXCPIYOY event(s) the builder dropped closes within a day of it.
 
 Events the exchange listed that the snapshot builder did not store (12):
 
@@ -153,7 +151,7 @@ No resolved episode had a scenario tree to audit (the pipeline did not run).
 
 ## How each fill was priced
 
-No order was placed (the pipeline did not run). Episodes that ended stale_price because the book was empty: 0.
+No order was placed (the pipeline did not run). Episodes that ended stale_price because the as-of book offered nothing at or below the limit: 0.
 
 ## How look-ahead was prevented
 
@@ -161,6 +159,7 @@ The controls the harness puts in place whenever the systems that read evidence r
 
 - The as-of rule is inside the ports: the snapshot exchange shows quotes, listings and results only up to the simulated clock, the frozen evidence port returns only documents published at or before the as-of time, and every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search.
 - A canary document dated one day after the end of the window, containing the configured canary text and the words every query uses, sits in the evidence index (not in the corpus). Every retrieval result and every finished episode is checked for it; one hit aborts the run.
+- Every decision in a backtest episode (the price re-read before sending, the one recompute, the second gate, routing's price move) reads the order book as of the as-of time; only the paper fill is priced from a later candle (see Fill assumptions), and no role or decision sees that book.
 - No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, and no port in the backtest world holds an HTTP client.
 - The response cache key includes the as-of time, which is part of every role input.
 - The run refuses to start if any assigned model's listed knowledge cutoff falls on or after the window start.
@@ -169,16 +168,17 @@ In this run the window starts 2026-07-01 and every assigned model lists a knowle
 
 ## Fill assumptions
 
-- Orders are immediate-or-cancel limit orders filled against a book built from one candle: the first one-minute candle after the as-of time plus execution.backtest_latency_seconds, at the period's worst touch (the highest YES ask, or 1 minus the lowest YES bid), with each level holding execution.backtest_volume_share of that candle's volume.
-- One-minute candles exist only for minutes in which a quote or trade changed, so when no one-minute candle contains the arrival time the hourly candle is used (coarse), and when none exists, or the candle had no volume, the book is empty and nothing fills.
+- In a backtest every decision (the price re-read before sending, the one recompute, the second gate, routing's price move) reads the order book as of the as-of time. Only the fill is priced from the first one-minute candle after the as-of time plus execution.backtest_latency_seconds (the candle whose period holds that arrival time).
+- The immediate-or-cancel limit order fills against a book built from that candle on the conservative side of its period: buying YES meets its highest YES ask, buying NO meets 1 minus its lowest YES bid. Each side holds execution.backtest_volume_share of the candle's volume, floored to whole contracts; a limit that book does not meet fills nothing.
+- One-minute candles exist only for minutes in which a quote or trade changed, so when no one-minute candle holds the arrival time the hourly candle holding it is used, and that order is flagged coarse (see How each fill was priced). When neither exists, the market has closed by the arrival time, or the candle had no volume, the book is empty and nothing fills.
 - The exchange's history has no order-book depth, so liquidity is a candle-volume proxy.
-- Taker fees are paid on every fill; the unfilled remainder of an order is dropped.
+- Taker fees are paid on every fill, rounded up to the cent once per order; the unfilled remainder of an order is dropped.
 
 ## Limitations
 
 - **This is a pilot.** Scoring covered only 7 settled event(s) (4 KXCPIYOY, 3 KXFEDDECISION); 1 release(s) in the window had no event in the snapshot (see Left out of scoring). That is a handful per series, and each carries several correlated markets (five per Fed meeting, twenty or more per CPI release). The events, not the markets, are the independent observations, so the intervals are wide and no difference here separates skill from luck.
 - The market price is the YES mid when both sides are quoted, else the last trade clamped into the standing quote, read from candles. Far strikes often have one side of the quote empty, so their price is a last trade (kept inside the standing quote); markets priced at 0.01 or 0.99 dominate the row count and pull every Brier score toward zero.
-- Fills are simulated from candles without depth data; many would use the hourly fallback or meet an empty book. Simulated P&L is not evidence of tradable edge.
+- Fills are simulated from candles without depth data, some from the coarse hourly fallback or against an empty book (counted under How each fill was priced). Simulated P&L is not evidence of tradable edge.
 - Forecasts at 7, 3 and 1 days before close of the same event are not independent of each other either; the bootstrap keeps an event's rows together across horizons only in the pooled row.
 
 - Not run in this run: Prompt only (not requested); Single pass (recency and origin ranking) (not requested); Single pass (similarity ranking) (not requested); Full pipeline (not requested). Nothing in this report describes how those systems would do.
