@@ -17,29 +17,21 @@
   "passage_ids": [
     "bls:cpi_release:2026-08#0",
     "bls:cpi_release:2026-08#1",
-    "fed:monetary20260729a#0",
-    "fed:cook20260805a#1"
+    "fed:fomcminutes20260729#21"
   ],
   "origins": [
     {
-      "origin_id": "bls:cpi_release:2026-06",
+      "origin_id": "bls:cpi_release:2026-08",
       "source": "bls.gov",
-      "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
-      "published_at": "2026-07-14T12:30:00Z",
+      "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+      "published_at": "2026-09-11T12:30:00Z",
       "is_primary": false
     },
     {
-      "origin_id": "fed:monetary20260729a",
+      "origin_id": "fed:fomcminutes20260729",
       "source": "federalreserve.gov",
-      "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm",
-      "published_at": "2026-07-29T18:00:00Z",
-      "is_primary": true
-    },
-    {
-      "origin_id": "fed:cook20260805a",
-      "source": "federalreserve.gov",
-      "url": "https://www.federalreserve.gov/newsevents/speech/cook20260805a.htm",
-      "published_at": "2026-08-05T20:05:00Z",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+      "published_at": "2026-08-19T18:00:00Z",
       "is_primary": true
     }
   ],
@@ -95,7 +87,7 @@
     ],
     "passage_ids": [
       "bls:cpi_release:2026-08#0",
-      "fed:monetary20260729a#0",
+      "fed:fomcminutes20260729#21",
       "bls:cpi_release:2026-08#1"
     ]
   },
@@ -276,6 +268,27 @@
             "score": 0.4145784361551333
           },
           {
+            "passage_id": "bls:cpi_release:2026-07#0",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.20188935127530627
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#4",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.18852992274767696
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#1",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.17812301184126103
+          },
+          {
             "passage_id": "fed:fomcminutes20260729#21",
             "source": "federalreserve.gov",
             "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
@@ -288,27 +301,6 @@
             "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
             "published_at": "2026-08-19T18:00:00+00:00",
             "score": 0.14303754214227196
-          },
-          {
-            "passage_id": "fed:fomcminutes20260729#22",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
-            "published_at": "2026-08-19T18:00:00+00:00",
-            "score": 0.13944630082395312
-          },
-          {
-            "passage_id": "fed:monetary20260729a#0",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm",
-            "published_at": "2026-07-29T18:00:00+00:00",
-            "score": 0.1083936383036926
-          },
-          {
-            "passage_id": "fed:cook20260805a#1",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/newsevents/speech/cook20260805a.htm",
-            "published_at": "2026-08-05T20:05:00+00:00",
-            "score": 0.09973130183411756
           }
         ]
       },
@@ -319,15 +311,14 @@
       "seq": 9,
       "node": "research",
       "kind": "thought",
-      "summary": "Kept the August CPI headline and core figures, the July statement with its three dissents for a hike, and a Governor's view that inflation is stubborn.",
+      "summary": "Kept the August CPI headline and core figures and the July minutes' policy action, with its three dissents for a hike.",
       "role": "Researcher",
       "data": {
         "output": {
           "keep_passage_ids": [
             "bls:cpi_release:2026-08#0",
             "bls:cpi_release:2026-08#1",
-            "fed:monetary20260729a#0",
-            "fed:cook20260805a#1"
+            "fed:fomcminutes20260729#21"
           ],
           "dropped": [
             {
@@ -335,19 +326,23 @@
               "reason": "Component detail, no bearing beyond the headline."
             },
             {
-              "passage_id": "fed:fomcminutes20260729#21",
-              "reason": "Restates the July decision, covered by the statement."
+              "passage_id": "bls:cpi_release:2026-07#0",
+              "reason": "The July report, superseded by the August one."
+            },
+            {
+              "passage_id": "bls:cpi_release:2026-07#1",
+              "reason": "July 12-month figures, superseded by August's."
+            },
+            {
+              "passage_id": "bls:cpi_release:2026-07#4",
+              "reason": "July component detail."
             },
             {
               "passage_id": "fed:fomcminutes20260729#20",
               "reason": "Balance sheet discussion."
-            },
-            {
-              "passage_id": "fed:fomcminutes20260729#22",
-              "reason": "Implementation directive boilerplate."
             }
           ],
-          "rationale": "Kept the August CPI headline and core figures, the July statement with its three dissents for a hike, and a Governor's view that inflation is stubborn."
+          "rationale": "Kept the August CPI headline and core figures and the July minutes' policy action, with its three dissents for a hike."
         }
       },
       "call": {
@@ -370,14 +365,13 @@
       "seq": 10,
       "node": "research",
       "kind": "observation",
-      "summary": "kept 4 of 8 passage(s)",
+      "summary": "kept 3 of 8 passage(s)",
       "role": null,
       "data": {
         "passage_ids": [
           "bls:cpi_release:2026-08#0",
           "bls:cpi_release:2026-08#1",
-          "fed:monetary20260729a#0",
-          "fed:cook20260805a#1"
+          "fed:fomcminutes20260729#21"
         ]
       },
       "call": null,
@@ -397,29 +391,22 @@
       "seq": 12,
       "node": "research",
       "kind": "observation",
-      "summary": "3 independent origin(s), 2 primary",
+      "summary": "2 independent origin(s), 1 primary",
       "role": null,
       "data": {
         "origins": [
           {
-            "origin_id": "bls:cpi_release:2026-06",
+            "origin_id": "bls:cpi_release:2026-08",
             "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
-            "published_at": "2026-07-14T12:30:00Z",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00Z",
             "is_primary": false
           },
           {
-            "origin_id": "fed:monetary20260729a",
+            "origin_id": "fed:fomcminutes20260729",
             "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260729a.htm",
-            "published_at": "2026-07-29T18:00:00Z",
-            "is_primary": true
-          },
-          {
-            "origin_id": "fed:cook20260805a",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/newsevents/speech/cook20260805a.htm",
-            "published_at": "2026-08-05T20:05:00Z",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "published_at": "2026-08-19T18:00:00Z",
             "is_primary": true
           }
         ]
@@ -474,7 +461,7 @@
               "value_high": null,
               "passage_ids": [
                 "bls:cpi_release:2026-08#0",
-                "fed:monetary20260729a#0"
+                "fed:fomcminutes20260729#21"
               ],
               "rationale": "A 0.4 percent monthly rise follows a July meeting where three members already wanted a hike."
             },
@@ -617,7 +604,7 @@
             "path_mass": 0.78,
             "passage_ids": [
               "bls:cpi_release:2026-08#0",
-              "fed:monetary20260729a#0"
+              "fed:fomcminutes20260729#21"
             ]
           },
           {
@@ -696,7 +683,7 @@
           ],
           "passage_ids": [
             "bls:cpi_release:2026-08#0",
-            "fed:monetary20260729a#0",
+            "fed:fomcminutes20260729#21",
             "bls:cpi_release:2026-08#1"
           ]
         },

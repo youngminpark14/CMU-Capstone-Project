@@ -67,11 +67,3 @@ replay that finishes is the recorded episode, not an approximation. The build sc
 Retrieval in a recorded world is replayed from the recorded calls, because `world.json` holds only
 the documents the episode touched (plus, for `single-origin-syndicated`, the whole small source
 world, which replay indexes again).
-
-Known issue: `phantom-edge-no-trade` was recorded before origin resolution was fixed, and it still
-traces its August CPI passages to the June release and the July minutes to the June minutes. Its
-exit is unaffected and it replays exactly, but the origin URLs in its trace are wrong. It cannot be
-rebuilt as it stands: with each release now its own origin, the July CPI release fills retrieval
-slots that its hand-written research records expect the July statement and a Governor's speech to
-hold, so those records need rewriting first. The other four examples are rebuilt and their origins
-are the documents their passages come from.

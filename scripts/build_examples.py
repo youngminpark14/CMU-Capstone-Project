@@ -437,8 +437,8 @@ CPI_AT = datetime(2026, 9, 11, 12, 35, tzinfo=UTC)
 AUG_CPI = "bls:cpi_release:2026-08"
 CPI0, CPI1, CPI2, CPI3, CPI4 = (f"{AUG_CPI}#{n}" for n in range(5))
 JULY_MIN = "fed:fomcminutes20260729"
-JULY_STATEMENT = "fed:monetary20260729a#0"
-COOK1 = "fed:cook20260805a#1"
+JULY_POLICY = f"{JULY_MIN}#21"
+JULY_CPI = "bls:cpi_release:2026-07"
 SEP_RESOLUTION = f"resolution:{SEP}"
 SEP_HIKE = "The Committee raises the target range 25 bp on September 16"
 SEP_HOLD = "The Committee holds the target range on September 16"
@@ -468,22 +468,23 @@ def phantom_edge_records() -> Records:
         ),
         selections=[
             keep(
-                [CPI0, CPI1, JULY_STATEMENT, COOK1],
+                [CPI0, CPI1, JULY_POLICY],
                 {
                     CPI4: "Component detail, no bearing beyond the headline.",
-                    f"{JULY_MIN}#21": "Restates the July decision, covered by the statement.",
+                    f"{JULY_CPI}#0": "The July report, superseded by the August one.",
+                    f"{JULY_CPI}#1": "July 12-month figures, superseded by August's.",
+                    f"{JULY_CPI}#4": "July component detail.",
                     f"{JULY_MIN}#20": "Balance sheet discussion.",
-                    f"{JULY_MIN}#22": "Implementation directive boilerplate.",
                 },
-                "Kept the August CPI headline and core figures, the July statement with its "
-                "three dissents for a hike, and a Governor's view that inflation is stubborn.",
+                "Kept the August CPI headline and core figures and the July minutes' policy "
+                "action, with its three dissents for a hike.",
             )
         ],
         thoughts={
             (SEP_RESOLUTION, None): [
                 thought(
                     SEP_HIKE,
-                    [CPI0, JULY_STATEMENT],
+                    [CPI0, JULY_POLICY],
                     "A 0.4 percent monthly rise follows a July meeting where three members "
                     "already wanted a hike.",
                     outcomes=("hike_25",),
@@ -718,7 +719,9 @@ market has the 2-cent minimum edge after fees and shrinkage: exit `{record.exit.
 
 - Inputs: the real `{SEP}` event (all five markets) and quotes at {CPI_AT:%Y-%m-%d %H:%M} UTC. {BOOK_NOTE}
 - Evidence: the real BLS release (https://www.bls.gov/news.release/archives/cpi_09112026.htm) and
-  the minutes of the July 28-29 FOMC meeting. {BLS_CREDIT}. {FED_CREDIT}.
+  the minutes of the July 28-29 FOMC meeting
+  (https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm), whose policy
+  action records three dissents for a hike. {BLS_CREDIT}. {FED_CREDIT}.
 - Outcome: the author knew when writing the records that the Committee raised the rate 25 bp in
   September; the forecast stays below the market's own hike price, so it claims no foresight.
 """
