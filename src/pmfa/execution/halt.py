@@ -67,9 +67,12 @@ def stop_reasons(
 ) -> list[str]:
     """The self-halt conditions that hold now, one short reason each (see the module docstring).
 
-    ``bankroll`` is what the daily loss stop is a fraction of, and seeds the
-    account for finding open positions; it defaults to the day's starting
-    equity and to ``config.execution.notional_bankroll`` respectively.
+    ``bankroll`` is the current equity, passed on to ``risk_state`` (where it is
+    the dollar caps' base and does not move either stop) and used to seed the
+    account that finds open positions; it defaults to the last equity point and
+    to ``config.execution.notional_bankroll`` respectively. The daily loss stop
+    is always a fraction of the day's starting equity
+    (``RiskState.day_start_equity``), whatever ``bankroll`` is.
     """
     now = clock.now()
     reasons: list[str] = []
@@ -78,9 +81,11 @@ def stop_reasons(
     if series:
         risk = risk_state(series, now, config, bankroll=bankroll)
         if risk.loss_stop_tripped:
+            fraction = config.caps.daily_loss_stop_fraction
             reasons.append(
-                f"daily loss stop: day P&L {risk.day_pnl} reached "
-                f"{config.caps.daily_loss_stop_fraction} of {risk.bankroll}"
+                f"daily loss stop: equity fell {fraction * risk.day_start_equity} or more "
+                f"({fraction} of the day's starting equity {risk.day_start_equity}) "
+                f"below that start today; day P&L now {risk.day_pnl}"
             )
         if risk.drawdown_tripped:
             reasons.append(
@@ -112,6 +117,8 @@ def enforce(
 ) -> list[str]:
     """Halt when any stop condition holds, and return the reasons.
 
+    ``bankroll`` is the current equity, as for :func:`stop_reasons`; it does not
+    change the daily loss stop, which is a fraction of the day's starting equity.
     An agent that is already halted keeps its original reason and time.
     """
     reasons = stop_reasons(store, config, clock, evidence, bankroll=bankroll)

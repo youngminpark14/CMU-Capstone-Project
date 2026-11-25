@@ -471,6 +471,41 @@ def test_find_order_looks_an_order_up_by_its_client_order_id_without_placing() -
     assert ex.find_order(other) is None
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        (503, {"error": {"code": "service_unavailable", "message": "down"}}),
+        (500, {"error": {"code": "internal_server_error"}}),
+        (404, {"error": {"code": "not_found"}}),
+    ],
+    ids=["503", "500", "404"],
+)
+def test_find_order_raises_when_the_order_list_cannot_be_read(reply) -> None:
+    # None would read as "the exchange has no such order": a continued episode would then
+    # cancel its proposal as never sent, when whether it was sent is unknown.
+    fake = FakeKalshi()
+    fake.add("GET", "/portfolio/orders", reply, ticker=TICKER)
+    ex = executor(fake)
+    with pytest.raises(ExchangeError):
+        ex.find_order(intent())
+    assert not fake.sent("POST", ORDERS)
+
+
+def test_find_order_is_none_only_when_the_exchange_lists_no_such_order() -> None:
+    fake = FakeKalshi()
+    fake.add("GET", "/portfolio/orders", (200, {"orders": [], "cursor": ""}), ticker=TICKER)
+    assert executor(fake).find_order(intent()) is None
+
+
+def test_an_unknown_outcome_whose_lookup_fails_says_so() -> None:
+    fake = trading_fake((500, {"error": {"code": "internal_server_error"}}))
+    fake.add("GET", "/portfolio/orders", (503, {"error": {"code": "service_unavailable"}}))
+    result = executor(fake).place(intent())
+    assert result.status is OrderStatus.REJECTED
+    assert "outcome unknown and the order lookup failed" in result.error
+    assert len(fake.sent("POST", ORDERS)) == 1
+
+
 def test_mark_values_positions_at_their_own_sides_bid_and_records_the_point() -> None:
     fake = FakeKalshi()
     fake.add("GET", "/portfolio/balance", "constructed_balance", subaccount=1)

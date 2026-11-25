@@ -97,3 +97,33 @@ def test_the_fill_is_priced_from_the_candle_after_the_as_of_time(data_config: Co
     assert granularity == "minute"
     assert len(store.list_orders()) == 2
     data.close()
+
+
+def test_the_printed_fill_assumptions_match_what_decides_and_what_fills() -> None:
+    from pmfa.evaluation.manifest import FILL_ASSUMPTIONS, LEAKAGE_CONTROLS
+
+    fills = " ".join(FILL_ASSUMPTIONS)
+    # The two tests above: decisions read the as-of book, only the fill reads later prices.
+    assert "every decision" in fills and "reads the order book as of the as-of time" in fills
+    assert "Only the fill is priced from the first one-minute candle after the as-of time" in fills
+    # The hourly fallback is flagged, and the cap is a share of the candle's volume.
+    assert "flagged coarse" in fills and "execution.backtest_volume_share" in fills
+    leakage = " ".join(LEAKAGE_CONTROLS)
+    assert "only the paper fill is priced from a later candle" in leakage
+
+
+def test_the_report_does_not_say_how_fills_were_priced_beyond_what_it_counted(
+    data_config: Config, tmp_path
+) -> None:
+    from pmfa.evaluation.backtest import run_backtest
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "run"
+    run_backtest(data_config, run_dir=run_dir, systems=["market"])
+    text = build_report(run_dir).read_text()
+    priced = text.split("## How each fill was priced", 1)[1].split("\n## ", 1)[0]
+    # A stale_price exit is decided on the as-of book; the fill book never reaches it.
+    assert "the as-of book offered nothing at or below the limit" in priced
+    limitations = text.split("## Limitations", 1)[1].split("\n## ", 1)[0]
+    assert "many would use the hourly fallback" not in limitations
+    assert "How each fill was priced" in limitations

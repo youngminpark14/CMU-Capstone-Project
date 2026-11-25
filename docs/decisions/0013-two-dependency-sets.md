@@ -4,7 +4,7 @@ CrewAI and the MCP SDK 2.x line cannot share an environment, so the lockfile car
 
 ## Context
 
-The specification asks for the MCP SDK's v2 line and for CrewAI role definitions. CrewAI 1.15.45, the pinned release, requires `mcp>=1.30,<2` and `pydantic<2.13`, so the two cannot be installed together.
+The specification asks for the MCP SDK's v2 line and for CrewAI role definitions. CrewAI 1.15.45, the pinned release, requires `mcp>=1.30,<2` and `pydantic<2.13`, so the two cannot be installed together. Checked on PyPI on 2026-11-24: every CrewAI release from 1.7.0 through 1.15.45 pins the MCP SDK to its 1.x line, so no CrewAI release at hand works with MCP SDK 2.x.
 
 ## Decision
 

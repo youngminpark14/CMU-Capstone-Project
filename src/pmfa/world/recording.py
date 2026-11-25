@@ -172,8 +172,7 @@ class _RecordingExecutor:
         return self._inner.place(intent)
 
     def find_order(self, intent: OrderIntent) -> OrderResult | None:
-        find = getattr(self._inner, "find_order", None)
-        return find(intent) if callable(find) else None
+        return self._inner.find_order(intent)
 
     def cancel_all(self) -> int:
         return self._inner.cancel_all()

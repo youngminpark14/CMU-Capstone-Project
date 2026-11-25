@@ -1101,7 +1101,8 @@ class Pipeline:
         The order is looked up by its client order id first (in the store, then through
         ``Executor.find_order``). A thread the controller continued after it stopped here
         (``continued``) only reconciles and never sends: it records the order it finds,
-        else ends in ``error`` with nothing placed. The approval it ran on may be minutes
+        else ends in ``error`` with nothing placed, or with the outcome unknown when the
+        exchange cannot be asked. The approval it ran on may be minutes
         old, its gate ran at an older price, and the human may since have rejected or
         expired the proposal, so sending then would act on a decision nobody stands
         behind. On a first run, the halt flag is read before the book and again
@@ -1227,7 +1228,10 @@ class Pipeline:
         An order found by its client order id is recorded and ends the episode by what
         the exchange did with it. When none is found, the process stopped before the
         order was sent: the proposal is cancelled and the episode ends ``error``. When
-        the exchange cannot be asked, the outcome is unknown and the episode says so.
+        the exchange cannot be asked (``Executor.find_order`` raises ``ExchangeError``),
+        the outcome is unknown: the episode ends ``error`` and says so, and the proposal
+        keeps its status, because an order may stand behind it and cancelling would
+        record that nothing was placed.
         """
         world = self.world
         eid = state["episode_id"]
@@ -1240,7 +1244,6 @@ class Pipeline:
         try:
             found = self._find_order(eid, intent)
         except ExchangeError as exc:
-            world.store.save_proposal(p, ProposalStatus.CANCELLED)
             return self._exit(
                 state,
                 "execute",

@@ -269,3 +269,41 @@ def test_the_book_an_order_filled_against_is_recorded_and_replayed(tmp_path):
 def test_a_fill_book_equal_to_the_execution_book_is_not_recorded(tmp_path):
     file, _, run = record(make_file())
     assert run.episode.orders and file.fill_books == {}
+
+
+class _NoLookup:
+    """An executor written before ``find_order`` joined the Executor port."""
+
+    simulated = True
+
+
+class _LookupFails(_NoLookup):
+    def find_order(self, intent):
+        from pmfa.errors import ExchangeError
+
+        raise ExchangeError("GET /portfolio/orders -> 503")
+
+
+def _intent():
+    from pmfa.records.decision import OrderIntent
+
+    return OrderIntent(
+        client_order_id="cid-1",
+        episode_id="ep-1",
+        proposal_id="prop-1",
+        market_ticker=CUT,
+        side=Side.YES,
+        contracts=1,
+        limit_price=Decimal("0.40"),
+    )
+
+
+def test_the_recording_executor_asks_the_inner_executor_and_never_guesses_not_found():
+    from pmfa.errors import ExchangeError
+    from pmfa.world.recording import _RecordingExecutor
+
+    # None would read as "no such order: nothing was placed"; a missing method is a bug.
+    with pytest.raises(AttributeError):
+        _RecordingExecutor(None, _NoLookup()).find_order(_intent())  # type: ignore[arg-type]
+    with pytest.raises(ExchangeError):
+        _RecordingExecutor(None, _LookupFails()).find_order(_intent())  # type: ignore[arg-type]

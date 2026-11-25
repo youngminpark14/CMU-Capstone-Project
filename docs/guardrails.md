@@ -30,23 +30,29 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | The caps agree with each other; the per-order cap stays below the order group's limit | Code | [config.py](../src/pmfa/config.py) | `test_per_order_cap_must_stay_below_the_exchange_breaker` in [test_contracts.py](../tests/test_contracts.py) |
 | Limit orders only, immediate-or-cancel only, at valid ticks | Code | [records/decision.py](../src/pmfa/records/decision.py), [gate.py](../src/pmfa/decision/gate.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `limit_order`, `immediate_or_cancel` and `valid_tick` cases of `test_each_check_fails_alone`; `test_buying_yes_is_a_bid_at_the_limit_price` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The price is re-read before sending; nothing offered at the limit means no order | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`execute`) | `test_08_the_price_moves_past_the_edge_before_execution_and_no_order_is_sent`, `test_08_after_approval_a_price_above_the_limit_exits_stale_price` |
-| A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` |
-| The halt flag blocks every order, in every mode | Code | gate, `execute`, [paper.py](../src/pmfa/execution/paper.py) | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`; `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `pmfa halt` sets the flag in every live mode: `test_halt_without_a_mode_stops_every_live_mode` in [test_operations.py](../tests/cli/test_operations.py) |
-| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing`; a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py) |
+| A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| An episode continued after a crash or an exchange error looks its order up by client order id and never places one | Code | [controller.py](../src/pmfa/episode/controller.py), `_reconcile` in [pipeline.py](../src/pmfa/episode/pipeline.py), `find_order` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_a_continued_episode_that_died_before_sending_sends_nothing`, `test_a_continued_episode_that_died_after_sending_records_its_order_and_sends_no_other`, `test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_other`, `test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outcome_is_unknown` in [test_controller.py](../tests/episodes/test_controller.py) |
+| An order the exchange rejects ends the episode `error`, not `executed` | Code | `_order_outcome` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled` |
+| The halt flag blocks every order, in every mode | Code | the gate; `execute` at its start and again immediately before sending; [paper.py](../src/pmfa/execution/paper.py); [demo.py](../src/pmfa/world/kalshi/demo.py) before the order and again before it is sent | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`, `test_10_b_a_halt_set_after_the_gate_approved_stops_the_order_before_it_is_sent`, `test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order`; `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `test_a_halted_executor_sends_no_order`, `test_the_halt_flag_is_read_again_right_before_the_order_is_sent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| `pmfa halt` with no `--mode` halts every live mode, setting every flag before it contacts any exchange | Code | [cli/oversight.py](../src/pmfa/cli/oversight.py) | `test_halt_without_a_mode_stops_every_live_mode`, `test_a_halt_sets_every_flag_before_any_exchange_and_survives_missing_demo_keys` in [test_operations.py](../tests/cli/test_operations.py) |
+| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate and on every live pass | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing`; a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py); rejected demo orders count as fill failures: `test_repeated_demo_rejections_trip_the_fill_failure_halt` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| The daily loss stop and the drawdown halt count unrealized losses (equity is marked at the bid) | Code | `marked_equity` in [portfolio.py](../src/pmfa/execution/portfolio.py), `mark` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py), [live/loop.py](../src/pmfa/live/loop.py) | `test_equity_marks_value_holdings_at_their_own_bid`, `test_the_drawdown_halt_sees_an_unrealized_loss` in [test_paper.py](../tests/execution/test_paper.py); `test_mark_values_positions_at_their_own_sides_bid_and_records_the_point` in [test_demo.py](../tests/world/kalshi/test_demo.py); `test_a_pass_ends_with_a_marked_equity_point_not_one_at_cost` in [test_loop.py](../tests/live/test_loop.py) |
+| The daily loss stop is a fraction of the day's starting equity; the dollar caps use the current equity, as sizing does | Code | [risk.py](../src/pmfa/decision/risk.py), [gate.py](../src/pmfa/decision/gate.py) | `test_the_caps_use_the_current_equity_and_the_loss_stop_the_day_start_equity` in [test_gate.py](../tests/decision/test_gate.py); `test_an_explicit_bankroll_is_the_caps_base_and_does_not_move_the_stop` in [test_risk.py](../tests/decision/test_risk.py); `test_the_daily_loss_stop_is_a_fraction_of_the_day_start_equity` |
 | A tripped daily loss stop stays tripped until the next trading day | Code | [risk.py](../src/pmfa/decision/risk.py) | `test_a_tripped_loss_stop_stays_tripped_for_the_day` in [test_risk.py](../tests/decision/test_risk.py) |
 | Blocklisted and unfollowed series are never traded | Code | gate; the protected slot ignores blocked markets | `blocklist` and `followed_series` cases of `test_each_check_fails_alone` |
 | Trades go to a human unless every auto condition holds at the autonomous stage | Code, then human | [routing.py](../src/pmfa/decision/routing.py) | `test_would_be_auto_goes_to_review_below_the_autonomous_stage` in [test_routing.py](../tests/decision/test_routing.py) |
 | The human approves, resizes smaller, or rejects with a reason code | Human, checked by code | [review.py](../src/pmfa/execution/review.py) | `test_resize_only_smaller`, `test_reject_needs_a_reason_code` in [test_review.py](../tests/execution/test_review.py) |
 | A stale proposal (10 minutes, or price past its edge bound) never executes | Code | [review.py](../src/pmfa/execution/review.py), [controller.py](../src/pmfa/episode/controller.py) | `test_09_a_proposal_expired_by_time_never_executes`, `test_09_a_proposal_expired_by_price_never_executes` |
-| Approval re-runs the gate at the current price | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`review` goes back to `gate`) | `test_08_after_approval_a_price_above_the_limit_exits_stale_price`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order` |
-| Real orders need at least the approval stage; demo runs at approval at least | Code | gate `stage` check; `_stage` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_real_orders_outside_demo_mode_need_the_stored_approval_stage`, `test_demo_mode_runs_at_the_approval_stage_whatever_the_stored_stage` |
-| A stage advances only on its benchmark and drops after two loss stops in a week | Code | [stages.py](../src/pmfa/execution/stages.py), [benchmarks.py](../src/pmfa/evaluation/benchmarks.py) | [test_stages.py](../tests/execution/test_stages.py) |
+| Approval re-runs the gate at the current price | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`review` goes back to `gate`) | `test_09_approval_re_runs_the_gate_at_the_current_price`, `test_08_after_approval_a_price_above_the_limit_exits_stale_price`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order` |
+| Real orders need at least the approval stage; demo mode always runs at the approval stage, so a person approves every demo order | Code | gate `stage` check; `_stage` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_real_orders_outside_demo_mode_need_the_stored_approval_stage`, `test_demo_mode_runs_at_the_approval_stage_whatever_the_stored_stage`, `test_every_demo_order_waits_for_a_human_whatever_the_stored_stage` |
+| A stage advances only on its benchmark and drops after two loss stops in a week; every pass of the live loop applies the drop | Code | [stages.py](../src/pmfa/execution/stages.py), [benchmarks.py](../src/pmfa/evaluation/benchmarks.py), [live/loop.py](../src/pmfa/live/loop.py) | [test_stages.py](../tests/execution/test_stages.py); `test_a_pass_applies_the_stage_demotion_check` in [test_loop.py](../tests/live/test_loop.py) |
 | The production adapter cannot trade | Code | [production.py](../src/pmfa/world/kalshi/production.py) | [test_production.py](../tests/world/kalshi/test_production.py) |
 | The demo executor talks only to the demo host, with signed requests | Code | [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_it_refuses_any_host_but_the_demo_one`, `test_the_factory_refuses_a_production_url_in_the_configuration` |
 | Orders, balance and positions are scoped to one numbered subaccount | Code and exchange | [demo.py](../src/pmfa/world/kalshi/demo.py); the key's restriction is set on Kalshi | `test_balance_and_positions_are_for_the_configured_subaccount` (code side only) |
 | The key cannot transfer funds or manage subaccounts | Exchange | a subaccount-restricted key, created on Kalshi | not tested here |
 | More than 50 contracts in 15 seconds cancels the group's orders and blocks new ones | Exchange | order group joined in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_group_is_created_once_when_missing` (code side only) |
-| Each episode is capped in calls, dollars and seconds; each run in dollars | Code | [meter.py](../src/pmfa/models/meter.py) | `test_the_call_cap_stops_before_calling`, `test_the_episode_dollar_cap_stops_once_spent`, `test_the_run_dollar_cap_raises_run_budget_exhausted` |
+| Each episode is capped in calls, dollars and seconds; each run in dollars. The dollar caps are ceilings: a call whose worst case would pass one is not sent | Code | [meter.py](../src/pmfa/models/meter.py), [gateway.py](../src/pmfa/models/gateway.py) | `test_the_call_cap_stops_before_calling`, `test_the_episode_dollar_cap_is_a_ceiling`, `test_a_repair_retry_also_needs_dollar_budget_for_its_worst_case`, `test_an_enforced_seconds_cap_bounds_each_calls_timeout_by_the_time_left`, `test_the_run_dollar_cap_raises_run_budget_exhausted` in [test_gateway.py](../tests/models/test_gateway.py) |
+| Every episode ends in exactly one exit, `error` for any project error a node raises; a read past the as-of time aborts the run instead | Code | `_guarded` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_every_exit_writes_exactly_one_episode_record`, `test_an_unknown_fee_type_ends_the_episode_in_error_with_no_order`, `test_13_an_as_of_violation_from_a_port_aborts_the_run_instead_of_ending_the_episode` |
 | Secrets come from the environment only and are never logged or stored | Code | [backend.py](../src/pmfa/models/backend.py), [signing.py](../src/pmfa/world/kalshi/signing.py) | `test_the_key_is_read_from_the_environment_at_call_time` in [test_backend.py](../tests/models/test_backend.py); `test_it_never_reads_the_credential_variables` |
 | Money is decimal, never float | Code | [records/base.py](../src/pmfa/records/base.py), [fees.py](../src/pmfa/decision/fees.py) | `test_money_is_never_a_float` in [test_fees.py](../tests/decision/test_fees.py) |
 
@@ -101,8 +107,8 @@ checks, in order:
 | `contracts_per_order` | At most 25 contracts. |
 | `dollars_per_market` | Exposure in the market after the order, at cost plus fee, is at most 5% of bankroll. |
 | `dollars_per_event` | Exposure in the event after the order is at most 10% of bankroll. |
-| `daily_loss_stop` | The day's loss has not reached 3% of bankroll at any moment today. |
-| `drawdown_halt` | Equity is less than 10% below its peak. |
+| `daily_loss_stop` | Marked equity has not fallen 3% of the day's starting equity below that start at any moment today. |
+| `drawdown_halt` | Marked equity is less than 10% below its peak. |
 | `limit_order` | The order is a limit order. |
 | `immediate_or_cancel` | Its time in force is immediate-or-cancel. |
 | `valid_tick` | The limit price is a valid tick for the market. |
@@ -112,6 +118,16 @@ checks, in order:
 
 A rejected proposal ends the episode `gate_rejected` (or `halted`, when the halt check failed). It
 is never retried, at any size.
+
+**Two bases for the money checks.** The bankroll the dollar caps are fractions of is the current
+equity: cash plus open holdings at cost, the same number sizing caps on, so the gate never rejects
+at a cap what sizing put exactly at it. Equity for the daily loss stop and the drawdown halt is
+*marked*: cash plus each open holding at the current best bid on its own side (what it could be
+sold for now), or at cost when that side has no bid, so both stops count unrealized losses as well
+as fees and settled losses. The paper executor records a marked equity point at every fill and
+settlement, and the live loop records one at the end of every pass. The daily loss stop is a
+fraction of the day's starting equity (the last equity point before the trading day began, else the
+day's first point), so one day has one stop level however equity moves during it.
 
 Defaults, all in [config.py](../src/pmfa/config.py):
 
@@ -123,7 +139,7 @@ Defaults, all in [config.py](../src/pmfa/config.py):
 | Per market | 5% of bankroll |
 | Per event | 10% of bankroll |
 | Per order | 25 contracts |
-| Daily loss stop | 3% of bankroll |
+| Daily loss stop | 3% of the day's starting equity |
 | Drawdown halt | 10% below peak equity |
 | Liquidity floor | $500 within $0.02 of the touch |
 | Risk unit | 1% of bankroll |
@@ -188,29 +204,52 @@ conditions. A halt set while the proposal waited blocks it. The pause and the or
 graph nodes, so resuming never repeats a side effect; see
 [the human-approval pause](architecture.md#the-human-approval-pause).
 
+## Sending an order
+
+The `execute` node ([pipeline.py](../src/pmfa/episode/pipeline.py)) sends one immediate-or-cancel
+limit order with a deterministic client order id, and first looks that id up (in the state store,
+then on the executor with `find_order`), so a retry finds the order instead of sending a second one.
+
+- **Rejected.** An order the exchange rejects ends the episode `error` with the exchange's reason,
+  and the proposal is cancelled. An order the exchange accepted ends it `executed`, whether it
+  filled fully, partly or not at all.
+- **Exchange failure while sending.** The order is looked up by its client order id. When it is
+  found it is recorded; when it is not, the episode ends `error` and says the outcome is unknown.
+- **Continued episodes.** When the process stopped at `execute` (a crash, or an error that escaped
+  after the approval), the controller continues the episode at that node, and a continued episode
+  only reconciles: it looks the order up by its client order id and records what it finds, and it
+  never places an order. When no order exists, the proposal is cancelled and the episode ends
+  `error` with nothing placed; when the exchange cannot be asked, the episode ends `error` and says
+  the outcome is unknown. The approval behind the stopped episode is stale (its gate ran at an older
+  price, and the human may since have rejected it), so it is never acted on again.
+
 ## Halt: the command and the self-halt conditions
 
 The halt operation ([halt.py](../src/pmfa/execution/halt.py), `halt()`) sets a persisted flag in the
 state database, with a reason and a time, and cancels every open order. The flag survives restarts.
-The gate, the `execute` node and the paper executor each check it before an order. `resume()` (or `pmfa halt --resume`)
-clears it; nothing clears it automatically.
+It is read at the gate, at the start of the `execute` node, again immediately before the order is
+sent, and by the executor itself: the paper executor refuses an order while it is set, and the demo
+executor reads it when an order starts and again just before the request goes out. `resume()` (or
+`pmfa halt --resume`) clears it; nothing clears it automatically.
 
-The `pmfa halt` command calls the same operation; it sets the flag from the database first, so a
-halt never depends on reaching the exchange. Shadow and demo keep separate state databases, so
-without `--mode` the command sets the flag in every live mode's database before it contacts any
-exchange, then cancels each mode's open orders. A mode it cannot open (demo without its
+The `pmfa halt` command calls the same operation and covers every live mode. It sets the flag in
+the database first, so a halt never depends on reaching the exchange. Shadow and demo keep separate
+state databases, so without `--mode` the command sets the flag in every live mode's database before
+it contacts any exchange, then cancels each mode's open orders. A mode it cannot open (demo without its
 credentials) is reported, and its flag stays set. `--mode shadow|demo` narrows the halt, and
 `--resume` and `--status` follow the same rule.
 
 The agent halts itself when any of these holds. They are checked at the start of the gate node, every
-time a proposal reaches it, and at the start of every pass of the live loop
+time a proposal reaches it, and on every pass of the live loop, after it has refreshed the indexes,
+resolved outcomes and expired due proposals and before it detects triggers
 ([live/loop.py](../src/pmfa/live/loop.py)):
 
-- **Daily loss stop:** equity fell 3% of bankroll below the trading day's start at any moment today
-  (the trading day is the calendar day in New York).
-- **Drawdown:** equity is 10% or more below its peak.
+- **Daily loss stop:** marked equity fell 3% of the day's starting equity below that start at any
+  moment today (the trading day is the calendar day in New York).
+- **Drawdown:** marked equity is 10% or more below its peak.
 - **Fill failures:** once 10 orders exist, more than one in ten of the last 10 did not fill or was
-  rejected (two or more of ten).
+  rejected (two or more of ten). Each order the demo exchange refuses is stored under its own id,
+  so repeated rejections count.
 - **Source changed or withdrawn:** a document cited by an episode that still holds an open position
   now has a different content hash, or is gone. In shadow and demo the stored copy of a document
   never changes, so the check fetches the cited page again from its source (at most once per poll
@@ -235,9 +274,10 @@ only when the benchmark for the next stage holds, computed from the ledger
 | shadow to approval | Four weeks of shadow mode with positive simulated P&L after fees and maximum drawdown under 10% |
 | approval to autonomous | At least 100 human-reviewed trades since entering approval, with under 15% resized or rejected |
 
-Two days with a tripped daily loss stop within seven days demote one stage. The stage manager applies
-this rule when it is asked to (`check_demotion`); neither the episode pipeline nor the live loop calls
-it yet. `pmfa stage status`, `advance` and `demote` show the benchmarks and move the stage by hand;
+Two days with a tripped daily loss stop within seven days demote one stage. Every pass of the live
+loop applies this rule (`check_demotion` in [stages.py](../src/pmfa/execution/stages.py)), right
+after the self-halt conditions; backtests and the episode pipeline do not. `pmfa stage status`,
+`advance` and `demote` show the benchmarks and move the stage by hand;
 `advance` refuses when the benchmark is not met. `pmfa backtest` keeps its ledger in its run
 directory, so `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a run's
 scored forecasts (`RUN_DIR/work/scoring.sqlite`) toward backtest to shadow.
@@ -247,8 +287,9 @@ approval stage. Routing honours the auto tier only at the autonomous stage; belo
 meets every auto condition still goes to review and is flagged *would-be-auto*, so the approval
 benchmark can count how often the human agreed.
 
-Demo mode runs at an effective stage of at least approval, whatever is stored, because its funds are
-mock. The stored stage is not changed.
+Demo mode always runs at the approval stage, whatever stage is stored: its funds are mock, so the
+stage does not have to be earned there, and below the autonomous stage routing never honours the
+auto tier, so a person approves every demo order. The stored stage is not changed.
 
 The ladder governs progression toward real-money trading, which this project never does. It is kept
 as stored state and benchmarks so the record that would justify autonomy can be shown.
@@ -265,7 +306,12 @@ the paper executor.
 ## Budgets per episode and per run
 
 The gateway's meter ([meter.py](../src/pmfa/models/meter.py)) is checked before every model call,
-so a capped call is never sent:
+so a capped call is never sent. A call's cost is known only after it returns, so the dollar caps are
+checked against the call's worst case: an upper estimate of its input tokens plus its full output
+token limit, priced on the assigned model. A call that could take either dollar cap past its limit
+is refused, so the caps are ceilings, not thresholds that one last call can overshoot. A repair
+retry is checked the same way. When the seconds cap is enforced, each call's timeout is the
+configured request timeout or the seconds the episode has left, whichever is shorter.
 
 | Cap | Default |
 | --- | --- |
@@ -309,5 +355,3 @@ corpus and the caches are ignored by git, and `.env.example` lists the variables
   passes nothing checks them; a pending proposal still never executes without a review.
 - **Shadow and backtest fills are simulated.** Backtest fills come from candles, not order-book depth,
   which the exchange's history does not have.
-- **A demo order is human-approved only while the stored stage is below autonomous.** If the stored
-  stage were advanced to autonomous, demo mode would honour the auto tier.

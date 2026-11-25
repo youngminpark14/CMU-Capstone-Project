@@ -8,7 +8,7 @@ Tests and replay need the same vectors in every process with no model download. 
 
 ## Decision
 
-The default embedder hashes word and character n-grams into a fixed-size vector; the local ONNX MiniLM model is optional (`retrieval.embedder = "minilm"`) ([embedders.py](../../src/pmfa/knowledge/embedders.py)). An index records its embedder's identity and refuses to be opened or queried with another. Publish times are rounded up and as-of times down, and the filter runs inside the Chroma query, before the nearest-neighbour search ([index.py](../../src/pmfa/knowledge/index.py)). Embeddings are always passed explicitly.
+The default embedder hashes word and character n-grams into a fixed-size vector; the local ONNX MiniLM model is optional (`retrieval.embedder = "minilm"`) ([embedders.py](../../src/pmfa/knowledge/embedders.py)). An index records its embedder's identity and refuses to be opened or queried with another. Publish times are rounded up and as-of times down, and the filter runs inside the Chroma query, before the nearest-neighbour search ([index.py](../../src/pmfa/knowledge/index.py)). The events index rounds each market's open time up the same way, so a listing row is shown only once every strike it names has opened ([decision 0002](0002-events-index-per-event.md)). Embeddings are always passed explicitly. The vectors rank passages; they do not decide origins, which are resolved by text overlap ([decision 0038](0038-origins-by-text-overlap.md)).
 
 ## Consequences
 

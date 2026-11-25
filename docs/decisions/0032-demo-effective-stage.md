@@ -1,6 +1,6 @@
-# 0032. Demo mode runs at an effective stage of at least approval
+# 0032. Demo mode always runs at the approval stage
 
-Mock funds allow demo orders before the ladder is climbed, and a human still approves them.
+Mock funds allow demo orders before the ladder is climbed, and a human approves every one of them.
 
 ## Context
 
@@ -8,11 +8,11 @@ The gate refuses real orders below the approval stage, and a fresh state databas
 
 ## Decision
 
-In demo mode the pipeline raises the stage the gate and routing use to approval when the stored stage is below it, without changing the stored stage (`_stage` in [pipeline.py](../../src/pmfa/episode/pipeline.py)). The demo world always pauses approve-tier proposals for a human ([world/live.py](../../src/pmfa/world/live.py)). Auto is still honoured only at the autonomous stage.
+In demo mode the gate and routing always use the approval stage, whatever the stored stage is, and the stored stage is not changed (`_stage` in [pipeline.py](../../src/pmfa/episode/pipeline.py)). Routing honours auto only at the autonomous stage, so no demo proposal is routed to auto, and the demo world always pauses approve-tier proposals for a human ([world/live.py](../../src/pmfa/world/live.py)).
 
 ## Consequences
 
-Below the autonomous stage, every demo order is approved by a person. A demo trade that meets every auto condition is flagged would-be-auto and still goes to review.
+Every demo order is approved by a person, even if the stored stage were advanced to autonomous. A demo trade that meets every auto condition is flagged would-be-auto and still goes to review.
 
 ## Origin
 

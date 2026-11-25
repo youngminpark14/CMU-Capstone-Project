@@ -20,7 +20,7 @@ funds. Nothing here is investment or trading advice.
 
 | Area | State |
 | --- | --- |
-| Pipeline and tests | Built end to end. The offline suite runs with no keys and no network in about two minutes on one machine. Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
+| Pipeline and tests | Built end to end. The offline suite of 1,080 tests runs with no keys and no network in about two minutes on one machine (1,076 passed in 108 seconds on 2026-11-25). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
 | Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-25-market-baseline/manifest.json). |
@@ -106,7 +106,7 @@ Nothing to install.
 4. **The evaluation report.** [evaluation/runs/2026-11-25-market-baseline/report.md](evaluation/runs/2026-11-25-market-baseline/report.md).
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
-5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 33 short
+5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 38 short
    records, each with the capstone checkpoint or build step it came from.
 
 ## Replay an episode offline
@@ -135,8 +135,9 @@ The other four examples:
 - [examples/episodes/cpi-ladder/](examples/episodes/cpi-ladder/): one forecast gives monotone probabilities across real CPI strikes; no strike meets the liquidity floor, so `no_edge`.
 - [examples/episodes/single-origin-syndicated/](examples/episodes/single-origin-syndicated/): one invented story syndicated twice counts as one secondary origin; exit `insufficient_origins`.
 
-`uv run pmfa replay --list` lists them. [examples/README.md](examples/README.md) describes the files
-and where each input came from.
+`uv run pmfa replay --list` lists them. The sample episodes also ship inside the package's wheel, so
+`pmfa replay --list` works after an install outside this checkout.
+[examples/README.md](examples/README.md) describes the files and where each input came from.
 
 ## Setup
 
@@ -167,7 +168,8 @@ export ANTHROPIC_API_KEY=...
 ```
 
 Rebuild the frozen data first. This step reads public Kalshi market data and Federal Reserve and BLS
-pages and needs no key; the 2026-11-25 build took about 18 minutes for the snapshot.
+pages and needs no key. The snapshot build is resumable: after an interruption, run it again and it
+continues with the first market it had not finished.
 
 ```bash
 uv run pmfa data build
@@ -212,17 +214,27 @@ export KALSHI_DEMO_PRIVATE_KEY_PATH=/path/to/demo-key.pem
 uv run pmfa demo
 ```
 
-Every demo order waits for you: `pmfa review list --mode demo`, then approve, resize or reject.
+Demo mode always runs at the approval stage, whatever stage is stored, so every demo order waits for
+you: `pmfa review list --mode demo`, then approve, resize or reject. Approval runs the gate again at
+the current price before the order is sent.
 
 Export only the variables you use; an empty `PMFA_CONFIG` counts as not set.
 
 ### Opt-in smoke tests
 
-`PMFA_SMOKE=1 uv run pytest -m smoke` runs the three tests that call live services: one read of
-a series from Kalshi production, a read-only check of the demo exchange (the balance and one
-market, no orders; needs the `KALSHI_DEMO_*` variables) and one model call through the gateway
-(needs `ANTHROPIC_API_KEY`). Each is skipped when its keys are missing, and CI never sets
-`PMFA_SMOKE`.
+Three tests call live services and are skipped unless `PMFA_SMOKE=1` is set:
+
+```bash
+PMFA_SMOKE=1 uv run pytest -m smoke
+```
+
+- one read of a series from Kalshi production (public data, no key);
+- a read-only check of the demo exchange: the balance and one market, no order. It needs
+  `KALSHI_DEMO_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` or `KALSHI_DEMO_PRIVATE_KEY_PATH`;
+- one model call through the gateway on the cheapest configured model. It needs
+  `ANTHROPIC_API_KEY`.
+
+A test whose keys are missing is skipped. CI never sets `PMFA_SMOKE`.
 
 ## Run modes
 
@@ -240,6 +252,11 @@ The pipeline code is identical in every mode; only what sits behind its ports ch
 `pmfa shadow --review` pauses them for you instead. Demo P&L is never reported as evidence: Kalshi
 warns that demo prices may not reflect real markets.
 
+In a backtest, every decision (sizing, the price re-read before sending, the recompute when
+nothing is offered at the limit, the gate and routing) reads the market as of the as-of time. Only
+the fill is priced later, against a book built from the first one-minute candle after the as-of
+time plus 60 seconds of latency, which no decision sees.
+
 ## Commands
 
 `uv run pmfa --help` and `uv run pmfa COMMAND --help` show every option.
@@ -255,8 +272,8 @@ warns that demo prices may not reflect real markets.
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
-| `pmfa halt` | Set the persisted halt flag and cancel all open orders; `--status`, `--resume`. |
-| `pmfa stage` | `status`, `advance` and `demote` the autonomy stage; `advance` refuses unless the benchmark is met. |
+| `pmfa halt` | Set the persisted halt flag and cancel all open orders. With no `--mode` it halts every live mode (shadow and demo); `--mode` narrows it to one; `--status`, `--resume`. |
+| `pmfa stage` | `status`, `advance` and `demote` the autonomy stage; `advance` refuses unless the benchmark is met. `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a backtest run's scored forecasts. |
 | `pmfa state-server` | Serve a state database over MCP on stdio, for browsing episodes with any MCP client. |
 | `pmfa resolve` | Run the outcome resolver once and print what resolved. |
 | `pmfa config` | `show` the effective configuration, or `check` a file. |
@@ -282,6 +299,11 @@ export PMFA_CONFIG=my-config.toml
 when caps contradict each other, for example a per-order cap at or above the exchange order group's
 50-contract limit.
 
+`sources.feeds` lists RSS or Atom feed URLs that shadow and demo mode poll as secondary evidence. It
+is empty by default, so nothing is fetched from a feed unless you list one. A feed on the host of a
+primary source (`federalreserve.gov`, `bls.gov`) is refused, so a feed item never counts as a
+primary origin. Backtests do not read feeds.
+
 The most important defaults:
 
 | Setting | Default |
@@ -291,7 +313,7 @@ The most important defaults:
 | Shrinkage toward the market price | 0.5 |
 | Minimum edge after fees | $0.02 per contract |
 | Caps | 25 contracts per order; 5% of bankroll per market; 10% per event |
-| Stops | Daily loss stop 3% of bankroll; drawdown halt 10% below peak equity |
+| Stops | Daily loss stop 3% of the day's starting equity; drawdown halt 10% below peak equity; both count unrealized losses |
 | Liquidity floor | $500 resting within $0.02 of the touch |
 | Notional bankroll (backtest, shadow) | $1,000 |
 | Proposal expiry | 10 minutes |
@@ -312,13 +334,15 @@ Models read and judge; code acts. The main guardrails:
 | A trade needs one primary origin or two independent secondary origins | Code |
 | The gate re-verifies every cap, the edge and the limit price, and never changes an order | Code |
 | Limit orders only, immediate-or-cancel only | Code |
-| The halt flag blocks every order in every mode; the agent halts itself on loss, drawdown and fill-failure stops | Code |
+| The halt flag blocks every order in every mode, and is read again immediately before an order is sent; `pmfa halt` with no `--mode` halts every live mode | Code |
+| The agent halts itself on the daily loss stop and the drawdown halt (both count unrealized losses), on fill failures, on a changed or withdrawn source, and on calibration error that stays high for two weeks | Code |
+| An episode continued after a crash or an exchange error only looks its order up by its client order id; it never places one | Code |
 | The production exchange adapter has no order methods and loads no credentials | Code |
 | A trade goes to a human unless every auto condition holds at the autonomous stage | Code, then human |
 | Approve, resize smaller, or reject with a reason code | Human, checked by code |
 | The demo key is restricted to one subaccount and cannot transfer funds | Exchange |
 | More than 50 contracts in 15 seconds cancels the order group's orders | Exchange |
-| Calls, dollars and seconds are capped per episode, dollars per run | Code |
+| Calls, dollars and seconds are capped per episode, dollars per run; a call whose worst-case cost would pass a dollar cap is refused before it is sent | Code |
 
 The full table, with the file that enforces each guardrail and the test that shows it, and what is
 not guaranteed, is in [docs/guardrails.md](docs/guardrails.md).
@@ -327,26 +351,28 @@ not guaranteed, is in [docs/guardrails.md](docs/guardrails.md).
 
 One backtest has been run and published:
 [evaluation/runs/2026-11-25-market-baseline/](evaluation/runs/2026-11-25-market-baseline/report.md).
-It scored only the market's own price (the YES mid, or the last trade when one side of the quote was
-empty) at 7, 3 and 1 days before each event's close, because the systems that need a model could not run without an API key. These numbers are not the
-agent's. They are the bar any later system has to clear: Brier skill is
+It scored only the market's own price at 7, 3 and 1 days before each event's close, because the
+systems that need a model could not run without an API key. The market's price is the YES mid when
+both sides are quoted, else the last trade clamped into the standing quote. These numbers are not
+the agent's. They are the bar any later system has to clear: Brier skill is
 1 − system Brier ÷ market Brier on the same rows.
 
 <!-- results-table:start (tests/docs/test_readme.py checks these numbers against metrics.json) -->
 | Horizon | Forecasts | Markets | Events | Market Brier score | 95% interval |
 | --- | --- | --- | --- | --- | --- |
-| all | 312 | 104 | 7 | 0.0345 | 0.0108 to 0.0773 |
-| 7d | 104 | 104 | 7 | 0.0377 | 0.0117 to 0.0800 |
-| 3d | 104 | 104 | 7 | 0.0330 | 0.0092 to 0.0759 |
-| 1d | 104 | 104 | 7 | 0.0328 | 0.0095 to 0.0755 |
+| all | 312 | 104 | 7 | 0.0345 | 0.0107 to 0.0775 |
+| 7d | 104 | 104 | 7 | 0.0376 | 0.0116 to 0.0799 |
+| 3d | 104 | 104 | 7 | 0.0330 | 0.0091 to 0.0759 |
+| 1d | 104 | 104 | 7 | 0.0329 | 0.0095 to 0.0760 |
 <!-- results-table:end -->
 
 The Brier score is the mean squared error of a probability against the 0-or-1 outcome; lower is
 better. Intervals come from 2,000 bootstrap resamples of whole events. Seven events are the
 independent observations, not 104 markets, so the intervals are wide. Markets priced near 0.01 or
 0.99 dominate the rows and pull every score toward zero. The market's expected calibration error
-over all horizons is 0.0566. Prompt-only, single-pass and the full pipeline were not run, and there
-is no simulated P&L.
+over all horizons is 0.0559. Prompt-only, single-pass and the full pipeline were not run, and there
+is no simulated P&L. The window holds no event for the October 2026 CPI release: the exchange
+listed no KXCPIYOY event for it.
 
 Look-ahead is prevented inside the ports, not by the caller: every exchange read and retrieval
 filters on the as-of time inside the call; a canary document dated after the window sits in the
@@ -363,19 +389,24 @@ from the committed files.
 - **The sample is small.** The window from 2026-07-01 holds 7 settled events in the two followed
   series. No result on it can separate skill from luck; the harness is the deliverable and its numbers
   are a pilot.
-- **Market prices in the backtest can be stale.** They come from one-minute candles, which exist only
-  when a quote or trade changed; the median price was 35.5 hours old.
+- **Many backtest prices are old trades.** Prices come from candles, which exist only when a quote
+  or trade changed. 226 of the 312 scored prices had one side of the quote empty and used the last
+  trade, whose median age was 60.5 hours. Across all 312, the standing quote had last changed a
+  median of 0.45 hours before.
 - **Backtest fills are simulated from candles.** Kalshi's history has no order-book depth, so
-  liquidity is a candle-volume proxy and some fills fall back to hourly candles.
+  liquidity is a candle-volume proxy, and a fill falls back to the hourly candle when no one-minute
+  candle covers its arrival time.
 - **Sample episodes are hand-made.** Their model records were written by a person who knew the
   outcomes.
 - **Exchange-side protections are documented, not verified.** The subaccount restriction, the
   funds-transfer block and the order-group breaker have not been exercised against a live demo
   account.
 - **An injected passage can still distort a probability**, within the caps; roles cannot act on it.
-- **Evidence is official sources only**: Federal Reserve and BLS. No news wires or web search.
-- **Two days of daily loss stops do not demote the stage automatically yet**; the stage manager
-  applies the rule only when asked.
+- **Evidence is official sources only**: Federal Reserve and BLS. No news wires or web search. A
+  generic RSS or Atom feed source exists for the live modes, off by default and secondary only.
+- **Stage demotion runs only in the live modes.** Each pass of the shadow or demo loop drops the
+  stage one step after daily loss stops on two days of the last seven; backtests and the episode
+  pipeline itself do not apply the rule.
 
 ## Dependencies and the two environments
 

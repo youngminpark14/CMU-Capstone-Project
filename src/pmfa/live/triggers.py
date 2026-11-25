@@ -11,7 +11,8 @@ Three kinds, per the spec's episode flow (step 1):
   candle end ``t`` the mid is compared with every mid in the window before it
   (the candles ending in ``(t - window, t)``, and the price at ``t - window``,
   which is the last candle at or before it) that is not older than the event's
-  last price-move trigger. A crossing triggers, and the event's anchor moves to
+  last price-move trigger, the anchor (each market's price at the anchor being
+  its last candle at or before it). A crossing triggers, and the event's anchor moves to
   its time, so one step fires once even while its starting price stays inside
   the window (or across the edge of a clock bucket), while a second step, a
   reversal, or a sustained trend fires again each time it adds up to the
@@ -114,18 +115,22 @@ def _move_at(
     """The largest distance from the mid at ``points[i]`` to a mid in the window before it.
 
     The window is the points ending in ``(t - window, t)`` plus the price at
-    ``t - window`` (the last point at or before it). With an ``anchor``, only
-    points at or after it count: a move is measured from the prices seen since
-    the last trigger.
+    ``t - window`` (the last point at or before it). With an ``anchor``, a move is
+    measured from the prices seen since the last trigger: the points after it plus
+    the market's price at the anchor, which is its last point at or before it (a
+    thin market often has no priced candle at the anchor itself). Nothing older
+    counts, and a point at or before the anchor does not move.
     """
     t, mid = points[i]
     move = Decimal(0)
+    if anchor is not None and t <= anchor:
+        return move
     for at, earlier in reversed(points[:i]):
-        if anchor is not None and at < anchor:
-            break
         move = max(move, abs(mid - earlier))
         if at <= t - window:
             break  # the price at the window's start: nothing older counts
+        if anchor is not None and at <= anchor:
+            break  # the price at the anchor: nothing older counts
     return move
 
 

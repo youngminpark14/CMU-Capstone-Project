@@ -254,6 +254,10 @@ LEAKAGE_CONTROLS = [
     "canary text and the words every query uses, sits in the evidence index (not in the "
     "corpus). Every retrieval result and every finished episode is checked for it; one hit "
     "aborts the run.",
+    "Every decision in a backtest episode (the price re-read before sending, the one "
+    "recompute, the second gate, routing's price move) reads the order book as of the as-of "
+    "time; only the paper fill is priced from a later candle (see Fill assumptions), and no "
+    "role or decision sees that book.",
     "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, "
     "and no port in the backtest world holds an HTTP client.",
     "The response cache key includes the as-of time, which is part of every role input.",
@@ -271,15 +275,22 @@ COST_CONTROLS = [
 ]
 
 FILL_ASSUMPTIONS = [
-    "Orders are immediate-or-cancel limit orders filled against a book built from one candle: "
-    "the first one-minute candle after the as-of time plus execution.backtest_latency_seconds, "
-    "at the period's worst touch (the highest YES ask, or 1 minus the lowest YES bid), with "
-    "each level holding execution.backtest_volume_share of that candle's volume.",
+    "In a backtest every decision (the price re-read before sending, the one recompute, the "
+    "second gate, routing's price move) reads the order book as of the as-of time. Only the "
+    "fill is priced from the first one-minute candle after the as-of time plus "
+    "execution.backtest_latency_seconds (the candle whose period holds that arrival time).",
+    "The immediate-or-cancel limit order fills against a book built from that candle on the "
+    "conservative side of its period: buying YES meets its highest YES ask, buying NO meets 1 "
+    "minus its lowest YES bid. Each side holds execution.backtest_volume_share of the candle's "
+    "volume, floored to whole contracts; a limit that book does not meet fills nothing.",
     "One-minute candles exist only for minutes in which a quote or trade changed, so when no "
-    "one-minute candle contains the arrival time the hourly candle is used (coarse), and when "
-    "none exists, or the candle had no volume, the book is empty and nothing fills.",
+    "one-minute candle holds the arrival time the hourly candle holding it is used, and that "
+    "order is flagged coarse (see How each fill was priced). When neither exists, the market "
+    "has closed by the arrival time, or the candle had no volume, the book is empty and "
+    "nothing fills.",
     "The exchange's history has no order-book depth, so liquidity is a candle-volume proxy.",
-    "Taker fees are paid on every fill; the unfilled remainder of an order is dropped.",
+    "Taker fees are paid on every fill, rounded up to the cent once per order; the unfilled "
+    "remainder of an order is dropped.",
 ]
 
 

@@ -320,6 +320,23 @@ def test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outc
     assert world.store.list_orders() == []
 
 
+@pytest.mark.parametrize("then", ["approve", "run"])
+def test_a_failed_lookup_does_not_cancel_the_proposal_as_never_sent(then):
+    # The order was sent before the process died, and the lookup cannot reach the exchange:
+    # the outcome is unknown, so the proposal must not be closed as if nothing was placed.
+    world = exchange_world(lookup_fails=True)
+    controller, paused = approved_then_died(world)
+    with controller:
+        advance(world, 60)
+        record = continue_with(then, controller, world, paused)
+    check_trace(record)
+    assert world.executor.calls == 1 and record.exit is Exit.ERROR
+    assert "unknown" in record.exit_detail and "nothing was placed" not in record.exit_detail
+    status = world.store.get_proposal(paused.proposal.proposal_id)[1]
+    assert status is not ProposalStatus.CANCELLED
+    assert world.store.list_orders() == []
+
+
 @pytest.mark.parametrize("after_placing", [True, False])
 def test_running_a_trigger_again_continues_an_episode_that_died_at_execute(after_placing):
     file = fed_file()

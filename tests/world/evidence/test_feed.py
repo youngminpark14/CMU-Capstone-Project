@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from pmfa.config import Config, PathsConfig, SourcesConfig
+from pmfa.errors import NotFound
 from pmfa.live.triggers import document_triggers
 from pmfa.world.clocks import SimClock
 from pmfa.world.evidence import feed
@@ -166,3 +167,56 @@ def test_a_feed_item_rechecks_against_every_listed_feed_on_its_host(tmp_path):
     rechecked = evidence.recheck(hold.doc_id, as_of=NOW)
     assert rechecked.content_hash != hold.content_hash  # the second feed's current copy
     assert "Nobody expects a cut." in rechecked.text
+
+
+SECOND = "https://www.example.org/feeds/second.xml"
+
+
+def dropped(pages: dict[str, str]) -> dict[str, str]:
+    """``pages`` with the hold note gone from the second feed, as feeds drop old items."""
+    return {**pages, SECOND: pages[SECOND].replace("example-note-0001", "example-note-9999")}
+
+
+def test_a_sibling_feeds_failure_does_not_outrank_a_feed_that_dropped_the_item(tmp_path):
+    # The item came from SECOND, which has since dropped it; RSS_URL on the same host is 404.
+    pages = {SECOND: feeds()[RSS_URL]}
+    [hold, _] = live(tmp_path, FakeFetcher(pages), [SECOND]).poll(force=True)
+    evidence = live(tmp_path, FakeFetcher(dropped(pages)), [SECOND, RSS_URL])  # a new process
+    assert evidence.recheck(hold.doc_id, as_of=NOW) == hold  # the stored copy, not withdrawn
+    notes = " | ".join(evidence.last_failures)
+    assert f"{SECOND} no longer lists it" in notes
+    assert f"{RSS_URL} failed" in notes and "404" in notes
+
+
+def test_a_feed_item_rechecks_against_the_feed_it_came_from_when_that_is_known(tmp_path):
+    pages = {SECOND: feeds()[RSS_URL]}
+    fetcher = FakeFetcher(pages)
+    evidence = live(tmp_path, fetcher, [RSS_URL, SECOND])  # RSS_URL answers 404
+    [hold, _] = evidence.poll(force=True)
+    fetcher.calls.clear()
+    fetcher.pages = dropped(pages)
+    assert evidence.recheck(hold.doc_id, as_of=NOW) == hold
+    assert fetcher.calls == [(SECOND, True)]  # only the item's own feed is asked
+    assert any(f"{SECOND} no longer lists it" in f for f in evidence.last_failures)
+
+
+def test_a_feed_item_is_withdrawn_only_when_every_feed_asked_is_gone(tmp_path):
+    pages = {SECOND: feeds()[RSS_URL]}
+    [hold, _] = live(tmp_path, FakeFetcher(pages), [SECOND]).poll(force=True)
+    # One feed gone, one unreachable: the item's own feed cannot be told apart, so keep it.
+    flaky = live(tmp_path, FakeFetcher({}, refused=("second.xml",)), [SECOND, RSS_URL])
+    assert flaky.recheck(hold.doc_id, as_of=NOW) == hold
+    # Every listed feed on the host is gone: the item is withdrawn, and the feed is named.
+    gone = live(tmp_path, FakeFetcher({}), [SECOND, RSS_URL])
+    with pytest.raises(NotFound) as exc:
+        gone.recheck(hold.doc_id, as_of=NOW)
+    assert SECOND in str(exc.value) and hold.url not in str(exc.value)
+
+
+def test_a_feed_on_a_primary_source_host_with_a_trailing_dot_is_refused(tmp_path):
+    dotted = "https://federalreserve.gov./feeds/press_monetary.xml"
+    fetcher = FakeFetcher({dotted: fixture_text("synthetic_feed.rss.xml")})
+    evidence = live(tmp_path, fetcher, [dotted])
+    assert evidence.poll(force=True) == []
+    assert fetcher.calls == []  # not even fetched
+    assert "primary source" in evidence.last_failures[0]

@@ -34,8 +34,9 @@ uv run pmfa data build
 ```
 
 `pmfa data status` prints both manifests. The build on 2026-11-25 produced 7 events, 104 markets,
-753,670 one-minute and 87,171 hourly candles (18 minutes), and 55 documents (45 from
-federalreserve.gov, 10 from bls.gov).
+753,670 one-minute and 87,171 hourly candles, and 55 documents (45 from federalreserve.gov, 10 from
+bls.gov). The snapshot build is resumable: a range already stored is skipped, so a second run
+continues where the first stopped.
 
 ### The window and the knowledge-cutoff guard
 
@@ -113,11 +114,10 @@ would treat correlated rows as independent and overstate the sample. Reports sho
 events side by side. With fewer than two events there is nothing to resample between, and the bounds
 are reported as not defined.
 
-The intervals are wide because the window holds few events: 7 so far. The exchange does not list an
-event for every release: there is no KXCPIYOY event for the October 2026 CPI release (2026-11-10),
-so the window holds four CPI events and three Fed events, and each report lists such releases under
-"Left out of scoring". Forecasts of one event at 7, 3
-and 1 days are not independent either; the pooled row keeps an event's rows together across
+The intervals are wide because the window holds few events: 7 so far, four CPI events and three
+Fed events. No KXCPIYOY event exists for the October 2026 CPI release (2026-11-10): the exchange
+lists none, so that release has nothing to score. Each report lists such releases under "Left out
+of scoring". Forecasts of one event at 7, 3 and 1 days are not independent either; the pooled row keeps an event's rows together across
 horizons, the per-horizon rows cannot. No difference on this sample separates skill from luck. The
 harness is the deliverable; its numbers are a pilot.
 
@@ -143,7 +143,8 @@ harness is the deliverable; its numbers are a pilot.
   evidence follow-up's re-score priced on the critic slot of its level. When the ceiling exceeds the
   run's cap, the plan says the run would stop partial.
 - **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $25)
-  before every call ([meter.py](../src/pmfa/models/meter.py)). When it trips, the run stops cleanly,
+  before every call ([meter.py](../src/pmfa/models/meter.py)), against the call's worst-case cost,
+  so a call that could take the run past the cap is not sent and the cap is a ceiling. When it trips, the run stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
   `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
   pipeline) when it stopped part way, `not run: ...` when the cap came before its first forecast.
@@ -157,8 +158,17 @@ harness is the deliverable; its numbers are a pilot.
 
 ### Fill assumptions and their limits
 
-The trading pass fills orders on paper against a book built from one candle
-([world/snapshot/book.py](../src/pmfa/world/snapshot/book.py)):
+A backtest order meets two books ([build_backtest_world](../src/pmfa/world/backtest.py)):
+
+- **The decision book** is the snapshot's book as of the as-of time: one level per side from the
+  latest candle that ended at or before it. Every decision reads it: sizing, the price re-read
+  before sending, the recompute when nothing is offered at the limit, the gate, and routing's price
+  move. Nothing priced after the as-of time reaches a decision.
+- **The fill book** is what the order actually fills against, built from one candle after the
+  order is sent ([world/snapshot/book.py](../src/pmfa/world/snapshot/book.py)). No decision sees it,
+  so a limit that this later candle does not meet leaves the order unfilled.
+
+The fill book:
 
 - An order arrives 60 seconds after the as-of time (`execution.backtest_latency_seconds`).
 - It meets the one-minute candle containing the arrival time, at the worst touch of that period:
@@ -242,22 +252,39 @@ With `ANTHROPIC_API_KEY` set and the data built, in this order.
 uv run pmfa backtest --dry-run --systems market,prompt_only,single_pass,single_pass_similarity,pipeline
 ```
 
-On the 2026-11-25 data, without a key, the plan it printed was:
+On the 2026-11-25 data, without a key, it printed the run directory it wrote the plan to, then:
 
 ```text
-Window: 2026-07-01 to 2026-11-25T09:12:38.877766+00:00; 21 scoring point(s), 55 trading trigger(s)
+Window: 2026-07-01 to 2026-11-25T20:10:48.937084+00:00; 21 scoring point(s), 55 trading trigger(s)
+Models: none
 
 system                   status                 forecasts   calls (min-max)       USD (min-max)
 market                   would run                     21       0-0             0.00-0.00
 prompt_only              not run: no API key           21      21-21            5.29-5.29
+                          one baseline call per scoring point; a repair retry would add one
 single_pass              not run: no API key           21      21-21            5.80-5.80
+                          one baseline call per scoring point; a repair retry would add one
 single_pass_similarity   not run: no API key           21      21-21            5.80-5.80
+                          one baseline call per scoring point; a repair retry would add one
 pipeline                 not run: no API key           76      76-1683          0.04-85.99
                           scheduled episodes by tree depth: depth 1: 18, depth 2: 3
                           55 news-triggered episode(s), each bounded with a full depth-3 tree after one Monitor call
+                          the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($25) is the real ceiling
+                          the floor assumes every episode stops after its first call (no candidate event, or no evidence)
 
 Estimated total: $16.93 to $102.87 (run cap $25)
 The maximum exceeds the run's dollar cap of $25: if the run spends that much it stops at the cap and is marked partial, with what it did not run listed.
+Assumptions:
+  - Prices are the catalog's dollars per million tokens (config.models.catalog).
+  - baseline on claude-fable-5-2: assumed 1500 input and 6000 output tokens, $0.2520 per call
+  - baseline_with_passages on claude-fable-5-2: assumed 4500 input and 6000 output tokens, $0.2760 per call
+  - generate on claude-haiku-5-5: assumed 5000 input and 2500 output tokens, $0.0018 per call
+  - match on claude-haiku-5-5: assumed 3000 input and 600 output tokens, $0.0006 per call
+  - plan_queries on claude-haiku-5-5: assumed 1500 input and 800 output tokens, $0.0006 per call
+  - score on claude-fable-5-2: assumed 6000 input and 6000 output tokens, $0.2880 per call
+  - score on claude-sonnet-5-5: assumed 6000 input and 6000 output tokens, $0.0720 per call
+  - select_passages on claude-haiku-5-5: assumed 4500 input and 1200 output tokens, $0.0010 per call
+  - Answers already in the response cache cost nothing on a rerun; the estimate does not subtract them.
 ```
 
 With the default systems (without `single_pass_similarity`) the total is $11.13 to $97.08. The

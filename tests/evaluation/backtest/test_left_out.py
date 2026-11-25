@@ -90,13 +90,57 @@ def test_a_release_without_an_event_is_named_and_qualified(
     _set_dropped(data_config, {})
     run_backtest(data_config, run_dir=run_dir, systems=["market"])
     left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
-    assert "dropped no event of KXCPIYOY, so the exchange listed no event" in left_out
+    assert "the exchange listed no KXCPIYOY event for this release" in left_out
+    assert "the builder dropped no KXCPIYOY event" in left_out
 
     _set_dropped(data_config, {f"{CPI}-26SEPX": "listed with no markets"})
     run_backtest(data_config, run_dir=run_dir, systems=["market"])
     left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
     assert f"{CPI}-26SEPX: listed with no markets" in left_out
-    assert "may belong to one of these releases" in left_out
+    # No close time on record: the event can be neither matched to the release nor ruled out.
+    assert f"{CPI}-26SEPX has no close time on record" in left_out
+    assert "listed no KXCPIYOY event for this release" not in left_out
+
+
+def _far_and_near(close: str) -> dict[str, str]:
+    window = "the window 2026-07-01T00:00:00+00:00 to 2026-11-25T00:00:00+00:00"
+    return {
+        f"{CPI}-26DEC": f"closes 2027-01-13T13:29:00+00:00, after the end of {window}",
+        f"{CPI}-26NOVX": f"closes {close}, after the end of {window}",
+        f"{FED}-27JAN": f"closes 2026-08-30T18:59:00+00:00, after the end of {window}",
+    }
+
+
+def test_a_release_whose_series_dropped_only_far_events_had_no_event_listed(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    _add_release(data_config)
+    # Every KXCPIYOY event the builder dropped closes weeks from the 2026-08-30 release; the
+    # Fed event closing that day is of another series and says nothing about this one.
+    _set_dropped(data_config, _far_and_near("2026-12-10T13:29:00+00:00"))
+    run_dir = tmp_path / "run"
+    run_backtest(data_config, run_dir=run_dir, systems=["market"])
+    left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
+    assert "the exchange listed no KXCPIYOY event for this release" in left_out
+    assert "none of the 2 KXCPIYOY event(s) the builder dropped closes within a day" in left_out
+    assert "may be" not in left_out and "may belong" not in left_out
+
+
+def test_a_dropped_event_closing_near_a_release_is_named_as_possibly_its_event(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    _add_release(data_config)
+    _set_dropped(data_config, _far_and_near("2026-08-30T12:29:00+00:00"))
+    run_dir = tmp_path / "run"
+    run_backtest(data_config, run_dir=run_dir, systems=["market"])
+    left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
+    assert f"{CPI}-26NOVX, which closes within a day of the release" in left_out
+    assert f"{CPI}-26DEC," not in left_out.split("Events the exchange listed")[0]
+    assert "listed no KXCPIYOY event for this release" not in left_out
 
 
 def test_nothing_left_out_is_said_plainly(data_config: Config, tmp_path: Path) -> None:

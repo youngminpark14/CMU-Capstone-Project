@@ -5,7 +5,7 @@ Each record says what was decided, why, what follows from it, and where it came 
 | # | Decision | Origin |
 | --- | --- | --- |
 | [0001](0001-forecast-per-event.md) | Forecast per event, not per market | spec; checkpoint not named |
-| [0002](0002-events-index-per-event.md) | The events index holds one document per event | spec; checkpoint not named |
+| [0002](0002-events-index-per-event.md) | The events index holds one document per event, one row per listing change | spec; checkpoint not named |
 | [0003](0003-record-only-roles.md) | Roles are record-only | spec; checkpoint not named |
 | [0004](0004-origin-rule-primary-case.md) | The origin rule gains a primary-source case | spec; checkpoint not named |
 | [0005](0005-protected-slot-only-tail-rule.md) | The protected slot is the only tail rule | checkpoints 4.1 and 5.1 |
@@ -31,9 +31,14 @@ Each record says what was decided, why, what follows from it, and where it came 
 | [0025](0025-pruning-audit.md) | The pruning audit as posterior mass on frozen scenarios | build, November 2026 |
 | [0026](0026-retrieval-embedder-and-as-of.md) | Retrieval: a hashing embedder by default, and as-of rounding that excludes | build, November 2026 |
 | [0027](0027-record-and-replay.md) | Record and replay with ordered cassettes | build, November 2026 |
-| [0028](0028-backtest-data-and-fills.md) | Backtest quotes, fills and liquidity from candles | build, November 2026 |
+| [0028](0028-backtest-data-and-fills.md) | Backtest quotes, fills and liquidity from candles; decisions read the as-of book | build, November 2026 |
 | [0029](0029-source-access.md) | Source access: manual BLS import, hand-computed fee cases | build, November 2026 |
-| [0030](0030-scoring-choices.md) | Scoring choices: abstentions as the market, intervals by event | build, November 2026 |
+| [0030](0030-scoring-choices.md) | Scoring choices: abstentions as the market, intervals by event, the market price | build, November 2026 |
 | [0031](0031-state-transport.md) | Shared state goes through the MCP server in process, and directly in backtests | build, November 2026 |
-| [0032](0032-demo-effective-stage.md) | Demo mode runs at an effective stage of at least approval | build, November 2026 |
+| [0032](0032-demo-effective-stage.md) | Demo mode always runs at the approval stage | build, November 2026 |
 | [0033](0033-build-defaults.md) | Defaults introduced while building | build, November 2026 |
+| [0034](0034-continued-episodes-reconcile.md) | A continued episode reconciles and never places an order | build, November 2026 |
+| [0035](0035-marked-equity-for-the-stops.md) | The stops read marked equity; sizing's bankroll stays at cost | build, November 2026 |
+| [0036](0036-dollar-caps-are-ceilings.md) | The dollar caps are ceilings, checked against each call's worst case | build, November 2026 |
+| [0037](0037-price-move-triggers-anchored.md) | Price-move triggers are anchored to the event's last trigger | build, November 2026 |
+| [0038](0038-origins-by-text-overlap.md) | Origins are merged by text overlap, not vector similarity | build, November 2026 |

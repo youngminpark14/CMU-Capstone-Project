@@ -63,7 +63,9 @@ def test_a_three_cent_move_within_the_window_starts_one_trigger_for_the_event():
             hold: mid_candles(
                 hold, [(minute(-10), "0.62"), (minute(2), "0.64"), (minute(5), "0.65")]
             ),
-            cut: mid_candles(cut, [(minute(1), "0.33"), (minute(6), "0.29")]),
+            # C25 is 4c down at 15:06 from 15:01, but only 2c from its price at H0's
+            # crossing (0.31 at 15:04): measured from the event's anchor, no second trigger.
+            cut: mid_candles(cut, [(minute(1), "0.33"), (minute(4), "0.31"), (minute(6), "0.29")]),
         }
     )
     found = trig.price_move_triggers(exchange, [event], Config(), NOW)
@@ -185,6 +187,53 @@ def test_an_uneven_trend_gives_the_same_triggers_from_pass_to_pass_with_anchors(
     found = _scan(trend, range(1, 300, 3), base, anchored=True)
     steps = {(b - a) for a, b in pairwise(found)}
     assert steps == {timedelta(minutes=21)}  # every 3c, never an extra trigger in between
+
+
+def test_a_thin_market_keeps_its_last_price_before_the_anchor_as_its_reference():
+    # H0 crosses at 10:20 and moves the event's anchor there. C25 is priced only at 10:00
+    # (0.20) and 10:35 (0.24): its 4c move came after the anchor, measured from 0.20.
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    event = fed_event()
+    hold, cut = f"{FED}-H0", f"{FED}-C25"
+    candles = {
+        hold: mid_candles(hold, [(minute(0, base), "0.50"), (minute(20, base), "0.53")]),
+        cut: mid_candles(cut, [(minute(0, base), "0.20"), (minute(35, base), "0.24")]),
+    }
+    window, threshold = timedelta(minutes=30), Decimal("0.03")
+    moves = trig.price_moves(candles, window=window, threshold=threshold)
+    assert [(at, ticker) for at, ticker, _ in moves] == [
+        (minute(20, base), hold),
+        (minute(35, base), cut),
+    ]
+    # The same from an anchor carried over from an earlier pass, as the loop does.
+    later = trig.price_moves(candles, window=window, threshold=threshold, anchor=minute(20, base))
+    assert [(at, ticker) for at, ticker, _ in later] == [(minute(35, base), cut)]
+    exchange = FakeCandles(candles)
+    anchors: dict[str, datetime] = {}
+    seen = {}
+    for n in range(5, 70, 5):
+        for t in trig.price_move_triggers(
+            exchange, [event], Config(), minute(n, base), anchors=anchors
+        ):
+            seen[t.trigger_id] = t.at
+            anchors[FED] = max(anchors.get(FED, t.at), t.at)
+    assert sorted(seen.values()) == [minute(20, base), minute(35, base)]
+
+
+def test_a_move_before_the_anchor_is_not_counted_again_after_it():
+    # C25 moved 0.20 -> 0.24 at 10:15, before the event's last trigger at 10:20: that
+    # move belongs before the anchor, and from it on C25's reference is 0.24, so a flat
+    # 0.24 at 10:35 starts nothing.
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    hold, cut = f"{FED}-H0", f"{FED}-C25"
+    cut_points = [(minute(0, base), "0.20"), (minute(15, base), "0.24"), (minute(35, base), "0.24")]
+    candles = {
+        hold: mid_candles(hold, [(minute(0, base), "0.50"), (minute(20, base), "0.53")]),
+        cut: mid_candles(cut, cut_points),
+    }
+    window, threshold = timedelta(minutes=30), Decimal("0.03")
+    later = trig.price_moves(candles, window=window, threshold=threshold, anchor=minute(20, base))
+    assert later == []
 
 
 def test_markets_of_one_event_crossing_together_give_one_trigger():

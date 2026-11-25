@@ -55,6 +55,18 @@ def test_daily_loss_stop_alone() -> None:
     assert names(reasons(store)) == ["daily loss stop"]
 
 
+def test_the_daily_loss_stop_reason_names_the_days_starting_equity_as_its_base() -> None:
+    store = SqliteStore(MEMORY)
+    store.record_equity(NOW - timedelta(days=1), Decimal("1000"))
+    store.record_equity(NOW - timedelta(hours=2), Decimal("960"))
+    for bankroll in (None, Decimal("960")):
+        found = stop_reasons(store, CONFIG, SimClock(NOW), EVIDENCE, bankroll=bankroll)
+        [reason] = [r for r in found if r.startswith("daily loss stop")]
+        # The stop is 0.03 of the day's starting equity 1000 (a loss of 30), not of 960.
+        assert "starting equity 1000" in reason and "960" not in reason.split(";")[0]
+        assert "-40" in reason
+
+
 def test_drawdown_alone() -> None:
     store = SqliteStore(MEMORY)
     for day, equity in enumerate(["1000", "980", "960", "940", "920", "900"]):

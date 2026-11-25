@@ -14,7 +14,9 @@ metrics, the report with its figures, and the saved traces.
 from __future__ import annotations
 
 import json
+import re
 import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -762,7 +764,8 @@ def build_report(run_dir: str | Path) -> Path:
         w(
             "No order was placed"
             + (" (the pipeline did not run)" if not _ran(pipe) else "")
-            + f". Episodes that ended stale_price because the book was empty: {fp.get('stale_price_exits', 0)}.\n"
+            + ". Episodes that ended stale_price because the as-of book offered nothing at or "
+            f"below the limit: {fp.get('stale_price_exits', 0)}.\n"
         )
     else:
         labels = {
@@ -785,8 +788,9 @@ def build_report(run_dir: str | Path) -> Path:
         )
         w("")
         w(
-            f"A further {fp.get('stale_price_exits', 0)} episode(s) sent no order because nothing "
-            "was offered at or below the limit (exit stale_price), often an empty book.\n"
+            f"A further {fp.get('stale_price_exits', 0)} episode(s) sent no order because the "
+            "as-of book offered nothing at or below the limit (exit stale_price); that check "
+            "never reads the book an order fills against.\n"
         )
 
     # -- leakage
@@ -837,8 +841,9 @@ def build_report(run_dir: str | Path) -> Path:
         "often have one side of the quote empty, so their price is a last trade (kept inside "
         "the standing quote); markets priced at 0.01 or 0.99 dominate the row count and pull "
         "every Brier score toward zero.\n"
-        "- Fills are simulated from candles without depth data; many would use the hourly "
-        "fallback or meet an empty book. Simulated P&L is not evidence of tradable edge.\n"
+        "- Fills are simulated from candles without depth data, some from the coarse hourly "
+        "fallback or against an empty book (counted under How each fill was priced). "
+        "Simulated P&L is not evidence of tradable edge.\n"
         "- Forecasts at 7, 3 and 1 days before close of the same event are not independent of "
         "each other either; the bootstrap keeps an event's rows together across horizons only "
         "in the pooled row.\n"
@@ -870,10 +875,59 @@ def build_report(run_dir: str | Path) -> Path:
     return path
 
 
+RELEASE_LINE = re.compile(r", (\S+)\): no (\S+) event in the snapshot$")
+"""The release time and series at the end of a ``releases_without_event`` line."""
+
+DROPPED_CLOSE = re.compile(r"^closes (\S+),")
+"""The close time at the start of a dropped event's reason, when the builder knew it."""
+
+NEAR_RELEASE = timedelta(days=1)
+"""A dropped event closing this close to a release may be that release's event."""
+
+
+def _release_verdict(line: str, dropped: dict[str, str]) -> str:
+    """What the dropped events say about one release without an event, in one sentence.
+
+    Only a dropped event of the release's series that closes within a day of the
+    release is named as possibly its event. One without a close time on record can
+    be neither matched nor ruled out. Otherwise the exchange listed no event for it.
+    """
+    found = RELEASE_LINE.search(line)
+    if found is None:
+        return ""
+    released, series = datetime.fromisoformat(found.group(1)), found.group(2)
+    of_series = {t: r for t, r in dropped.items() if t.split("-", 1)[0] == series}
+    near, unknown = [], []
+    for ticker, reason in of_series.items():
+        close = DROPPED_CLOSE.match(reason)
+        if close is None:
+            unknown.append(ticker)
+        elif abs(datetime.fromisoformat(close.group(1)) - released) <= NEAR_RELEASE:
+            near.append(ticker)
+    if near:
+        return (
+            f"The snapshot builder dropped {', '.join(near)}, which closes within a day of the "
+            f"release (listed below): it may be this release's {series} event."
+        )
+    if unknown:
+        return (
+            f"No {series} event the builder dropped closes within a day of it, but "
+            f"{', '.join(unknown)} has no close time on record (listed below), so whether it "
+            "belongs to this release is not known."
+        )
+    if of_series:
+        return (
+            f"So the exchange listed no {series} event for this release: none of the "
+            f"{len(of_series)} {series} event(s) the builder dropped closes within a day of it."
+        )
+    return (
+        f"So the exchange listed no {series} event for this release: the builder dropped no "
+        f"{series} event."
+    )
+
+
 def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
     """The "Left out of scoring" section: every release, event, point, market and row not scored."""
-    import re
-
     plan = manifest.plan
     snap = manifest.snapshot_manifest
     dropped = snap.get("dropped_events")
@@ -907,27 +961,14 @@ def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
             "scored for them. The exchange does not list an event for every release.\n"
         )
         for line in plan.releases_without_event:
-            w(f"- {line}")
+            verdict = "" if dropped is None else " " + _release_verdict(line, dropped)
+            w(f"- {line}.{verdict}")
         w("")
-        series = set(
-            re.findall(r"no (\S+) event in the snapshot", " ".join(plan.releases_without_event))
-        )
         if dropped is None:
             w(
                 "This snapshot was built before its builder recorded the events it dropped, "
                 "so the snapshot alone does not show whether the exchange listed an event for "
                 "these releases.\n"
-            )
-        elif not any(t.split("-", 1)[0] in series for t in dropped):
-            w(
-                "The snapshot's builder dropped no event of "
-                + ", ".join(sorted(series))
-                + ", so the exchange listed no event for these releases.\n"
-            )
-        else:
-            w(
-                "The snapshot's builder dropped events of these series (listed below); one of "
-                "them may belong to one of these releases.\n"
             )
     if dropped:
         w(f"Events the exchange listed that the snapshot builder did not store ({len(dropped)}):\n")

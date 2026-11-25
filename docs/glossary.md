@@ -36,8 +36,11 @@ its source, URL, publish time and origin. Its id is `{doc_id}#{n}`. `Passage` in
 [records/evidence.py](../src/pmfa/records/evidence.py); made by
 [knowledge/chunking.py](../src/pmfa/knowledge/chunking.py).
 
-**Origin.** A publisher's original document after syndicated and near-duplicate copies are merged.
-Copies count as one origin, so repetition does not look like corroboration. `Origin`; resolved in
+**Origin.** A publisher's original document after its copies are merged. Two documents are one
+origin when one is substantially a copy of the other's text: their normalised texts are identical,
+or at least 92% of the smaller body's five-word shingles appear in the larger and the smaller has
+at least half as many shingles. Shared topic or template wording is not enough. Copies count as one origin, so repetition does not
+look like corroboration. `Origin`; resolved in
 [knowledge/origins.py](../src/pmfa/knowledge/origins.py).
 
 **Primary origin.** An origin from an allowlisted official publisher for the event's category
@@ -139,10 +142,25 @@ episode record says so, so reports can separate these fills from human-approved 
 **Would-be-auto.** A proposal that met every auto condition but was sent to review because the stage
 is below autonomous. It counts toward how often the human agreed. `Routing.would_be_auto`.
 
-**Execution book.** The order book an order sent now would meet: the live book in shadow and demo
-mode, the recorded execution-time book in replay, and in backtests a book built from the first
-one-minute candle after the as-of time plus latency. `Executor.execution_book` in
-[ports.py](../src/pmfa/ports.py); [world/snapshot/book.py](../src/pmfa/world/snapshot/book.py).
+**Execution book.** The order book the pipeline decides with when it is about to send: the price
+re-read before sending, the recompute when nothing is offered at the limit, the gate after a
+review, and routing's price move. It is the live book in shadow and demo mode, the recorded
+execution-time book in replay, and in a backtest the as-of book, so no decision reads a price from
+after the as-of time. `Executor.execution_book` in [ports.py](../src/pmfa/ports.py).
+
+**Fill book.** The book an order actually fills against. In shadow and demo mode it is the
+execution book. In a backtest it is a book built from the first one-minute candle after the as-of
+time plus the latency (60 seconds), on the conservative side of that candle, else the hourly
+candle, else an empty book; no decision sees it. In replay it is the recorded fill book when the
+recording has one, else the execution book. `fill_books` on the paper executor
+([execution/paper.py](../src/pmfa/execution/paper.py));
+[world/snapshot/book.py](../src/pmfa/world/snapshot/book.py).
+
+**Marked equity.** Cash plus each open holding at the current best bid on its own side (what it
+could be sold for now), or at cost when that side has no bid. The equity points behind the daily
+loss stop and the drawdown halt are marked, so both stops count unrealized losses. The bankroll
+that sizing and the dollar caps use is cash plus holdings at cost. `marked_equity` in
+[execution/portfolio.py](../src/pmfa/execution/portfolio.py).
 
 **Canary.** A document dated after every forecast, placed in the backtest's evidence index. Retrieving
 it means the as-of rule failed, and the run stops. `evaluation.canary_text` in

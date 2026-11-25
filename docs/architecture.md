@@ -39,7 +39,7 @@ flowchart TD
     gate -->|"gate_rejected, halted"| record
     route -->|halted| record
     review -->|"rejected_by_human, expired"| record
-    execute -->|"executed, stale_price, halted"| record
+    execute -->|"executed, stale_price, halted, error"| record
     record["record"]
 
     classDef llm fill:#fde2c8,stroke:#b5651d,color:#000
@@ -51,7 +51,16 @@ flowchart TD
 ```
 
 A thirteenth exit, `error`, can leave from any node: a model answer that fails validation twice, a
-budget cap reached outside the tree search, or the run's dollar cap (see [budgets](guardrails.md#budgets-per-episode-and-per-run)).
+budget cap reached outside the tree search, the run's dollar cap (see
+[budgets](guardrails.md#budgets-per-episode-and-per-run)), or any other project error a node raises,
+such as an unknown fee type or an exchange failure. At `execute` it also covers an order the
+exchange rejected, a send whose outcome could not be established, and a continued episode that
+finds no order (see [sending an order](guardrails.md#sending-an-order)). Every episode ends in
+exactly one exit. A few errors are not turned into exits and stop the run instead: a read past the
+as-of time (the backtest's canary among them), a replay that no longer matches its recording, an
+error inside `record` itself, and an unexpected exception that is not one of the project's own
+errors.
+
 The graph has three forecast nodes (`forecast_start`, `forecast_step` once per tree level,
 `forecast_finish`) so the checkpointer saves the search between levels; the diagram draws them as one
 box. `pmfa.episode.mermaid()` prints the exact wiring.
@@ -61,15 +70,15 @@ What each step does, in the code's terms:
 | Step | Who | What happens | Exits |
 | --- | --- | --- | --- |
 | trigger | code | Saves a new episode record. The trigger's time becomes the *as-of time*. | |
-| match | Monitor, or code | A *new-document* trigger: code searches the events index for the top 5 open events, and the Monitor picks one or none. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
-| research | Researcher, then code | The Researcher writes one query for and one against. Code retrieves the top 8 passages as of the as-of time; for a price-move trigger, only passages published after the event's last forecast count, so a price move with no new evidence since then ends in `no_evidence`. The Researcher drops passages that do not bear on the event. Code resolves *origins* and applies the origin rule. | `no_evidence`, `insufficient_origins` |
-| forecast | Generator, Critic, code | Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
+| match | Monitor, or code | A *new-document* trigger: code searches the events index for the top 5 open events, and the Monitor picks one or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
+| research | Researcher, then code | The Researcher writes one query for and one against. Code retrieves the top 8 passages as of the as-of time; for a price-move trigger, only passages published after the event's last forecast count, so a price move with no new evidence since then ends in `no_evidence`. The Researcher drops passages that do not bear on the event. Code resolves *origins*, merging documents whose text is a copy of another's, and applies the origin rule. | `no_evidence`, `insufficient_origins` |
+| forecast | Generator, Critic, code | Reads every open market's book and keeps each market's YES mid as the forecast-time price. Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
 | size | code | Picks the one market and side with the best fee-adjusted *edge* that meets the liquidity floor, sizes it at quarter-Kelly times confidence, and proposes the difference from the current holding. | `no_edge` |
 | gate | code | Runs the self-halt conditions, then re-verifies every limit with its own arithmetic. | `gate_rejected`, `halted` |
-| route | code | Scores the risk and assigns the *routing tier*: auto, approve or halt. | `halted` |
+| route | code | Scores the risk and assigns the *routing tier*: auto, approve or halt. The price move it scores is measured from the forecast-time price, so a recompute cannot re-base it. | `halted` |
 | pause, review | human | The graph stops and waits ([below](#the-human-approval-pause)). | `rejected_by_human`, `expired` |
-| execute | code | Re-reads the book. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it places one immediate-or-cancel limit order. | `executed`, `stale_price`, `halted` |
-| record | code | Writes the forecast and one *ledger* entry per market, and closes the episode record. | |
+| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. | `executed`, `stale_price`, `halted`, `error` |
+| record | code | Writes the forecast and one *ledger* entry per market, with the forecast-time price, and closes the episode record. | |
 
 ## The parts: roles, code, gateway, state, ports
 
@@ -143,10 +152,10 @@ The pipeline code is identical in every mode. Only what sits behind the ports ch
 | Port | Replay | Backtest | Shadow | Demo |
 | --- | --- | --- | --- | --- |
 | Exchange | One recorded JSON file ([recorded.py](../src/pmfa/world/recorded.py)) | Frozen snapshot read as of the clock ([snapshot/reader.py](../src/pmfa/world/snapshot/reader.py)) | Kalshi production, public data only, no credentials ([kalshi/production.py](../src/pmfa/world/kalshi/production.py)) | Kalshi demo exchange ([kalshi/demo.py](../src/pmfa/world/kalshi/demo.py)) |
-| Evidence | Documents in the recorded file | Frozen corpus read as of the clock ([evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)) | Live Federal Reserve and BLS feeds ([evidence/live.py](../src/pmfa/world/evidence/live.py)) | Live feeds |
+| Evidence | Documents in the recorded file | Frozen corpus read as of the clock ([evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)) | Live Federal Reserve and BLS sources, plus any RSS or Atom feeds listed in `sources.feeds` (none by default) ([evidence/live.py](../src/pmfa/world/evidence/live.py)) | The same as shadow |
 | Models | Cassettes ([cassette.py](../src/pmfa/models/cassette.py)) | Claude API through the gateway, with the response cache | Claude API | Claude API |
-| Executor | Paper, against the recorded execution-time books | Paper, against a book built from the first one-minute candle after the order arrives | Paper, against the live order book | Demo exchange: real orders, mock funds |
-| Who approves | The recorded review, if any | Nobody: approve-tier trades are filled and tagged | Nobody by default (filled and tagged), or a human when review is turned on | A human |
+| Executor | Paper. Decisions read the recorded execution-time books; orders fill against the recorded fill books where the recording has them | Paper. Decisions read the as-of book; orders fill against a book built from the first one-minute candle after the as-of time plus the latency, which no decision sees | Paper, against the live order book | Demo exchange: real orders, mock funds |
+| Who approves | The recorded review, if any | Nobody: approve-tier trades are filled and tagged | Nobody by default (filled and tagged), or a human when review is turned on | A human, for every order: demo mode always runs at the approval stage |
 | Clock | Simulated | Simulated | System | System |
 
 **Demo P&L is never evidence.** Kalshi warns that demo prices may not reflect real markets, and its
@@ -157,9 +166,9 @@ price at the same moment) and from shadow mode (simulated fills against live pri
 The worlds are assembled in [recorded.py](../src/pmfa/world/recorded.py),
 [backtest.py](../src/pmfa/world/backtest.py) and [live.py](../src/pmfa/world/live.py). In shadow and
 demo mode a foreground loop ([live/loop.py](../src/pmfa/live/loop.py)) repeats one pass: refresh the
-indexes, resolve settled outcomes, expire due proposals, apply the self-halt conditions, detect
-triggers and run their episodes, and record an equity point. The commands for each mode are in the
-README.
+indexes, resolve settled outcomes, expire due proposals, apply the self-halt conditions and the
+stage demotion rule, detect triggers and run their episodes, and record a *marked equity* point.
+The commands for each mode are in the README.
 
 ## The modules
 
@@ -332,9 +341,16 @@ An approve-tier proposal is decided by a person, possibly in another process and
 5. `review` applies the answer (reject ends the episode; resize recomputes fee, cost and edge) and
    sends approve and resize back to `gate`, which runs the self-halt conditions and every check again
    against the book an order would meet now.
-6. `execute` is a separate node. It checks the halt flag, re-reads the book, and places the order
-   with a deterministic client order id. If an order with that id is already stored for the episode,
-   it is not sent again, so a second resume cannot double it.
+6. `execute` is a separate node. It looks the order up by its deterministic client order id (in
+   the store, then on the executor), checks the halt flag, re-reads the book, checks the flag again,
+   and places the order. An order already placed under that id is recorded, not sent again, so a
+   second resume cannot double it.
+
+If the process stops at `execute` (a crash, or an error that escaped after the approval),
+`run`, `resume` and `expire` all continue the episode at that node, and a continued episode only
+reconciles: it records the order it finds by its client order id and never places one. When none
+exists, the proposal is cancelled and the episode ends `error`, nothing placed. The approval it
+would have acted on is stale, so it is never acted on again.
 
 `expire(episode_id)` ends a paused episode as `expired` without an order. The test
 `test_a_pause_in_one_controller_resumes_in_a_second_built_over_the_same_files` in
@@ -354,9 +370,13 @@ For each episode the state database ([state/store.py](../src/pmfa/state/store.py
   leaf) and the reason for it.
 - **Critic rejections** per event, shown to the Generator in later episodes.
 - **Proposals and their status history, reviews, orders and fills.** The paper account's balance and
-  positions are rebuilt from the stored fills and settlements, and it records an equity point after each order. The daily loss stop and the drawdown halt read these equity points.
-- **Ledger entries**: one per market of the forecast event, with the probability, the YES mid at the
-  as-of time, whether it traded, its tier, and any override. The outcome and Brier scores are written
+  positions are rebuilt from the stored fills and settlements.
+- **Equity points.** The paper executor records a *marked equity* point at every fill and
+  settlement, and the live loop records one at the end of every pass. The daily loss stop and the
+  drawdown halt read these points, so both count unrealized losses.
+- **Ledger entries**: one per market of the forecast event, with the probability, the YES mid read
+  when the forecast started (a later recompute does not change it), whether it traded, its tier,
+  and any override. The outcome and Brier scores are written
   later, when the market resolves.
 - **Content hashes** of every cited document, so a later change behind an open position can halt
   the agent.
@@ -379,22 +399,22 @@ one-line summary, and the records involved as JSON in `data`:
 The trace of the example above:
 
 ```text
- 1 trigger  observation  new_document trigger trig-fomc-minutes-2026-10 at 2026-11-20T15:00:00+00:00
+ 1 trigger  observation  new_document trigger trig-fomc-minutes-2026-10 at 2026-11-20T15:00:00+00:00 (document fomc-minutes-2026-10)
  2 match    action       search the events index for the top 5 events as of 2026-11-20T15:00:00+00:00
  3 match    observation  1 candidate event(s): KXFEDDECISION-26DEC
- 4 match    thought      [Monitor] The trigger bears on KXFEDDECISION-26DEC.
+ 4 match    thought      The trigger bears on KXFEDDECISION-26DEC.
  5 match    observation  matched event KXFEDDECISION-26DEC
- 6 research thought      [Researcher] One query for a hold, one for a cut.
+ 6 research thought      One query for a hold, one for a cut.
  7 research action       retrieve the top 8 passages for two queries as of 2026-11-20T15:00:00+00:00
  8 research observation  2 passage(s) retrieved
- 9 research thought      [Researcher] Kept 2 of 2.
+ 9 research thought      Kept 2 of 2.
 10 research observation  kept 2 of 2 passage(s)
 11 research action       resolve origins and apply the origin rule
 12 research observation  2 independent origin(s), 2 primary
 13 forecast action       beam search over 1 level(s); 0 earlier rejection(s), 0 ledger example(s), bankroll $1000
 14 forecast action       level 1 of 1: generate, check, and score scenarios for Resolution: Fed decision in Dec 2026?
-15 forecast thought      [Generator] Proposed 2 scenario(s): The Committee holds the rate in December; ...
-16 forecast thought      [Critic] Scored scored 0.70: ... | scored 0.30: ...
+15 forecast thought      Proposed 2 scenario(s): The Committee holds the rate in December; The Committee cuts 25 bp in December
+16 forecast thought      Scored scored 0.70: Critic on The Committee holds the rate in December. | scored 0.30: Critic on The Committee cuts 25 bp in December.
 17 forecast observation  level 1: 2 leaf
 18 forecast observation  forecast: coverage 1.000, confidence 0.333, depth 1, 1 origin(s)
 19 size     action       size the event: confidence 0.333, bankroll $1000
@@ -407,7 +427,7 @@ The trace of the example above:
 26 route    observation  no human present (fill_tagged): the approve-tier proposal is filled and tagged
 27 execute  action       re-read the NO offers
 28 execute  action       place an immediate-or-cancel limit order: buy 19 NO KXFEDDECISION-26DEC-C25 at <= 0.6800
-29 execute  observation  filled: 19 of 19 filled, fees $0.29
+29 execute  observation  filled: 19 of 19 filled, fees $0.2900
 30 record   observation  exit executed: filled: 19 of 19 at <= 0.6800; 5 ledger entries
 ```
 

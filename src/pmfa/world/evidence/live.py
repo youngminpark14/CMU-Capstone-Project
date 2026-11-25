@@ -26,6 +26,13 @@ store. A 404 or 410, or a page that no longer parses, is a withdrawal
 dropped connection, a BLS release that came from a manual file) the stored copy
 is returned, so a transient failure never halts on its own; the reason is kept
 in ``last_failures``. Each document is re-checked at most once per poll interval.
+
+A feed item is asked of the feed it came from when that is known (this object
+polled it, or the item has no link of its own and its URL is the feed's), and of
+every listed feed on its host otherwise. A feed that answers without the item has
+dropped it, which feeds do with old items: that is not a withdrawal, it outranks
+another feed's failure, and the stored copy is returned with a note. The item is
+withdrawn only when every feed asked answered 404 or 410.
 """
 
 from __future__ import annotations
@@ -78,6 +85,8 @@ class LiveEvidence:
         self._lookback = timedelta(days=initial_lookback_days)
         self._last_poll: datetime | None = None
         self._rechecked: dict[str, tuple[datetime, Document | NotFound]] = {}
+        self._feed_of: dict[str, str] = {}
+        """The listed feed each feed item was polled from, by doc id (this process only)."""
         self.last_failures: list[str] = []
         """Pages that failed in the latest poll (refused, missing) or re-check since it."""
 
@@ -118,6 +127,8 @@ class LiveEvidence:
             feed = FeedSource(self._fetcher).fetch_documents(
                 url, start, now, refresh=True, skip=known
             )
+            for doc in feed.documents:
+                self._feed_of.setdefault(doc.doc_id, url)
             found += feed.documents
             failures += feed.failures
         self._last_poll = now
@@ -133,9 +144,13 @@ class LiveEvidence:
         """``host`` is a primary source or a subdomain of one (``press.federalreserve.gov``).
 
         A feed on a subdomain would credit its items to a source of their own,
-        which origin resolution could count as independent of the primary one.
+        which origin resolution could count as independent of the primary one. A
+        trailing dot (``federalreserve.gov.``, the same host written fully
+        qualified) is ignored on both sides.
         """
-        return any(host == p or host.endswith("." + p) for p in self._primary_sources())
+        host = host.rstrip(".")
+        primaries = {p.rstrip(".") for p in self._primary_sources()}
+        return any(host == p or host.endswith("." + p) for p in primaries)
 
     # -- re-checking a source ------------------------------------------------------------
 
@@ -179,29 +194,40 @@ class LiveEvidence:
         except ValueError as exc:
             return NotFound(f"{stored.doc_id} at {stored.url} no longer parses as a page: {exc}")
 
-    def _refetch_feed_item(self, stored: Document) -> Document:
-        """The item as a listed feed on its host serves it now, else the stored copy.
+    def _refetch_feed_item(self, stored: Document) -> Document | NotFound:
+        """The item as its feed serves it now, the stored copy, or ``NotFound`` if it is gone.
 
-        Every listed feed whose host the item is credited to is asked in turn
-        (one host can list several feeds), until one still lists the item. When
-        none does and one of them failed, the first failure is raised for
-        ``_refetch`` to classify; when none does and none failed, the feeds have
-        dropped the item, which is not a withdrawal. A source this class does not
-        know how to ask again also gets the stored copy.
+        The feeds asked are the one the item came from when that is known and still
+        listed, else every listed feed on the item's host (one host can list several).
+        The first that still lists the item gives its current copy. Otherwise a feed
+        that answered without the item has dropped it, which is not a withdrawal, and
+        a feed that failed says nothing about the item: both return the stored copy
+        with a note in ``last_failures``, and a drop outranks a failure. Only when every
+        feed asked answered 404 or 410 is the item withdrawn. A source this class does
+        not know how to ask again also gets the stored copy.
         """
-        failure: Exception | None = None
-        for url in self._config.sources.feeds:
-            if feed_host(url) != stored.source:
-                continue
+        on_host = [url for url in self._config.sources.feeds if feed_host(url) == stored.source]
+        origin = self._feed_of.get(stored.doc_id) or (stored.url if stored.url in on_host else None)
+        asked = [origin] if origin is not None and origin in on_host else on_host
+        dropped_by: list[str] = []
+        failures: list[tuple[str, Exception]] = []
+        for url in asked:
             try:
                 found = FeedSource(self._fetcher).refetch(url, stored)
             except (FetchError, FeedError) as exc:
-                failure = failure or exc
+                failures.append((url, exc))
                 continue
             if found is not None:
                 return found
-        if failure is not None:
-            raise failure
+            dropped_by.append(url)
+        notes = [f"feed {url} no longer lists it" for url in dropped_by]
+        notes += [f"feed {url} failed ({exc})" for url, exc in failures]
+        if failures and not dropped_by and all(_gone(exc) for _, exc in failures):
+            return NotFound(f"{stored.doc_id} is gone: {'; '.join(notes)}")
+        if notes:
+            self.last_failures.append(
+                f"re-check of {stored.doc_id}: {'; '.join(notes)}; kept the stored copy"
+            )
         return stored
 
     def _refetch_bls(self, stored: Document) -> Document:
@@ -242,3 +268,12 @@ class LiveEvidence:
                 use_bls_site=self._config.sources.bls,
             )
         return self._calendar.between(start, end)
+
+
+def _gone(exc: Exception) -> bool:
+    """A failed fetch that means the page is gone (404 or 410), not that the site is down."""
+    return (
+        isinstance(exc, FetchError)
+        and not isinstance(exc, FetchRefused)
+        and exc.status in WITHDRAWN_STATUSES
+    )
