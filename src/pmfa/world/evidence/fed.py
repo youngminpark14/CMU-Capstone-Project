@@ -370,16 +370,56 @@ class FedSource:
         ``refresh=True`` re-reads both listings from the site (the live poller);
         otherwise a listing fetched before is read from the cache.
         """
+        items, failures = self._list(start, end, refresh=refresh)
+        if failures:
+            raise failures[0][1]
+        return items
+
+    def _list(
+        self, start: datetime, end: datetime, *, refresh: bool
+    ) -> tuple[list[FedItem], list[tuple[str, FetchError]]]:
+        """The items of both listings in the window, and each listing that could not be fetched."""
         start, end = to_utc(start), to_utc(end)
-        items = parse_press_listing(self._fetcher.get(PRESS_LISTING_URL, refresh=refresh).text)
-        items += parse_speech_listing(self._fetcher.get(SPEECH_LISTING_URL, refresh=refresh).text)
+        items: list[FedItem] = []
+        failures: list[tuple[str, FetchError]] = []
+        for url, parse in (
+            (PRESS_LISTING_URL, parse_press_listing),
+            (SPEECH_LISTING_URL, parse_speech_listing),
+        ):
+            try:
+                items += parse(self._fetcher.get(url, refresh=refresh).text)
+            except FetchError as exc:
+                failures.append((url, exc))
         window = [i for i in items if start <= i.published_at <= end]
-        return sorted(window, key=lambda i: (i.published_at, i.url))
+        return sorted(window, key=lambda i: (i.published_at, i.url)), failures
 
     def fetch_document(self, item: FedItem) -> Document:
         """Fetch and parse one page. Raises :class:`FetchError` if the page is not there."""
         page = parse_fed_page(self._fetcher.get(item.url).text)
         return build_document(item, page)
+
+    def refetch(self, document: Document) -> Document:
+        """``document``'s page fetched again from the site (not the cache) and rebuilt the same way.
+
+        The listing facts the text needs (title, speaker, venue) are read back
+        from the stored text's first block, so an unchanged page gives an
+        identical text and content hash. Raises :class:`FetchError` when the page
+        cannot be fetched and ``ValueError`` when it no longer parses as a page.
+        """
+        head = document.text.split("\n\n", 1)[0].split("\n")
+        speech = document.kind == KIND_SPEECH
+        item = FedItem(
+            document.kind,
+            head[0],
+            document.url,
+            document.published_at,
+            True,
+            speaker=head[1] if speech and len(head) > 1 else "",
+            location=head[2] if speech and len(head) > 2 else "",
+        )
+        page = parse_fed_page(self._fetcher.get(document.url, refresh=True).text)
+        rebuilt = build_document(item, page)
+        return rebuilt.model_copy(update={"title": document.title})
 
     def fetch_documents(
         self,
@@ -389,12 +429,16 @@ class FedSource:
         refresh: bool = False,
         skip: frozenset[str] = frozenset(),
     ) -> FetchReport:
-        """Every document in the window. A page that fails is reported, not fatal.
+        """Every document in the window. A page or a listing that fails is reported, not fatal.
 
-        ``skip`` holds doc ids already in a store; their pages are not fetched.
+        A listing that cannot be fetched (the site is down, a 503) is one line in
+        ``failures``; the other listing is still read. ``skip`` holds doc ids
+        already in a store; their pages are not fetched.
         """
         report = FetchReport()
-        for item in self.list_items(start, end, refresh=refresh):
+        items, listing_failures = self._list(start, end, refresh=refresh)
+        report.failures += [f"{url}: {exc}" for url, exc in listing_failures]
+        for item in items:
             if doc_id_for(item.url) in skip:
                 continue
             try:

@@ -7,6 +7,7 @@ but sends no request.
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -110,7 +111,8 @@ def test_the_demo_world_refuses_to_build_without_credentials_and_names_the_varia
     with pytest.raises(ConfigError) as caught:
         build_demo_world(config, models=ScriptedModels({}, config=config))
     message = str(caught.value)
-    assert all(name in message for name in KALSHI_VARIABLES)
+    # Each variable is named exactly once (the message does not repeat itself).
+    assert all(len(re.findall(rf"\b{name}\b", message)) == 1 for name in KALSHI_VARIABLES)
     assert not live_paths(config, RunMode.DEMO)[0].exists()  # nothing was opened
 
 
@@ -135,7 +137,7 @@ def test_a_partial_credential_is_refused_without_showing_the_key(config, monkeyp
     monkeypatch.setenv("KALSHI_DEMO_PRIVATE_KEY", pem)
     with pytest.raises(ConfigError) as caught:
         build_demo_world(config, models=ScriptedModels({}, config=config))
-    assert "KALSHI_DEMO_KEY_ID" in str(caught.value)
+    assert "KALSHI_DEMO_KEY_ID is not set but a Kalshi private key is" in str(caught.value)
     assert "PRIVATE KEY" not in str(caught.value)
 
 

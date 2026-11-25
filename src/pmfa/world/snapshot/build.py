@@ -4,7 +4,9 @@ What is fetched, for every enabled series in ``config.follow``:
 
 - every event whose close time is in ``[start, end]`` (``start`` defaults to
   ``config.evaluation.window_start``; ``end`` is the build time), with its
-  markets, rules and results;
+  markets, rules and results. Every event the exchange listed and the builder
+  left out (no markets, or closing outside the window) is named in the
+  manifest's ``dropped_events`` with the reason;
 - **hourly** candles for each market over ``(max(open, start - 30 days), close]``,
   so every forecast in the window has a month of price history behind it;
 - **one-minute** candles over ``(max(open, start), close]``; ``minute_days=N``
@@ -49,7 +51,12 @@ class SnapshotSource(Protocol):
     def get_series(self, series_ticker: str) -> Series: ...
 
     def iter_series_events(
-        self, series_ticker: str, *, closing_from: datetime, closing_to: datetime
+        self,
+        series_ticker: str,
+        *,
+        closing_from: datetime,
+        closing_to: datetime,
+        dropped: dict[str, str] | None = None,
     ) -> Iterator[Event]: ...
 
     def get_candles(
@@ -92,13 +99,20 @@ def build_snapshot(
         raise ValueError("minute_days must be at least 1")
     cutoff = exchange.historical_cutoff()
     series_tickers = [s.ticker for s in config.follow.enabled_series()]
+    dropped: dict[str, str] = {}
 
     for series_ticker in series_tickers:
         store.put_series(exchange.get_series(series_ticker))
+        dropped_here: dict[str, str] = {}
         events = list(
-            exchange.iter_series_events(series_ticker, closing_from=start, closing_to=end)
+            exchange.iter_series_events(
+                series_ticker, closing_from=start, closing_to=end, dropped=dropped_here
+            )
         )
         say(f"{series_ticker}: {len(events)} event(s) closing {start:%Y-%m-%d} to {end:%Y-%m-%d}")
+        for ticker, reason in sorted(dropped_here.items()):
+            say(f"{series_ticker}: dropped {ticker}: {reason}")
+        dropped.update(dropped_here)
         for event in events:
             store.put_event(event)
             for market in event.markets:
@@ -125,6 +139,7 @@ def build_snapshot(
         minute_span_days=round(minute[1], 2),
         source_host=_host(exchange),
         elapsed_seconds=round(time.monotonic() - began, 1),
+        dropped_events=dict(sorted(dropped.items())),
     )
     say(f"done: {manifest.counts}, hourly ranges {hourly[0]}, minute ranges {minute[0]}")
     return store.write_manifest(manifest)

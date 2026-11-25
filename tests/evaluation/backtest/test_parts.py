@@ -96,15 +96,15 @@ def test_baseline_answers_are_converted_or_refused(data_config: Config) -> None:
     space = build_outcome_space(fed_event(), sc)
     good = BaselineForecast(
         option_probabilities=[
-            OptionProbability(outcome_id="hold", probability=2.0),
-            OptionProbability(outcome_id="cut_25", probability=2.0),
+            OptionProbability(outcome_id="hold", probability=0.5),
+            OptionProbability(outcome_id="cut_25", probability=0.51),
         ],
         quantiles=None,
         rationale="",
     )
     dist, problem = outcome_distribution(good, space)
     assert problem == "" and dist is not None
-    assert dist["hold"] == pytest.approx(0.5) and dist["hike_25"] == 0.0
+    assert dist["hold"] == pytest.approx(0.5 / 1.01) and dist["hike_25"] == 0.0
     bad = good.model_copy(
         update={"option_probabilities": [OptionProbability(outcome_id="pause", probability=1.0)]}
     )
@@ -161,3 +161,70 @@ def test_publish_copies_exactly_the_committed_set(full_run: FullRun, tmp_path: P
     }
     assert {p for p in published if p.startswith("traces/")} == source_traces
     assert not any(p.startswith(("work", "trades", "episodes")) for p in published)
+
+
+@pytest.mark.parametrize(
+    ("named", "why"),
+    [
+        ({"hold": 0.6}, "sum to 0.600, not 1"),  # a partial answer is not rescaled to certainty
+        ({"hold": 2.0, "cut_25": 2.0}, "sum to 4.000, not 1"),
+        ({"hold": float("nan"), "cut_25": 1.0}, "not a finite number"),
+    ],
+)
+def test_a_baseline_answer_that_does_not_sum_to_one_abstains(
+    data_config: Config, named: dict[str, float], why: str
+) -> None:
+    sc = data_config.follow.for_ticker("KXFEDDECISION")
+    assert sc is not None
+    space = build_outcome_space(fed_event(), sc)
+    answer = BaselineForecast(
+        option_probabilities=[
+            OptionProbability(outcome_id=k, probability=v) for k, v in named.items()
+        ],
+        quantiles=None,
+        rationale="",
+    )
+    dist, problem = outcome_distribution(answer, space)
+    assert dist is None and why in problem
+
+
+def test_an_out_of_range_probability_is_clamped_with_a_note() -> None:
+    from pmfa.evaluation.baselines import SystemForecast, forecast_rows
+    from pmfa.records.market import Side
+
+    forecast = SystemForecast(
+        system="pipeline",
+        event_ticker=FED,
+        as_of=datetime(2026, 8, 13, tzinfo=UTC),
+        market_probabilities={f"{FED}-H0": 1.2, f"{FED}-C25": float("nan"), f"{FED}-H25": 0.1},
+    )
+    rows = forecast_rows(
+        forecast,
+        run_id="r",
+        category="fed_decision",
+        prices={f"{FED}-H0": 0.6, f"{FED}-C25": 0.3, f"{FED}-H25": 0.1},
+        results={f"{FED}-H0": Side.YES, f"{FED}-C25": Side.NO, f"{FED}-H25": Side.NO},
+        horizon_days=7,
+    )
+    by = {row.market_ticker: (row, note) for row, note in rows}
+    assert by[f"{FED}-H0"][0].probability == 1.0
+    assert "clamped" in by[f"{FED}-H0"][1].note
+    assert by[f"{FED}-C25"][0].probability is None
+    assert "not a finite number" in by[f"{FED}-C25"][1].note
+    assert by[f"{FED}-H25"][1].note == ""
+
+
+def test_published_outputs_list_exactly_what_was_copied(full_run: FullRun, tmp_path: Path) -> None:
+    from pmfa.evaluation.manifest import read_manifest
+    from pmfa.evaluation.report import build_report, publish_run
+
+    build_report(full_run.run_dir)
+    target = publish_run(full_run.run_dir, "outputs", root=tmp_path / "runs")
+    outputs = read_manifest(target).outputs
+    for entry in outputs:
+        assert (target / entry).exists(), entry
+    copied = {p.relative_to(target).as_posix() for p in target.iterdir()}
+    copied |= {f"figures/{p.name}" for p in (target / "figures").iterdir()}
+    copied |= {f"traces/{p.name}" for p in (target / "traces").iterdir()}
+    assert set(outputs) == copied - {"figures", "traces"}
+    assert "trades.csv" not in outputs and "episodes.jsonl" not in outputs

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from pmfa.world.evidence import fed
 from pmfa.world.evidence.fed import FedItem, FedSource
+from pmfa.world.evidence.http import FetchError
 
 from .conftest import FED, FakeFetcher, fixture_text
 
@@ -149,3 +150,18 @@ def test_refreshing_listings_is_passed_to_the_fetcher(fed_pages):
     fetcher = FakeFetcher(fed_pages)
     FedSource(fetcher).list_items(utc(2026, 10, 1), utc(2026, 11, 30), refresh=True)
     assert [refresh for _, refresh in fetcher.calls] == [True, True]
+
+
+def test_a_listing_that_fails_is_reported_and_the_other_listing_still_read(fed_pages):
+    # federalreserve.gov's press listing is down (a 503 here); the speech listing still answers.
+    class Unavailable(FakeFetcher):
+        def get(self, url: str, *, refresh: bool = False):  # type: ignore[no-untyped-def]
+            if url.endswith("ne-press.json"):
+                raise FetchError(url, 503, f"{url} answered HTTP 503")
+            return super().get(url, refresh=refresh)
+
+    report = FedSource(Unavailable(fed_pages)).fetch_documents(
+        utc(2026, 9, 1), utc(2026, 11, 30), refresh=True
+    )
+    assert [d.doc_id for d in report.documents] == ["fed:waller20261110a"]
+    assert any("ne-press.json" in f and "503" in f for f in report.failures)

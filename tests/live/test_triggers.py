@@ -81,15 +81,40 @@ def test_a_smaller_move_or_a_move_spread_over_two_windows_starts_nothing():
     hold = f"{FED}-H0"
     small = FakeCandles({hold: mid_candles(hold, [(minute(1), "0.62"), (minute(20), "0.64")])})
     assert trig.price_move_triggers(small, [event], Config(), NOW) == []
-    # 2c in the previous bucket, then 2c more in this one: no single window saw 3c.
+    # 2c, then 2c more 32 minutes later: no 30-minute span saw 3c.
     slow = FakeCandles(
         {
             hold: mid_candles(
-                hold, [(minute(-29), "0.60"), (minute(-5), "0.62"), (minute(20), "0.64")]
+                hold, [(minute(-40), "0.60"), (minute(-12), "0.62"), (minute(20), "0.64")]
             )
         }
     )
     assert trig.price_move_triggers(slow, [event], Config(), minute(25)) == []
+
+
+def test_a_move_within_thirty_minutes_that_spans_a_bucket_edge_starts_a_trigger():
+    # 10:20 -> 10:40 is a 4c move in 20 minutes, across the 10:30 edge of the fixed buckets.
+    event = fed_event()
+    hold = f"{FED}-H0"
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    points = [(base, "0.50"), (minute(20, base), "0.50")]
+    points += [(minute(30, base), "0.52"), (minute(40, base), "0.54")]
+    exchange = FakeCandles({hold: mid_candles(hold, points)})
+    [t] = trig.price_move_triggers(exchange, [event], Config(), minute(41, base))
+    assert t.at == minute(40, base)
+    assert t.trigger_id == trig.price_move_trigger(FED, minute(30, base), t.at, "").trigger_id
+
+
+def test_one_step_fires_once_even_while_it_stays_inside_the_window():
+    event = fed_event()
+    hold = f"{FED}-H0"
+    points = [(minute(-40), "0.50"), (minute(20), "0.54"), (minute(32), "0.54")]
+    points += [(minute(45), "0.54")]
+    exchange = FakeCandles({hold: mid_candles(hold, points)})
+    [first] = trig.price_move_triggers(exchange, [event], Config(), minute(25))
+    assert first.at == minute(20)
+    # A pass in the next bucket still sees 0.50 inside the window of 15:32, but the move is the same.
+    assert trig.price_move_triggers(exchange, [event], Config(), minute(46)) == [first]
 
 
 def test_a_move_late_in_the_previous_window_is_still_found_in_the_next_pass():

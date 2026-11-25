@@ -3,7 +3,9 @@
 Each command first says what it will and will not do, then builds the world,
 runs one pass (``--once``, the default) or passes ``--interval`` seconds apart
 (``--loop``, until Ctrl-C), prints a short line per episode, and says where
-pending proposals wait. Imports happen inside the commands.
+pending proposals wait. A project error (an unreachable source or exchange) is
+printed as one line, never a traceback: inside a pass it is a note and the loop
+goes on; outside one the command exits 1. Imports happen inside the commands.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ def _choose(once: bool, loop: bool) -> bool:
 
 def _run(mode: RunMode, *, loop: bool, interval: float, review: bool) -> None:
     from pmfa.config import load_config
-    from pmfa.errors import ConfigError
+    from pmfa.errors import ConfigError, PmfaError
     from pmfa.live import session as live_session
     from pmfa.live.loop import PassSummary, run_loop
     from pmfa.live.text import pass_lines
@@ -87,6 +89,10 @@ def _run(mode: RunMode, *, loop: bool, interval: float, review: bool) -> None:
     except ConfigError as exc:
         typer.echo(f"cannot start {mode.value} mode: {exc}", err=True)
         raise typer.Exit(2) from None
+    except PmfaError as exc:
+        # A source or the exchange failed outside a pass (a failed pass is a note instead).
+        typer.echo(f"{mode.value} mode stopped: {exc}", err=True)
+        raise typer.Exit(1) from None
 
 
 def shadow(

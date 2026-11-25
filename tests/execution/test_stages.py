@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from pmfa.errors import NotFound
 from pmfa.execution.stages import StageManager, StageNotMet
 from pmfa.records.base import Stage
 from pmfa.records.decision import OrderStatus, Review, ReviewDecision, Routing, RoutingTier
@@ -65,6 +66,26 @@ def test_backtest_to_shadow_refused_below_200_markets() -> None:
     with pytest.raises(StageNotMet, match="199 backtested markets"):
         m.advance()
     assert store.get_stage().stage is Stage.BACKTEST
+
+
+def test_backtest_runs_count_toward_backtest_to_shadow_once_each(tmp_path) -> None:
+    from pmfa.execution.stages import run_forecast_rows
+
+    run_dir = tmp_path / "runs" / "2026-11-25-tiny"
+    (run_dir / "work").mkdir(parents=True)
+    with SqliteStore(run_dir / "work" / "scoring.sqlite") as scoring:
+        scoring.add_ledger_entries(backtest_entries(120, 0.8))
+        rows = run_forecast_rows(run_dir)
+    assert len(rows) == 120 and {r.run_id for r in rows} == {"2026-11-25-tiny"}
+
+    store = SqliteStore(MEMORY)  # the live ledger holds no backtest rows
+    m = StageManager(store, CONFIG, SimClock(T0), backtest_rows=rows + rows)  # the run twice
+    assert m.status().benchmark.n_markets == 120
+    with pytest.raises(StageNotMet, match="120 backtested markets"):
+        m.advance()
+
+    with pytest.raises(NotFound, match="scoring"):
+        run_forecast_rows(tmp_path / "not-a-run")
 
 
 def test_backtest_to_shadow_refused_without_skill() -> None:

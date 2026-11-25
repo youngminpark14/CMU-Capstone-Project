@@ -210,3 +210,77 @@ def test_a_pass_applies_the_stage_demotion_check(file, monkeypatch):
         summary = run_once(world, controller, resolver=no_resolver)
     assert len(calls) == 1
     assert any("stage demoted to backtest" in note for note in summary.notes)
+
+
+class FailingEvidence:
+    """Wraps a world's evidence; its poll fails the way an unreachable listing does."""
+
+    def __init__(self, inner, error):  # type: ignore[no-untyped-def]
+        self._inner = inner
+        self._error = error
+        self.last_failures: list[str] = []
+
+    def poll(self, *, force: bool = False):  # type: ignore[no-untyped-def]
+        raise self._error
+
+    def __getattr__(self, name):  # type: ignore[no-untyped-def]
+        return getattr(self._inner, name)
+
+
+def test_an_evidence_failure_is_a_note_and_the_rest_of_the_pass_still_runs(file, monkeypatch):
+    import dataclasses
+
+    from pmfa.execution import halt as halt_module
+    from pmfa.world.evidence.http import FetchError
+
+    world = live_world(file)
+    url = "https://www.federalreserve.gov/json/ne-press.json"
+    broken = FailingEvidence(world.evidence, FetchError(url, 503, f"{url} answered HTTP 503"))
+    world = dataclasses.replace(world, evidence=broken)
+    enforced = []
+    real_enforce = halt_module.enforce
+
+    def spy(*args, **kwargs):  # type: ignore[no-untyped-def]
+        enforced.append(True)
+        return real_enforce(*args, **kwargs)
+
+    monkeypatch.setattr(halt_module, "enforce", spy)
+    marks = len(world.store.equity_series())
+    world.clock.advance(60)
+    with EpisodeController(world) as controller:
+        summary = run_once(world, controller, resolver=no_resolver)
+    assert enforced == [True]  # the self-halt conditions were still checked
+    assert len(world.store.equity_series()) == marks + 1 and summary.equity is not None
+    assert any("ne-press.json" in note and "503" in note for note in summary.notes)
+    assert read_last_look(cursor_path(world)) == summary.started_at
+
+
+def test_a_pass_that_fails_does_not_end_the_loop(file, monkeypatch):
+    from pmfa.live import loop as loop_module
+    from pmfa.world.evidence.http import FetchError
+
+    world = live_world(file)
+    real_run_once = loop_module.run_once
+    calls = []
+
+    def flaky(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(True)
+        if len(calls) == 1:
+            raise FetchError("https://example.gov/x", None, "could not reach https://example.gov/x")
+        return real_run_once(*args, **kwargs)
+
+    monkeypatch.setattr(loop_module, "run_once", flaky)
+    seen = []
+    with EpisodeController(world) as controller:
+        passes = run_loop(
+            world,
+            controller,
+            interval_seconds=60,
+            max_passes=2,
+            sleep=world.clock.advance,
+            on_pass=seen.append,
+            resolver=no_resolver,
+        )
+    assert passes == 2 and len(calls) == 2
+    assert any("pass failed" in note and "could not reach" in note for note in seen[0].notes)
+    assert seen[1].notes == [] or all("pass failed" not in n for n in seen[1].notes)

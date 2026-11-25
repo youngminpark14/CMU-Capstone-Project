@@ -23,8 +23,9 @@ Safety properties, each checked by a test:
   anywhere. No builder logs or prints a secret.
 
 The two modes keep separate state files (``live_paths``): paper fills and the
-demo subaccount's real fills never share one portfolio, and a halt or a review
-in one mode is a halt or review in that mode only.
+demo subaccount's real fills never share one portfolio, and a halt flag or a
+review in one mode's database applies to that mode only. ``pmfa halt`` without
+``--mode`` therefore sets the flag in both databases.
 """
 
 from __future__ import annotations
@@ -204,9 +205,13 @@ def build_demo_world(config: Config, *, models: Models | None = None) -> LiveWor
     try:
         executor = demo_executor(config, clock)
     except ConfigError as exc:
+        # The inner message names the variables itself when none is set; a partial or
+        # unreadable credential gets its own detail, appended once.
+        names = (cfg.demo_key_id_env, cfg.demo_private_key_env, cfg.demo_private_key_path_env)
+        detail = "" if all(name in str(exc) for name in names) else f" ({exc})"
         raise ConfigError(
             f"demo mode needs the demo API credentials in the environment: {cfg.demo_key_id_env}, "
-            f"and {cfg.demo_private_key_env} or {cfg.demo_private_key_path_env} ({exc})"
+            f"and {cfg.demo_private_key_env} or {cfg.demo_private_key_path_env}{detail}"
         ) from None
     with contextlib.ExitStack() as stack:
         stack.callback(executor.client.close)

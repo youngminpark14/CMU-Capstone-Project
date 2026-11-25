@@ -9,15 +9,19 @@ the configuration allows:
   level, then the beam plus the protected slot at each further level, the
   depth being the calendar entries between the as-of time and the close plus
   the resolution, as the engine computes it), plus up to
-  ``forecast.max_evidence_followups`` evidence follow-ups of one Researcher and
-  one critic call each, capped by ``budget.max_calls_per_episode``;
+  ``forecast.max_evidence_followups`` evidence follow-ups of one Researcher call
+  each and one critic re-score per scoring call that had follow-ups, priced on
+  the slot of its level (the depth-1 critic at the first level), capped by
+  ``budget.max_calls_per_episode`` (the dearest calls kept);
 - a news-triggered pipeline episode adds one Monitor call and, since the event
   it will match is unknown, is bounded with a full-depth tree.
 
 The floor is what a run costs if every episode stops after its first call.
 A call's price is the mean recorded cost of answers to the same task on the
 same model in the response cache when there are any; otherwise the token
-assumptions below times the catalog price.
+assumptions below times the catalog price. Baseline calls always use the
+assumptions: the cache does not record whether an answer was given passages,
+so a recorded mean would blend the prompt-only and the with-passages calls.
 """
 
 from __future__ import annotations
@@ -78,7 +82,10 @@ class CallPricer:
 
     def __call__(self, task: RoleTask, slot: ModelSlot, *, with_passages: bool = True) -> Decimal:
         model = self.config.models.slots[slot].model
-        hit = self.recorded.get((task.value, model))
+        # The cache does not record whether a baseline answer had passages, so its
+        # mean would blend prompt-only and with-passages answers; the baseline is
+        # priced from the token assumptions instead.
+        hit = None if task is RoleTask.BASELINE else self.recorded.get((task.value, model))
         if hit is not None:
             self.used.add(
                 f"{task.value} on {model}: mean of {hit[1]} recorded answer(s), ${hit[0]:.4f}"
@@ -114,14 +121,17 @@ def _episode_bound(
         price(RoleTask.SELECT_PASSAGES, ModelSlot.RESEARCHER),
     ]
     priced += [price(RoleTask.GENERATE, ModelSlot.GENERATOR)] * parents
-    priced += [price(RoleTask.SCORE, ModelSlot.CRITIC_DEPTH1)]
-    priced += [price(RoleTask.SCORE, ModelSlot.CRITIC_DEEP)] * (parents - 1)
-    for _ in range(followups):
-        priced += [
-            price(RoleTask.SELECT_PASSAGES, ModelSlot.RESEARCHER),
-            price(RoleTask.SCORE, ModelSlot.CRITIC_DEEP),
-        ]
-    priced = priced[: config.budget.max_calls_per_episode]
+    scores = [price(RoleTask.SCORE, ModelSlot.CRITIC_DEPTH1)]
+    scores += [price(RoleTask.SCORE, ModelSlot.CRITIC_DEEP)] * (parents - 1)
+    priced += scores
+    # Each follow-up is one Researcher call. The engine then re-scores a parent's
+    # children once, on the critic slot of that parent's level, so there are at
+    # most min(follow-ups, scoring calls) re-scores; the bound puts them on the
+    # dearest scoring calls (the depth-1 critic's first).
+    priced += [price(RoleTask.SELECT_PASSAGES, ModelSlot.RESEARCHER)] * followups
+    priced += sorted(scores, reverse=True)[: min(followups, len(scores))]
+    # Under the episode's call cap, the dearest calls are the ones kept.
+    priced = sorted(priced, reverse=True)[: config.budget.max_calls_per_episode]
     return len(priced), sum(priced, Decimal("0"))
 
 

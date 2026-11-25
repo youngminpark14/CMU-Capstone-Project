@@ -3,7 +3,8 @@
 Written to ``manifest.json`` before a run does anything and rewritten when it
 ends: the full configuration, the model and effort of every slot with each
 model's listed knowledge cutoff, the date window, the snapshot and corpus
-manifests, the git commit, the seed, the systems with what happened to each,
+manifests with digests of the snapshot file and the corpus texts, the git
+commit with the paths that differed from it, the seed, the systems with what happened to each,
 the plan with its counts, the leakage and cost controls in force, and, for a
 run that stopped early, what was and was not run.
 """
@@ -55,6 +56,8 @@ class Plan(Record):
     left_out_triggers: list[str] = []
     skipped_points: list[str] = []
     skipped_events: list[str] = []
+    releases_without_event: list[str] = []
+    """Calendar releases in the window with no event of the followed series in the snapshot."""
     limit: int | None = None
     score: bool = True
     trade: bool = True
@@ -93,6 +96,13 @@ class RunManifest(Record):
     finished_at: UtcTime | None = None
     git_commit: str | None = None
     git_dirty: bool | None = None
+    git_changes: list[str] = []
+    """With ``git_dirty``: the paths changed against ``git_commit`` or untracked. The commit
+    alone does not hold the code that produced a run made from a dirty tree."""
+    snapshot_sha256: str | None = None
+    """The SHA-256 of the snapshot file the run read."""
+    corpus_hashes_digest: str | None = None
+    """``hashes_digest`` of the corpus manifest's per-document content hashes."""
     seed: int
     window_start: date
     window_end: UtcTime
@@ -110,6 +120,10 @@ class RunManifest(Record):
     progress: Progress = Progress()
     usage: RunUsage = RunUsage()
     leakage_controls: list[str] = []
+    leakage_checks: dict[str, Any] = {}
+    """What the canary guarded in this run: ``index_built``, ``canary_doc_id``,
+    ``canary_published_at``, ``retrievals_checked``, ``episodes_checked``. Empty
+    for a dry run, and in a manifest written before these were counted."""
     cost_controls: list[str] = []
     fill_assumptions: list[str] = []
     outputs: list[str] = []
@@ -132,24 +146,88 @@ def slot_info(config: Config) -> dict[str, SlotInfo]:
     return out
 
 
-def git_state(cwd: str | Path | None = None) -> tuple[str | None, bool | None]:
-    """The commit checked out and whether the working tree has changes, when git is available.
+class GitState(Record):
+    """The code a run was made from: the commit, and what differed from it in the working tree."""
 
-    Read-only: ``git rev-parse HEAD`` and ``git status --porcelain``.
-    """
+    commit: str | None = None
+    dirty: bool | None = None
+    changes: list[str] = []
+    """Paths changed against the commit or untracked, when the tree is dirty (paths only)."""
+    root: str | None = None
+
+
+def _git(args: list[str], cwd: str | Path) -> subprocess.CompletedProcess[str] | None:
     try:
-        commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, timeout=10
-        )
-        if commit.returncode != 0:
-            return None, None
-        status = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=cwd, capture_output=True, text=True, timeout=10
-        )
-        dirty = bool(status.stdout.strip()) if status.returncode == 0 else None
-        return commit.stdout.strip() or None, dirty
+        done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
-        return None, None
+        return None
+    return done if done.returncode == 0 else None
+
+
+def git_details(cwd: str | Path | None = None) -> GitState:
+    """The commit, whether the tree is dirty, and the changed and untracked paths.
+
+    ``cwd`` defaults to this package's own directory, so the repository asked
+    is the one holding the code that runs, not whatever directory the process
+    started in. Every command runs from that repository's root. Read-only:
+    ``git rev-parse`` and ``git status``.
+    """
+    start = Path(cwd) if cwd is not None else Path(__file__).resolve().parent
+    top = _git(["rev-parse", "--show-toplevel"], start)
+    if top is None or not top.stdout.strip():
+        return GitState()
+    root = top.stdout.strip()
+    commit = _git(["rev-parse", "HEAD"], root)
+    if commit is None:
+        return GitState(root=root)
+    status = _git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], root)
+    if status is None:
+        return GitState(commit=commit.stdout.strip() or None, root=root)
+    changes: list[str] = []
+    fields = status.stdout.split("\0")
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        changes.append(entry[3:])
+        if entry[0] in "RC":  # a rename or copy is followed by its original path
+            i += 1
+    return GitState(
+        commit=commit.stdout.strip() or None,
+        dirty=bool(changes),
+        changes=sorted(set(changes)),
+        root=root,
+    )
+
+
+def git_state(cwd: str | Path | None = None) -> tuple[str | None, bool | None]:
+    """The commit checked out and whether the working tree has changes (see ``git_details``)."""
+    state = git_details(cwd)
+    return state.commit, state.dirty
+
+
+def file_sha256(path: str | Path) -> str | None:
+    """The SHA-256 of a file's bytes, or ``None`` when it does not exist."""
+    import hashlib
+
+    path = Path(path)
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def hashes_digest(hashes: dict[str, str]) -> str:
+    """One SHA-256 over ``id hash`` lines in id order: names a set of content hashes in one value."""
+    import hashlib
+
+    text = "".join(f"{key} {value}\n" for key, value in sorted(hashes.items()))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def write_manifest(manifest: RunManifest, run_dir: str | Path) -> Path:
@@ -210,6 +288,7 @@ __all__ = [
     "FILL_ASSUMPTIONS",
     "LEAKAGE_CONTROLS",
     "MANIFEST_FILE",
+    "GitState",
     "Plan",
     "Progress",
     "RunManifest",
@@ -217,7 +296,10 @@ __all__ = [
     "RunUsage",
     "SlotInfo",
     "SystemPlan",
+    "file_sha256",
+    "git_details",
     "git_state",
+    "hashes_digest",
     "read_manifest",
     "slot_info",
     "write_manifest",

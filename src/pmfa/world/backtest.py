@@ -98,14 +98,26 @@ class CanaryGuard:
     ``get_passages`` are checked before their results are returned.
     """
 
-    def __init__(self, inner: Any, *, canary_doc_id: str, canary_text: str) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        *,
+        canary_doc_id: str,
+        canary_text: str,
+        _counts: dict[str, int] | None = None,
+    ) -> None:
         self.inner = inner
         self.canary_doc_id = canary_doc_id
         self.canary_text = canary_text
-        self.checked_retrievals = 0
+        self._counts = _counts if _counts is not None else {"retrievals": 0}
+
+    @property
+    def checked_retrievals(self) -> int:
+        """Retrieval calls checked so far, by this guard and every ``with_ranking`` variant of it."""
+        return self._counts["retrievals"]
 
     def _check(self, passages: list[Passage], where: str) -> None:
-        self.checked_retrievals += 1
+        self._counts["retrievals"] += 1
         hits = canary_hits(passages, canary_doc_id=self.canary_doc_id, canary_text=self.canary_text)
         if hits:
             raise LeakageDetected(
@@ -138,15 +150,20 @@ class CanaryGuard:
 
         The ranking variants of the single-pass baseline share one index; only
         the ranking step differs, so the inner knowledge is copied shallowly
-        with a changed configuration.
+        with a changed configuration. The variant shares this guard's count of
+        checked retrievals.
         """
         variant = copy.copy(self.inner)
         config: Config = variant.config
         variant.config = config.model_copy(
             update={"retrieval": config.retrieval.model_copy(update={"ranking": ranking})}
         )
-        guard = CanaryGuard(variant, canary_doc_id=self.canary_doc_id, canary_text=self.canary_text)
-        return guard
+        return CanaryGuard(
+            variant,
+            canary_doc_id=self.canary_doc_id,
+            canary_text=self.canary_text,
+            _counts=self._counts,
+        )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
@@ -204,7 +221,9 @@ class BacktestData:
         self.embedder_identity = make_embedder(config.retrieval.embedder).identity
         retrieval = config.retrieval
         material = {
-            "snapshot": self.snapshot_manifest.model_dump(mode="json"),
+            # What was dropped does not change what is indexed, and leaving it out
+            # keeps the key of a snapshot built before the field existed.
+            "snapshot": self.snapshot_manifest.model_dump(mode="json", exclude={"dropped_events"}),
             "corpus": self.corpus_manifest.model_dump(mode="json"),
             "embedder": self.embedder_identity,
             "chunking": [

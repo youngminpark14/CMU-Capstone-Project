@@ -250,6 +250,8 @@ class FakeExchange:
     """Raise :class:`Interrupted` on this many-plus-one-th candle request."""
     candle_calls: list[tuple[str, int, datetime, datetime]] = field(default_factory=list)
     event_calls: list[tuple[str, datetime, datetime]] = field(default_factory=list)
+    listed_without_markets: list[str] = field(default_factory=list)
+    """Event tickers the fake lists with no markets, as the real adapter would drop them."""
 
     def historical_cutoff(self) -> HistoricalCutoff:
         return HistoricalCutoff(market_settled_ts=utc(2026, 9, 26))
@@ -264,14 +266,25 @@ class FakeExchange:
         )
 
     def iter_series_events(
-        self, series_ticker: str, *, closing_from: datetime, closing_to: datetime
+        self,
+        series_ticker: str,
+        *,
+        closing_from: datetime,
+        closing_to: datetime,
+        dropped: dict[str, str] | None = None,
     ) -> Iterator[Event]:
         self.event_calls.append((series_ticker, closing_from, closing_to))
+        dropped = {} if dropped is None else dropped
+        for ticker in self.listed_without_markets:
+            if ticker.startswith(series_ticker + "-"):
+                dropped[ticker] = "listed with no markets"
         for event in events():
-            if event.series_ticker == series_ticker and (
-                closing_from <= event.close_time <= closing_to
-            ):
+            if event.series_ticker != series_ticker:
+                continue
+            if closing_from <= event.close_time <= closing_to:
                 yield event
+            else:
+                dropped[event.event_ticker] = f"closes {event.close_time.isoformat()}"
 
     def get_candles(
         self, ticker: str, *, start: datetime, end: datetime, interval_minutes: int

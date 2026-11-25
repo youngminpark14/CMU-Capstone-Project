@@ -6,15 +6,18 @@ Three kinds, per the spec's episode flow (step 1):
   enabled series) that is new since the last look. One trigger per document:
   id from the document id, ``at`` its publish time.
 - **Price move.** On a market of a followed, open event, the YES mid moved by
-  ``config.triggers.price_move_cents`` or more within a window of
-  ``price_move_window_minutes``, read from one-minute candles. Windows are fixed
-  buckets of that length aligned to the Unix epoch; within a bucket the move is
-  measured from the price at the bucket's start (the last candle at or before
-  it) through each candle in the bucket. One trigger per event per bucket, not
-  per market: ``at`` is the end of the first candle at which any of the event's
-  markets crossed, id from the event and the bucket. The current and the
-  previous bucket are scanned, so a move in the last minutes of a bucket is not
-  lost between two passes.
+  ``config.triggers.price_move_cents`` or more within ``price_move_window_minutes``,
+  read from one-minute candles. The window slides: at each candle end ``t`` the
+  mid is compared with every mid in the window before it (the candles ending in
+  ``(t - window, t)``, and the price at ``t - window``, which is the last candle
+  at or before it). A move crosses at ``t`` when that comparison reaches the
+  threshold and did not at the market's previous priced candle, so one move
+  fires once even while its starting price stays inside the window. Fixed
+  buckets of the window's length, aligned to the Unix epoch, only de-duplicate:
+  one trigger per event per bucket, not per market, where ``at`` is the first
+  crossing in the bucket among the event's markets and the id comes from the
+  event and the bucket. The current and the previous bucket are scanned, so a
+  move in the last minutes of a bucket is not lost between two passes.
 - **Schedule tick.** With ``config.triggers.daily_recheck_open_positions``, one
   re-check a day of each followed event the agent holds a position in: id from
   the event and the trading day, ``at`` the start of the trading day in
@@ -88,35 +91,53 @@ def candle_mid(candle: Candle) -> Decimal | None:
     return (bid.close + ask.close) / 2
 
 
+def _priced(candles: Sequence[Candle]) -> list[tuple[datetime, Decimal]]:
+    """``(end_ts, mid)`` of every candle with a mid, oldest first."""
+    points = []
+    for candle in sorted(candles, key=lambda c: c.end_ts):
+        mid = candle_mid(candle)
+        if mid is not None:
+            points.append((candle.end_ts, mid))
+    return points
+
+
+def _move_at(points: Sequence[tuple[datetime, Decimal]], i: int, window: timedelta) -> Decimal:
+    """The largest distance from the mid at ``points[i]`` to a mid in the window before it.
+
+    The window is the points ending in ``(t - window, t)`` plus the price at
+    ``t - window`` (the last point at or before it).
+    """
+    t, mid = points[i]
+    move = Decimal(0)
+    for at, earlier in reversed(points[:i]):
+        move = max(move, abs(mid - earlier))
+        if at <= t - window:
+            break  # the price at the window's start: nothing older counts
+    return move
+
+
 def first_crossing(
     candles: Sequence[Candle], *, start: datetime, window: timedelta, threshold: Decimal
 ) -> tuple[datetime, Decimal] | None:
-    """The first candle end in ``(start, start + window]`` at which the mid's range reached ``threshold``.
+    """The first candle end in ``(start, start + window]`` at which a move of ``threshold`` began.
 
-    The range starts from the price at ``start`` (the last priced candle ending
-    at or before it), so a jump at the bucket's first minute counts. Returns the
-    crossing time and the range at that moment.
+    A move is the mid differing by ``threshold`` or more from a mid in the
+    sliding window before it (see ``_move_at``); it begins at a candle where that
+    holds and did not hold at the previous priced candle. ``candles`` must reach
+    back far enough to price the window before the previous candle. Returns the
+    crossing time and the size of the move then.
     """
     end = start + window
-    ordered = sorted(candles, key=lambda c: c.end_ts)
-    low: Decimal | None = None
-    high: Decimal | None = None
-    for candle in ordered:
-        if candle.end_ts > start:
+    points = _priced(candles)
+    crossed_before = False
+    for i, (at, _) in enumerate(points):
+        move = _move_at(points, i, window)
+        crossed = move >= threshold
+        if crossed and not crossed_before and start < at <= end:
+            return at, move
+        if at > end:
             break
-        mid = candle_mid(candle)
-        if mid is not None:
-            low = high = mid
-    for candle in ordered:
-        if not (start < candle.end_ts <= end):
-            continue
-        mid = candle_mid(candle)
-        if mid is None:
-            continue
-        low = mid if low is None else min(low, mid)
-        high = mid if high is None else max(high, mid)
-        if high - low >= threshold:
-            return candle.end_ts, high - low
+        crossed_before = crossed
     return None
 
 
@@ -143,14 +164,15 @@ def price_move_triggers(
     """Price-move triggers for the followed, open ``events``, one per event per bucket.
 
     Reads one-minute candles for each open market over the previous bucket, the
-    current one, and one window before them (for the starting price). A market
-    whose candles cannot be read is skipped and noted.
+    current one, and two windows before them (the window behind the earliest
+    candle scanned, and behind the candle before it). A market whose candles
+    cannot be read is skipped and noted.
     """
     window = timedelta(minutes=config.triggers.price_move_window_minutes)
     threshold = Decimal(config.triggers.price_move_cents) / 100
     current = bucket_start(now, window)
     buckets = [current - window, current]
-    fetch_from = buckets[0] - window
+    fetch_from = buckets[0] - 2 * window
     followed = {s.ticker for s in config.follow.enabled_series()}
     triggers: list[Trigger] = []
     for event in events:

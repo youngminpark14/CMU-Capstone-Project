@@ -9,7 +9,13 @@ A stage advances one step at a time and only when the benchmark for the next
 stage is met, computed from the state store with ``pmfa.evaluation.benchmarks``:
 
 - backtest -> shadow: Brier skill above zero on at least 200 backtested markets.
-  Rows are the resolved, priced ledger entries of backtest-mode pipeline forecasts.
+  Rows are the resolved, priced ledger entries of backtest-mode pipeline
+  forecasts: those in the state store, plus ``backtest_rows`` given to the
+  manager. ``pmfa backtest`` keeps its ledger in the run directory, not in the
+  live database, so ``pmfa stage status|advance --from-run RUN_DIR`` reads the
+  scoring pass's ledger (``RUN_DIR/work/scoring.sqlite``, see
+  ``run_forecast_rows``). The trading pass's ledger is not read, so a market is
+  not counted twice. A row is counted once per run, episode and market.
 - shadow -> approval: four shadow weeks with positive simulated P&L after fees and
   drawdown under 10%. Trades are the fills of orders whose episodes ran in shadow
   mode, settled from the stored settlements; the period runs from the first
@@ -26,11 +32,13 @@ demotion are not counted again for the next.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from pmfa.config import Config
 from pmfa.decision import risk_state, trading_day_start
-from pmfa.errors import PmfaError
+from pmfa.errors import NotFound, PmfaError
 from pmfa.evaluation.benchmarks import (
     ApprovalBenchmark,
     BacktestBenchmark,
@@ -66,6 +74,52 @@ class StageStatus(Record):
         return self.benchmark is not None and self.benchmark.met
 
 
+def ledger_forecast_rows(store: StateStore, run_id: str = "ledger") -> list[ForecastRow]:
+    """Resolved, priced backtest ledger entries of the pipeline in ``store``, as forecast rows."""
+    rows = []
+    for e in store.ledger(system="pipeline"):
+        if e.mode is not RunMode.BACKTEST or e.outcome is None or e.market_price is None:
+            continue
+        rows.append(
+            ForecastRow(
+                run_id=run_id,
+                system=e.system,
+                event_ticker=e.event_ticker,
+                market_ticker=e.market_ticker,
+                category=e.category,
+                trigger_id=e.episode_id,
+                as_of=e.as_of,
+                probability=e.probability,
+                market_price=e.market_price,
+                outcome=e.outcome,
+            )
+        )
+    return rows
+
+
+SCORING_LEDGER = Path("work") / "scoring.sqlite"
+"""Where ``pmfa backtest`` keeps the scoring pass's ledger inside a run directory."""
+
+
+def run_forecast_rows(run_dir: str | Path) -> list[ForecastRow]:
+    """The backtested forecasts of one ``pmfa backtest`` run directory (its scoring pass's ledger).
+
+    Rows carry the run directory's name as ``run_id``. Raises ``NotFound`` when
+    the directory holds no scoring ledger.
+    """
+    from pmfa.state.store import SqliteStore
+
+    run_dir = Path(run_dir)
+    path = run_dir / SCORING_LEDGER
+    if not path.is_file():
+        raise NotFound(
+            f"{run_dir} has no scoring ledger ({SCORING_LEDGER}): "
+            "not a pmfa backtest run directory, or the run did not score"
+        )
+    with SqliteStore(path) as store:
+        return ledger_forecast_rows(store, run_dir.name)
+
+
 def next_stage(stage: Stage) -> Stage | None:
     i = LADDER.index(stage)
     return LADDER[i + 1] if i + 1 < len(LADDER) else None
@@ -78,10 +132,19 @@ def previous_stage(stage: Stage) -> Stage:
 class StageManager:
     """Reads and moves the persisted stage. See the module docstring for the rules."""
 
-    def __init__(self, store: StateStore, config: Config, clock: Clock) -> None:
+    def __init__(
+        self,
+        store: StateStore,
+        config: Config,
+        clock: Clock,
+        *,
+        backtest_rows: Sequence[ForecastRow] = (),
+    ) -> None:
         self.store = store
         self.config = config
         self.clock = clock
+        self.backtest_rows = list(backtest_rows)
+        """Backtested forecasts kept outside the store (``run_forecast_rows``)."""
 
     # -- reading
 
@@ -114,26 +177,14 @@ class StageManager:
         return approval_benchmark(self.approval_reviews(state), stages=stages)
 
     def forecast_rows(self) -> list[ForecastRow]:
-        """Resolved, priced backtest ledger entries of the pipeline, as forecast rows."""
-        rows = []
-        for e in self.store.ledger(system="pipeline"):
-            if e.mode is not RunMode.BACKTEST or e.outcome is None or e.market_price is None:
-                continue
-            rows.append(
-                ForecastRow(
-                    run_id="ledger",
-                    system=e.system,
-                    event_ticker=e.event_ticker,
-                    market_ticker=e.market_ticker,
-                    category=e.category,
-                    trigger_id=e.episode_id,
-                    as_of=e.as_of,
-                    probability=e.probability,
-                    market_price=e.market_price,
-                    outcome=e.outcome,
-                )
-            )
-        return rows
+        """Resolved, priced backtest forecasts of the pipeline: the store's, then ``backtest_rows``.
+
+        Each (run, episode, market) counts once, so naming a run twice changes nothing.
+        """
+        unique: dict[tuple[str, str | None, str], ForecastRow] = {}
+        for row in [*ledger_forecast_rows(self.store), *self.backtest_rows]:
+            unique.setdefault((row.run_id, row.trigger_id, row.market_ticker), row)
+        return list(unique.values())
 
     def shadow_trades(self) -> tuple[list[TradeRow], datetime | None]:
         """Fills of shadow-mode episodes as trade rows, and when the first shadow episode started."""
@@ -240,6 +291,8 @@ __all__ = [
     "StageManager",
     "StageNotMet",
     "StageStatus",
+    "ledger_forecast_rows",
     "next_stage",
     "previous_stage",
+    "run_forecast_rows",
 ]

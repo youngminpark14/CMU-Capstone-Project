@@ -237,7 +237,12 @@ class KalshiData:
         return cutoff
 
     def iter_series_events(
-        self, series_ticker: str, *, closing_from: datetime, closing_to: datetime
+        self,
+        series_ticker: str,
+        *,
+        closing_from: datetime,
+        closing_to: datetime,
+        dropped: dict[str, str] | None = None,
     ) -> Iterator[Event]:
         """Every event of a series whose close time is in ``[closing_from, closing_to]``.
 
@@ -254,7 +259,12 @@ class KalshiData:
            event whose markets close in the window but which the live list
            left out is fetched with ``GET /events/{ticker}``.
         4. Yield the events whose close time is in the window, earliest first.
+
+        ``dropped``, when given, receives every listed event that is not
+        yielded, with the reason: no markets on either side, or a close time
+        outside the window (an event still open at the build time, say).
         """
+        dropped = {} if dropped is None else dropped
         closing_to = min(closing_to, self.clock.now())
         if closing_to < closing_from:
             return
@@ -278,10 +288,19 @@ class KalshiData:
             live = [parse_market(m) for m in raw.get("markets") or []]
             markets = merge_markets(live, historical.get(event_ticker, []))
             if not markets:
+                dropped[event_ticker] = (
+                    "listed with no markets on the live or the historical endpoints"
+                )
                 continue
             event = parse_event(raw, markets)
             if closing_from <= event.close_time <= closing_to:
                 events.append(event)
+            else:
+                side = "after the end" if event.close_time > closing_to else "before the start"
+                dropped[event_ticker] = (
+                    f"closes {event.close_time.isoformat()}, {side} of the window "
+                    f"{closing_from.isoformat()} to {closing_to.isoformat()}"
+                )
         yield from sorted(events, key=lambda e: (e.close_time, e.event_ticker))
 
     # -- internals

@@ -8,7 +8,7 @@
 3. **Dry run** stops here: no model call, the plan and its dollar estimate are returned.
 4. **Scoring pass.** For every scoring point (an event at 7, 3 and 1 days
    before close), every system forecasts every listed market of the event as
-   of that time: the market's mid, the one-call baselines, and a full pipeline
+   of that time: the market's price, the one-call baselines, and a full pipeline
    episode from a schedule trigger. One simulated clock and one state store.
 5. **Trading pass** (pipeline only). Every corpus document in the window, in
    time order, triggers an episode on one continuous clock and a second store,
@@ -46,6 +46,7 @@ from pmfa.config import Config
 from pmfa.errors import BudgetExhausted, ModelOutputError, RunBudgetExhausted
 from pmfa.evaluation.baselines import (
     MARKET,
+    MARKET_PRICE_RULE,
     MODEL_SYSTEMS,
     PIPELINE,
     RANKING,
@@ -56,6 +57,7 @@ from pmfa.evaluation.baselines import (
     forecast_rows,
     market_forecast,
     market_prices,
+    price_source,
 )
 from pmfa.evaluation.estimate import plan_systems
 from pmfa.evaluation.manifest import (
@@ -66,14 +68,21 @@ from pmfa.evaluation.manifest import (
     Progress,
     RunManifest,
     RunUsage,
-    git_state,
+    file_sha256,
+    git_details,
+    hashes_digest,
     slot_info,
     write_manifest,
 )
 from pmfa.evaluation.resolver import EpisodeAudit, resolve_outcomes
 from pmfa.evaluation.rows import ForecastRow, TradeRow
 from pmfa.evaluation.run_metrics import METRICS_FILE, OrderPricing, compute_metrics
-from pmfa.evaluation.schedule import Schedule, ScoringPoint, build_schedule
+from pmfa.evaluation.schedule import (
+    Schedule,
+    ScoringPoint,
+    build_schedule,
+    releases_without_event,
+)
 from pmfa.models.cassette import Cassette, CassetteEntry, EntryUsage
 from pmfa.models.pricing import assert_window_after_cutoffs
 from pmfa.ports import Clock, Models, World
@@ -90,6 +99,7 @@ from pmfa.world.backtest import (
     build_backtest_world,
 )
 from pmfa.world.clocks import SimClock, SystemClock
+from pmfa.world.snapshot.store import snapshot_path
 
 FORECASTS_FILE = "forecasts.csv"
 TRADES_FILE = "trades.csv"
@@ -253,7 +263,11 @@ def _ordered_systems(systems: Sequence[str] | None, config: Config) -> list[str]
 def _choose_models(
     models: Models | None, config: Config, *, dry_run: bool
 ) -> tuple[Models | None, str]:
-    """The supplied models, the live gateway when the key is set, or none."""
+    """The supplied models, the live gateway when the key is set, or none.
+
+    Before the live gateway is built, LangSmith and LangChain tracing are
+    switched off for the process, whatever the environment inherited.
+    """
     if models is not None:
         return models, "supplied"
     if not os.environ.get(config.models.api_key_env):
@@ -261,7 +275,10 @@ def _choose_models(
     if dry_run:
         return None, "gateway"
     from pmfa.models.gateway import Gateway
+    from pmfa.world.live import disable_tracing
 
+    # Prompts must not leave the machine through an inherited tracing switch.
+    disable_tracing()
     return Gateway(config, cache_dir=config.paths.cache_dir() / "models"), "gateway"
 
 
@@ -271,7 +288,7 @@ def _statuses(
     out: dict[str, str] = {}
     for s in SYSTEMS:
         if s not in systems:
-            out[s] = NO_KEY if s in MODEL_SYSTEMS and source == "none" else "not requested"
+            out[s] = "not requested"
             continue
         if s in MODEL_SYSTEMS and source == "none":
             out[s] = NO_KEY
@@ -281,6 +298,43 @@ def _statuses(
             out[s] = "not run: --no-score"
         else:
             out[s] = "would run" if dry_run else "run"
+    return out
+
+
+def _final_statuses(
+    statuses: dict[str, str],
+    running: list[str],
+    progress: Progress,
+    *,
+    points: int,
+    triggers: int,
+    stopped: str,
+) -> dict[str, str]:
+    """What each running system got through, from the run's progress.
+
+    ``run`` when it finished everything planned for it; ``partial: k of n
+    points[, j of m triggers] (why)`` when the dollar cap stopped it part way;
+    ``not run: ...`` when the cap stopped the run before it scored anything.
+    ``points`` and ``triggers`` are the planned counts (``triggers`` only
+    applies to the pipeline, and is 0 when the trading pass was not planned).
+    """
+    out = dict(statuses)
+    if not stopped:
+        return out
+    for system in running:
+        done = sum(1 for p in progress.points_done if p.rsplit("/", 1)[-1] == system)
+        planned, finished = points, done
+        counts = f"{done} of {points} points"
+        if system == PIPELINE and triggers:
+            planned += triggers
+            finished += len(progress.triggers_done)
+            counts += f", {len(progress.triggers_done)} of {triggers} triggers"
+        if finished >= planned:
+            out[system] = "run"
+        elif finished == 0:
+            out[system] = f"not run: stopped before it started, {stopped}"
+        else:
+            out[system] = f"partial: {counts} ({stopped})"
     return out
 
 
@@ -337,10 +391,18 @@ class _Run:
         self.progress = Progress()
         self.stopped = ""
         self.skipped_markets: list[str] = []
-        self.quotes: list[tuple[str, float]] = []
-        """(price source, quote age in hours) of every market price scored."""
+        """Markets with no price at a scoring point: no system gets a row for them there."""
+        self.worlds: list[World] = []
+        """The worlds the passes built, so their canary guards can be read at the end."""
+        self.episodes_checked = 0
+        """Finished pipeline episodes scanned for the canary."""
+        self.unresolved_rows: list[str] = []
+        """Priced markets left out because the snapshot holds no final result for them."""
+        self.quotes: list[dict[str, Any]] = []
+        """Price source, quote age and last-trade age of every market price scored (``_quote_info``)."""
 
     def canary_check(self, episode: EpisodeRecord) -> None:
+        self.episodes_checked += 1
         assert_episode_clean(
             episode,
             canary_doc_id=self.data.canary.doc_id,
@@ -364,6 +426,18 @@ class _Run:
         self.exits.setdefault(episode.episode_id, episode)
         self.canary_check(episode)
         return episode
+
+
+def _leakage_checks(run: _Run, *, index_built: bool) -> dict[str, Any]:
+    """What the canary actually guarded in this run: the index, retrievals and episodes checked."""
+    retrievals = sum(int(getattr(w.knowledge, "checked_retrievals", 0)) for w in run.worlds)
+    return {
+        "index_built": index_built,
+        "canary_doc_id": run.data.canary.doc_id if index_built else None,
+        "canary_published_at": run.data.canary.published_at.isoformat() if index_built else None,
+        "retrievals_checked": retrievals,
+        "episodes_checked": run.episodes_checked,
+    }
 
 
 def _episode_id(world: World, trigger: Trigger) -> str:
@@ -405,6 +479,7 @@ def _scoring_pass(
         models=models if models is not None else _NoModels(),
         knowledge=knowledge if knowledge is not None else data.guard(_NoKnowledge()),
     )
+    run.worlds.append(world)
     pending = [(p, s) for p in points for s in running]
     done = 0
     for point in points:
@@ -415,10 +490,15 @@ def _scoring_pass(
         for m in event.markets:
             if m.ticker not in prices:
                 run.skipped_markets.append(
-                    f"{point.point_id} {m.ticker}: no YES mid at the as-of time"
+                    f"{point.point_id} {m.ticker}: no price at the as-of time (no two-sided "
+                    "quote and no trade)"
                 )
             elif m.ticker in results:
                 run.quotes.append(_quote_info(data, m, point.as_of))
+            else:
+                run.unresolved_rows.append(
+                    f"{point.point_id} {m.ticker}: no final result in the snapshot"
+                )
         for system in running:
             forecast = _forecast(run, world, point, system, event)
             if forecast is None:
@@ -439,36 +519,57 @@ def _scoring_pass(
     return world
 
 
-def _quote_info(data: BacktestData, market: Any, as_of: datetime) -> tuple[str, float]:
-    """Where a market's price came from (bid-ask mid or last trade) and how old that price was."""
-    bid, ask = market.yes_bid, market.yes_ask
-    source = "mid" if bid is not None and ask is not None and bid > 0 and ask < 1 else "last_trade"
-    traded = source == "last_trade"  # the last trade can be older than the last quote
-    ends = [
-        c.end_ts
-        for c in (
-            data.snapshot.latest_candle(market.ticker, 1, until=as_of, traded=traded),
-            data.snapshot.latest_candle(market.ticker, 60, until=as_of, traded=traded),
-        )
-        if c is not None
-    ]
-    age = (as_of - max(ends)).total_seconds() / 3600 if ends else float("nan")
-    return source, age
+def _quote_info(data: BacktestData, market: Any, as_of: datetime) -> dict[str, Any]:
+    """Where a market's price came from, the age of the quote, and the age of the last trade.
+
+    The quote's age is the time since the latest candle at or before the as-of
+    time, that is since the quote or a trade last changed (candles exist only
+    for minutes with a change); a standing quote that has not moved is still
+    the quote. The last trade's age is reported apart, for the prices that use it.
+    """
+    source = price_source(market)
+
+    def age(traded: bool) -> float | None:
+        ends = [
+            c.end_ts
+            for c in (
+                data.snapshot.latest_candle(market.ticker, 1, until=as_of, traded=traded),
+                data.snapshot.latest_candle(market.ticker, 60, until=as_of, traded=traded),
+            )
+            if c is not None
+        ]
+        return (as_of - max(ends)).total_seconds() / 3600 if ends else None
+
+    return {
+        "source": source,
+        "quote_age_hours": age(False),
+        "trade_age_hours": age(True) if source.startswith("last_trade") else None,
+    }
 
 
-def _quote_summary(quotes: list[tuple[str, float]]) -> dict[str, Any] | None:
+def _quote_summary(quotes: list[dict[str, Any]]) -> dict[str, Any] | None:
     import statistics
 
     if not quotes:
         return None
-    ages = sorted(a for _, a in quotes if a == a)
+    quote_ages = sorted(q["quote_age_hours"] for q in quotes if q["quote_age_hours"] is not None)
+    trade_ages = sorted(q["trade_age_hours"] for q in quotes if q["trade_age_hours"] is not None)
+
+    def spread(ages: list[float]) -> dict[str, float | None]:
+        return {
+            "median": statistics.median(ages) if ages else None,
+            "max": ages[-1] if ages else None,
+            "share_older_than_24h": sum(a > 24 for a in ages) / len(ages) if ages else None,
+        }
+
     return {
         "n": len(quotes),
-        "from_mid": sum(s == "mid" for s, _ in quotes),
-        "from_last_trade": sum(s == "last_trade" for s, _ in quotes),
-        "median_age_hours": statistics.median(ages) if ages else None,
-        "max_age_hours": ages[-1] if ages else None,
-        "share_older_than_24h": sum(a > 24 for a in ages) / len(ages) if ages else None,
+        "rule": MARKET_PRICE_RULE,
+        "from_mid": sum(q["source"] == "mid" for q in quotes),
+        "from_last_trade": sum(q["source"].startswith("last_trade") for q in quotes),
+        "last_trade_clamped": sum(q["source"] == "last_trade_clamped" for q in quotes),
+        "quote_age_hours": spread(quote_ages),
+        "last_trade_age_hours": spread(trade_ages),
     }
 
 
@@ -515,6 +616,7 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
     world = build_backtest_world(
         data, config, clock=clock, store=store, models=models, knowledge=knowledge
     )
+    run.worlds.append(world)
     world.executor.mark(schedule.window_start)  # type: ignore[attr-defined]
     for i, trigger in enumerate(triggers):
         clock.set(max(trigger.at, clock.now()))
@@ -533,13 +635,20 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
         run.progress.triggers_done.append(trigger.trigger_id)
         if episode.event_ticker is not None:
             event = world.exchange.get_event(episode.event_ticker)
+            prices = market_prices(event)
+            results = _results(data, episode.event_ticker)
+            run.unresolved_rows.extend(
+                f"{trigger.trigger_id} {ticker}: no final result in the snapshot"
+                for ticker in sorted(prices)
+                if ticker not in results
+            )
             run.rows.extend(
                 forecast_rows(
                     _pipeline_forecast(episode, episode.event_ticker),
                     run_id=run_id,
                     category=_category(config, event.series_ticker),
-                    prices=market_prices(event),
-                    results=_results(data, episode.event_ticker),
+                    prices=prices,
+                    results=results,
                     trigger_id=trigger.trigger_id,
                 )
             )
@@ -816,8 +925,8 @@ def run_backtest(
     cutoffs = assert_window_after_cutoffs(config, config.evaluation.window_start)
     del cutoffs  # recorded per slot in the manifest
     run_dir = Path(run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
 
+    # The directory is created only once the data opened: a refused run leaves nothing behind.
     data = BacktestData(config)
     events = data.events()
     schedule = build_schedule(events, data.corpus, config, window_end=data.window_end, limit=limit)
@@ -835,14 +944,17 @@ def run_backtest(
         trade=trade,
         cache_dir=config.paths.cache_dir() / "models",
     )
-    commit, dirty = git_state()
+    git = git_details()
     manifest = RunManifest(
         run_id=run_dir.name,
         name=run_dir.name,
         status="dry_run" if dry_run else "running",
         created_at=stamp.now(),
-        git_commit=commit,
-        git_dirty=dirty,
+        git_commit=git.commit,
+        git_dirty=git.dirty,
+        git_changes=git.changes,
+        snapshot_sha256=file_sha256(snapshot_path(config)),
+        corpus_hashes_digest=hashes_digest(data.corpus_manifest.content_hashes),
         seed=config.evaluation.seed,
         window_start=config.evaluation.window_start,
         window_end=data.window_end,
@@ -859,6 +971,13 @@ def run_backtest(
             left_out_triggers=schedule.left_out_triggers,
             skipped_points=schedule.skipped_points,
             skipped_events=schedule.skipped_events,
+            releases_without_event=releases_without_event(
+                events,
+                data.calendar.events,
+                config,
+                window_start=schedule.window_start,
+                window_end=data.window_end,
+            ),
             limit=limit,
             score=score,
             trade=trade,
@@ -886,15 +1005,17 @@ def run_backtest(
         shutil.rmtree(run_dir / name, ignore_errors=True)
     (run_dir / WORK_DIR).mkdir(parents=True)
     run = _Run(data, config, run_dir, tap)
-    if any(s != MARKET for s in running):
+    index_built = any(s != MARKET for s in running)
+    if index_built:
         manifest = manifest.model_copy(update={"index": data.index_info()})
 
     scoring_world: World | None = None
     trading_world: World | None = None
+    trading_planned = trade and PIPELINE in running and tap is not None
     try:
         if score:
             scoring_world = _scoring_pass(run, schedule, running, tap, run_dir.name)
-        if trade and PIPELINE in running and tap is not None:
+        if trading_planned:
             if run.stopped:
                 run.progress.triggers_not_run.extend(t.trigger_id for t in schedule.triggers)
             else:
@@ -909,6 +1030,7 @@ def run_backtest(
                 "status": "aborted",
                 "finished_at": stamp.now(),
                 "progress": run.progress.model_copy(update={"stopped_reason": str(exc)}),
+                "leakage_checks": _leakage_checks(run, index_built=index_built),
                 "notes": [*manifest.notes, f"aborted: {exc}"],
             }
         )
@@ -926,11 +1048,14 @@ def run_backtest(
             fh.write(e.model_copy(update={"trace": []}).model_dump_json() + "\n")
     saved = _save_traces(run, [scoring_world, trading_world], episodes, save_examples)
 
-    final_status = dict(statuses)
-    if run.stopped:
-        for s in running:
-            if s in MODEL_SYSTEMS:
-                final_status[s] = f"partial: {run.stopped}"
+    final_status = _final_statuses(
+        statuses,
+        running,
+        run.progress,
+        points=len(schedule.points) if score else 0,
+        triggers=len(schedule.triggers) if trading_planned else 0,
+        stopped=run.stopped,
+    )
     metrics = compute_metrics(
         [r for r, _ in run.rows],
         [n.note for _, n in run.rows],
@@ -942,6 +1067,10 @@ def run_backtest(
         config=config,
     )
     metrics["skipped_markets"] = run.skipped_markets
+    metrics["unresolved_rows"] = run.unresolved_rows
+    metrics["scored_events"] = sorted(
+        {r.event_ticker for r, _ in run.rows if r.horizon_days is not None}
+    )
     metrics["quotes"] = _quote_summary(run.quotes)
     (run_dir / METRICS_FILE).write_text(
         json.dumps(metrics, indent=2, default=str) + "\n", encoding="utf-8"
@@ -971,6 +1100,7 @@ def run_backtest(
             "finished_at": stamp.now(),
             "systems": final_status,
             "progress": run.progress.model_copy(update={"stopped_reason": run.stopped}),
+            "leakage_checks": _leakage_checks(run, index_built=index_built),
             "usage": usage,
             "outputs": [
                 "manifest.json",

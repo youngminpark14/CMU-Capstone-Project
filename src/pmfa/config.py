@@ -104,6 +104,10 @@ class SourcesConfig(Section):
     min_seconds_between_requests: float = 2.0
     manual_dir: str = "data/manual"
     """Hand-downloaded releases go here when a site refuses automated clients."""
+    feeds: list[str] = []
+    """RSS or Atom feed URLs the live modes poll as secondary evidence (``world/evidence/feed.py``).
+    Empty by default: nothing is fetched unless a feed is listed. A feed whose host is a primary
+    source of a series is refused, so a feed never becomes a primary origin."""
 
 
 class TriggerConfig(Section):

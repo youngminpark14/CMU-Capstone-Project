@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SYNTHETIC TEST FIXTURE, written by hand for pmfa's tests. Not a real feed: the site,
+     the entries and their text are invented, and nothing here was fetched from anywhere. -->
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Policy Blog (synthetic)</title>
+  <id>urn:example:policy-blog</id>
+  <updated>2026-11-25T10:00:00Z</updated>
+  <entry>
+    <title>Reading the minutes</title>
+    <id>urn:example:policy-blog:entry-1</id>
+    <link rel="alternate" href="https://blog.example.net/reading-the-minutes"/>
+    <link rel="replies" href="https://blog.example.net/reading-the-minutes#comments"/>
+    <published>2026-11-25T10:00:00Z</published>
+    <updated>2026-11-25T11:00:00Z</updated>
+    <summary>Participants saw inflation as somewhat elevated.</summary>
+  </entry>
+  <entry>
+    <title>A post with a local time and no zone</title>
+    <id>urn:example:policy-blog:entry-2</id>
+    <link href="https://blog.example.net/no-zone"/>
+    <updated>2026-11-25T09:00:00</updated>
+    <content type="html">&lt;p&gt;Skipped: the time names no zone.&lt;/p&gt;</content>
+  </entry>
+</feed>

@@ -1,12 +1,14 @@
 """The outcome resolver: write settled results back to the ledger, the paper account, and the traces.
 
 ``resolve_outcomes(world, now=None)`` looks at every market that has an
-unresolved ledger entry or an open paper holding. For each one whose result
-the Exchange port now shows (as of the world's clock), it
+unresolved ledger entry, or fills and no settlement yet (an open paper holding,
+or one traded back to flat). For each one whose result the Exchange port now
+shows (as of the world's clock), it
 
 1. writes the outcome and the Brier scores onto the market's ledger entries
    (``StateStore.resolve_market``);
-2. settles the paper holding (``PaperExecutor.settle``, when the executor has it);
+2. settles the paper account's market (``PaperExecutor.settle``, when the
+   executor has it), so every fill in it gets its result;
 3. adds the newly resolved entries to the ledger index (``index_ledger``, when
    the Knowledge implementation has it), so later critics see them as
    calibration examples, never before their resolution time;
@@ -51,7 +53,7 @@ class ResolutionReport(Record):
     """Markets whose ledger entries got an outcome in this call."""
     entries_resolved: int = 0
     markets_settled: list[str] = []
-    """Markets whose paper holding was settled in this call."""
+    """Markets the paper account traded (held or not) that were settled in this call."""
     entries_indexed: int = 0
     audits: list[EpisodeAudit] = []
     unresolved: list[str] = []
@@ -68,9 +70,13 @@ def resolve_outcomes(world: World, *, now: datetime | None = None) -> Resolution
     store = world.store
     open_entries = [e for e in store.ledger() if e.outcome is None]
     settled_before = {ticker for ticker, _, _ in store.list_settlements()}
-    held = {
-        p.market_ticker for p in world.executor.positions() if p.market_ticker not in settled_before
+    # Every market the account traded, not only those still held: YES and NO
+    # net against each other, so a position bought back to flat is no longer a
+    # holding, yet its fills still need the settlement for their P&L.
+    traded = {f.market_ticker for f in store.list_fills()} | {
+        p.market_ticker for p in world.executor.positions()
     }
+    held = traded - settled_before
     candidates = sorted({e.market_ticker for e in open_entries} | held)
 
     resolved: list[str] = []

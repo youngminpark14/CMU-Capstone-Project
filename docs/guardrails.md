@@ -31,8 +31,8 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | Limit orders only, immediate-or-cancel only, at valid ticks | Code | [records/decision.py](../src/pmfa/records/decision.py), [gate.py](../src/pmfa/decision/gate.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `limit_order`, `immediate_or_cancel` and `valid_tick` cases of `test_each_check_fails_alone`; `test_buying_yes_is_a_bid_at_the_limit_price` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The price is re-read before sending; nothing offered at the limit means no order | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`execute`) | `test_08_the_price_moves_past_the_edge_before_execution_and_no_order_is_sent`, `test_08_after_approval_a_price_above_the_limit_exits_stale_price` |
 | A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` |
-| The halt flag blocks every order, in every mode | Code | gate, `execute`, [paper.py](../src/pmfa/execution/paper.py) | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`; `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py) |
-| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing` |
+| The halt flag blocks every order, in every mode | Code | gate, `execute`, [paper.py](../src/pmfa/execution/paper.py) | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`; `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `pmfa halt` sets the flag in every live mode: `test_halt_without_a_mode_stops_every_live_mode` in [test_operations.py](../tests/cli/test_operations.py) |
+| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing`; a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py) |
 | A tripped daily loss stop stays tripped until the next trading day | Code | [risk.py](../src/pmfa/decision/risk.py) | `test_a_tripped_loss_stop_stays_tripped_for_the_day` in [test_risk.py](../tests/decision/test_risk.py) |
 | Blocklisted and unfollowed series are never traded | Code | gate; the protected slot ignores blocked markets | `blocklist` and `followed_series` cases of `test_each_check_fails_alone` |
 | Trades go to a human unless every auto condition holds at the autonomous stage | Code, then human | [routing.py](../src/pmfa/decision/routing.py) | `test_would_be_auto_goes_to_review_below_the_autonomous_stage` in [test_routing.py](../tests/decision/test_routing.py) |
@@ -196,7 +196,11 @@ The gate, the `execute` node and the paper executor each check it before an orde
 clears it; nothing clears it automatically.
 
 The `pmfa halt` command calls the same operation; it sets the flag from the database first, so a
-halt never depends on reaching the exchange.
+halt never depends on reaching the exchange. Shadow and demo keep separate state databases, so
+without `--mode` the command sets the flag in every live mode's database before it contacts any
+exchange, then cancels each mode's open orders. A mode it cannot open (demo without its
+credentials) is reported, and its flag stays set. `--mode shadow|demo` narrows the halt, and
+`--resume` and `--status` follow the same rule.
 
 The agent halts itself when any of these holds. They are checked at the start of the gate node, every
 time a proposal reaches it, and at the start of every pass of the live loop
@@ -208,7 +212,10 @@ time a proposal reaches it, and at the start of every pass of the live loop
 - **Fill failures:** once 10 orders exist, more than one in ten of the last 10 did not fill or was
   rejected (two or more of ten).
 - **Source changed or withdrawn:** a document cited by an episode that still holds an open position
-  now has a different content hash, or is gone.
+  now has a different content hash, or is gone. In shadow and demo the stored copy of a document
+  never changes, so the check fetches the cited page again from its source (at most once per poll
+  interval per document); a 404 or 410 is a withdrawal, and a source that cannot be reached right
+  now is not a change.
 - **Calibration:** for a category with at least 30 resolved forecasts, calibration error is above 0.10
   now, one week ago, and two weeks ago.
 
@@ -231,7 +238,9 @@ only when the benchmark for the next stage holds, computed from the ledger
 Two days with a tripped daily loss stop within seven days demote one stage. The stage manager applies
 this rule when it is asked to (`check_demotion`); neither the episode pipeline nor the live loop calls
 it yet. `pmfa stage status`, `advance` and `demote` show the benchmarks and move the stage by hand;
-`advance` refuses when the benchmark is not met.
+`advance` refuses when the benchmark is not met. `pmfa backtest` keeps its ledger in its run
+directory, so `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a run's
+scored forecasts (`RUN_DIR/work/scoring.sqlite`) toward backtest to shadow.
 
 The stage changes behaviour in two places. The gate refuses real (non-simulated) orders below the
 approval stage. Routing honours the auto tier only at the autonomous stage; below it, a trade that

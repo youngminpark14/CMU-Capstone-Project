@@ -10,15 +10,12 @@ from pathlib import Path
 import pytest
 
 from pmfa.config import Config
-from pmfa.errors import ConfigError, RunBudgetExhausted
+from pmfa.errors import ConfigError
 from pmfa.evaluation.backtest import read_forecasts, run_backtest
 from pmfa.evaluation.manifest import read_manifest
 from pmfa.evaluation.resolver import RESOLUTION_NODE
-from pmfa.models import ScriptedModels
-from pmfa.records.base import Record
-from pmfa.records.episode import EpisodeRecord, ModelResult, Usage
+from pmfa.records.episode import EpisodeRecord
 from pmfa.records.evidence import Passage, RetrievedPassage
-from pmfa.records.roles import ModelSlot, RoleTask
 from pmfa.state.store import SqliteStore
 from pmfa.world.backtest import LeakageDetected
 from tests.evaluation.backtest.conftest import FullRun
@@ -27,6 +24,7 @@ from tests.evaluation.backtest.support import (
     CPI,
     FED,
     RESULTS,
+    CappedModels,
     make_config,
     scripted,
 )
@@ -212,26 +210,6 @@ def test_a_model_cutoff_inside_the_window_refuses_to_start(
     assert models.calls == []
 
 
-class CappedModels:
-    """Scripted models whose run meter trips after ``allowed`` calls, as the gateway's would."""
-
-    def __init__(self, inner: ScriptedModels, allowed: int) -> None:
-        self.inner = inner
-        self.allowed = allowed
-        self.made = 0
-
-    def call(
-        self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
-    ) -> ModelResult:
-        if self.made >= self.allowed:
-            raise RunBudgetExhausted("run dollar cap reached: $25.00 spent of $25.00")
-        self.made += 1
-        return self.inner.call(task, payload, episode_id=episode_id, slot=slot)
-
-    def usage(self, episode_id: str) -> Usage:
-        return self.inner.usage(episode_id)
-
-
 def test_dollar_cap_stops_cleanly_and_marks_the_run_partial(
     data_config: Config, tmp_path: Path
 ) -> None:
@@ -248,8 +226,9 @@ def test_dollar_cap_stops_cleanly_and_marks_the_run_partial(
         "doc:bls-cpi-2026-08-14",
         "doc:fed-speech-2026-08-21",
     }
-    assert manifest.systems["market"] == "run"
-    assert manifest.systems["pipeline"].startswith("partial")
+    # The cap stopped every system part way through the scoring pass, the market too.
+    assert manifest.systems["market"].startswith("partial: ")
+    assert manifest.systems["pipeline"].startswith("partial: ")
     rows = read_forecasts(run_dir / "forecasts.csv")
     assert len({(r.event_ticker, r.horizon_days, r.system) for r, _ in rows}) == len(
         manifest.progress.points_done

@@ -126,6 +126,9 @@ class SnapshotManifest(Record):
     """Total days of one-minute range fetched, summed over markets."""
     source_host: str = ""
     elapsed_seconds: float = 0.0
+    dropped_events: dict[str, str] | None = None
+    """Events the exchange listed that the builder did not store, with why (no markets, or a
+    close time outside the window). ``None``: built before the builder recorded them."""
 
 
 def snapshot_path(config: Config) -> Path:

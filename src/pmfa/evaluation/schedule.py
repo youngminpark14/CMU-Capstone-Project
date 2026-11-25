@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from pmfa.config import Config
 from pmfa.records.base import Record, UtcTime
-from pmfa.records.evidence import Trigger, TriggerKind
+from pmfa.records.evidence import ScheduledEvent, Trigger, TriggerKind
 from pmfa.records.market import Event
 from pmfa.world.evidence.corpus import CorpusStore
 
@@ -151,6 +151,52 @@ def trading_triggers(
     ]
 
 
+RELEASE_KINDS = {
+    "fed_decision": "fomc_decision",
+    "fed_rate": "fomc_decision",
+    "cpi": "cpi_release",
+    "payrolls": "employment_situation",
+}
+"""Series category -> the release-calendar kind its events resolve on."""
+
+RELEASE_MATCH = timedelta(days=2)
+"""An event belongs to a release when it closes this close to the release time."""
+
+
+def releases_without_event(
+    events: list[Event],
+    calendar: list[ScheduledEvent],
+    config: Config,
+    *,
+    window_start: datetime,
+    window_end: datetime,
+) -> list[str]:
+    """Releases in the window for which the snapshot holds no event of the followed series.
+
+    The exchange does not list an event for every release (there is no
+    KXCPIYOY event for the October 2026 CPI release, for example), and a
+    snapshot can also miss one. Either way the window's scored events are
+    fewer than its releases, and this names each such release so a report
+    cannot imply otherwise.
+    """
+    out: list[str] = []
+    for sc in config.follow.enabled_series():
+        kind = RELEASE_KINDS.get(sc.category)
+        if kind is None:
+            continue
+        closes = [e.close_time for e in events if e.series_ticker == sc.ticker and e.markets]
+        for release in calendar:
+            if release.kind != kind or not (window_start <= release.scheduled_at <= window_end):
+                continue
+            if any(abs(c - release.scheduled_at) <= RELEASE_MATCH for c in closes):
+                continue
+            out.append(
+                f"{release.scheduled_event_id} ({release.title}, "
+                f"{release.scheduled_at.isoformat()}): no {sc.ticker} event in the snapshot"
+            )
+    return out
+
+
 def build_schedule(
     events: list[Event],
     corpus: CorpusStore,
@@ -181,10 +227,12 @@ def build_schedule(
 
 
 __all__ = [
+    "RELEASE_KINDS",
     "Schedule",
     "ScoringPoint",
     "build_schedule",
     "is_settled",
+    "releases_without_event",
     "scoring_points",
     "subsample",
     "trading_triggers",

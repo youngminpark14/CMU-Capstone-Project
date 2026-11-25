@@ -18,8 +18,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from pmfa.evaluation.baselines import PIPELINE, SYSTEMS
-from pmfa.evaluation.manifest import MANIFEST_FILE, read_manifest
+from pmfa.evaluation.baselines import MARKET_PRICE_RULE, PIPELINE, SYSTEMS
+from pmfa.evaluation.manifest import MANIFEST_FILE, read_manifest, write_manifest
 
 REPORT_FILE = "report.md"
 FIGURES_DIR = "figures"
@@ -41,7 +41,7 @@ TEXT_2 = "#666666"
 GRID = "#e5e5e5"
 
 SYSTEM_LABELS = {
-    "market": "Market (YES mid)",
+    "market": "Market (YES mid, else last trade within the quote)",
     "prompt_only": "Prompt only",
     "single_pass": "Single pass (recency and origin ranking)",
     "single_pass_similarity": "Single pass (similarity ranking)",
@@ -90,6 +90,38 @@ def _counts_table(counts: dict[str, int], what: str) -> str:
 
 def _ran(status: str) -> bool:
     return status == "run" or status.startswith("partial")
+
+
+def _trading_not_run(manifest: Any) -> str:
+    """Why the trading simulation did not run, or ``""`` when it ran at least one trigger."""
+    pipe = manifest.systems.get(PIPELINE, "not requested")
+    if not _ran(pipe):
+        return f"the pipeline was {pipe}"
+    if not manifest.plan.trade:
+        return "the run was made with --no-trade"
+    if manifest.plan.triggers == 0:
+        return "the window holds no trading trigger"
+    if not manifest.progress.triggers_done:
+        return "the run stopped before the trading pass ran its first trigger"
+    return ""
+
+
+def _label(manifest: Any, system: str) -> str:
+    """The system's name, with how many points it scored when a partial run cut it short."""
+    counts = _short_points(manifest, system)
+    return f"{SYSTEM_LABELS[system]} ({counts})" if counts else SYSTEM_LABELS[system]
+
+
+def _short_points(manifest: Any, system: str) -> str:
+    """``k of n points`` when a partial run scored the system on fewer points than planned."""
+    status = manifest.systems.get(system, "")
+    if not status.startswith("partial: "):
+        return ""
+    counts = status.removeprefix("partial: ").split(",", 1)[0].split(" (", 1)[0]
+    parts = counts.split()
+    if len(parts) >= 3 and parts[1] == "of" and parts[0] != parts[2]:
+        return counts
+    return ""
 
 
 # --------------------------------------------------------------------------- figures
@@ -236,8 +268,13 @@ def _figures(folder: Path, manifest: Any, metrics: dict[str, Any]) -> None:
         fig.autofmt_xdate()
         _axes(ax)
     else:
-        status = manifest.systems.get(PIPELINE, "not requested")
-        _empty(ax, f"No simulated trades. Pipeline: {status}.")
+        why = _trading_not_run(manifest)
+        _empty(
+            ax,
+            f"The trading simulation did not run: {why}."
+            if why
+            else "The trading simulation ran and made no fill.",
+        )
     fig.tight_layout()
     fig.savefig(folder / FIGURES[2])
     plt.close(fig)
@@ -280,6 +317,8 @@ def build_report(run_dir: str | Path) -> Path:
         + ". Every number below comes from this run's `manifest.json` and `metrics.json`; "
         "the per-forecast table is `forecasts.csv`.\n"
     )
+    if manifest.git_dirty:
+        w(f"**{dirty_notice(manifest)}**\n")
     if manifest.status == "partial":
         w(
             f"This run is **partial**. It stopped because {manifest.progress.stopped_reason}. "
@@ -325,8 +364,17 @@ def build_report(run_dir: str | Path) -> Path:
         f"- Bootstrap: {ev['bootstrap_samples']} resamples of whole events, seed {manifest.seed}, "
         "95% percentile intervals.\n"
         f"- Commit: `{manifest.git_commit or 'not available'}`"
-        + (" (working tree had uncommitted changes)" if manifest.git_dirty else "")
+        + (
+            f" (working tree had uncommitted changes in {len(manifest.git_changes)} path(s), "
+            "listed in the manifest)"
+            if manifest.git_dirty and manifest.git_changes
+            else " (working tree had uncommitted changes)"
+            if manifest.git_dirty
+            else ""
+        )
         + ".\n"
+        f"- Data: snapshot file SHA-256 `{manifest.snapshot_sha256 or 'not recorded'}`, corpus "
+        f"texts digest `{manifest.corpus_hashes_digest or 'not recorded'}`.\n"
         f"- Snapshot: {snap.get('counts', {}).get('events', '?')} events, "
         f"{snap.get('counts', {}).get('markets', '?')} markets, built "
         f"{snap.get('built_at', '?')} from {snap.get('source_host', '?')}.\n"
@@ -355,11 +403,7 @@ def build_report(run_dir: str | Path) -> Path:
             f"The subsample left out {len(manifest.plan.left_out_points)} scoring points and "
             f"{len(manifest.plan.left_out_triggers)} triggers; the manifest names them.\n"
         )
-    if manifest.plan.skipped_points:
-        w(
-            "Scoring points that do not exist (before the window start or before the event "
-            "opened): " + "; ".join(manifest.plan.skipped_points) + ".\n"
-        )
+    _left_out(w, manifest, metrics)
 
     # -- sample sizes
     w("## Sample sizes\n")
@@ -381,7 +425,7 @@ def build_report(run_dir: str | Path) -> Path:
             sample = block["answered"]["sample"]
             rows.append(
                 [
-                    SYSTEM_LABELS[s],
+                    _label(manifest, s),
                     h if h == "all" else f"{h}d",
                     str(block["n_rows"]),
                     str(sample["n_markets"]),
@@ -424,7 +468,7 @@ def build_report(run_dir: str | Path) -> Path:
             a, m = block["answered"], block["abstain_as_market"]
             rows.append(
                 [
-                    SYSTEM_LABELS[s],
+                    _label(manifest, s),
                     h if h == "all" else f"{h}d",
                     _interval(a["brier"]),
                     _num(a["market_brier"]),
@@ -448,6 +492,14 @@ def build_report(run_dir: str | Path) -> Path:
         )
     )
     w("")
+    cut_short = [s for s in shown if _short_points(manifest, s)]
+    if cut_short:
+        w(
+            "This run is partial, so the systems were scored on different sets of points: "
+            + "; ".join(f"{SYSTEM_LABELS[s]} on {_short_points(manifest, s)}" for s in cut_short)
+            + ". Their rows and the figure are not comparable with the other systems' rows; each "
+            "skill is computed against the market on that system's own rows.\n"
+        )
     if metrics.get("abstentions"):
         abst = {s: v for s, v in metrics["abstentions"].items() if v}
         if abst:
@@ -491,25 +543,39 @@ def build_report(run_dir: str | Path) -> Path:
 
     # -- quote age
     quotes = metrics.get("quotes")
-    if quotes:
-        w("## How fresh the market price was\n")
+    if quotes and "quote_age_hours" in quotes:
+        qa, ta = quotes["quote_age_hours"], quotes["last_trade_age_hours"]
+        w("## Where the market price came from\n")
         w(
-            "The market price at an as-of time is the YES mid of the latest candle at or before "
-            "that time, or the last trade when one side of the quote is empty (a far strike with "
-            "no bid). A price's age is measured from the candle it came from: the latest quote "
-            "for a mid, the latest trade for a last-trade price. One-minute candles exist only "
-            "for minutes in which a quote or trade changed, so a price can be hours or days old.\n"
+            f"The market price at an as-of time is {MARKET_PRICE_RULE}, read from the latest "
+            "candle at or before that time. One-minute candles exist only for minutes in which "
+            "the quote or a trade changed, so the quote's age below is the time since it last "
+            "changed, not a sign that it had lapsed: a quote that stands unchanged is still the "
+            "market's quote. The last trade's age is shown apart, for the prices that used it; "
+            "an old trade outside the standing quote is clamped to the quote.\n"
         )
         w(
             _table(
                 ["Measure", "Value"],
                 [
                     ["Market prices scored", str(quotes["n"])],
-                    ["From the bid-ask mid", str(quotes["from_mid"])],
-                    ["From the last trade (one side empty)", str(quotes["from_last_trade"])],
-                    ["Median price age (hours)", _num(quotes["median_age_hours"], 1)],
-                    ["Share older than 24 hours", _num(quotes["share_older_than_24h"], 3)],
-                    ["Oldest price (hours)", _num(quotes["max_age_hours"], 1)],
+                    ["From the bid-ask mid (both sides quoted)", str(quotes["from_mid"])],
+                    [
+                        "From the last trade (one side of the quote empty)",
+                        str(quotes["from_last_trade"]),
+                    ],
+                    [
+                        "of which clamped into the standing quote",
+                        str(quotes["last_trade_clamped"]),
+                    ],
+                    ["Quote age, median (hours since it last changed)", _num(qa["median"], 1)],
+                    ["Quote age, largest (hours)", _num(qa["max"], 1)],
+                    ["Last-trade age, median (hours, last-trade prices)", _num(ta["median"], 1)],
+                    ["Last-trade age, largest (hours)", _num(ta["max"], 1)],
+                    [
+                        "Last trades older than 24 hours (share of last-trade prices)",
+                        _num(ta["share_older_than_24h"], 3),
+                    ],
                 ],
             )
         )
@@ -548,10 +614,11 @@ def build_report(run_dir: str | Path) -> Path:
     pnl = metrics.get("pnl", {})
     summary = pnl.get("summary", {})
     w(f"![Equity curve]({FIGURES_DIR}/{FIGURES[2]})\n")
-    if not _ran(pipe):
+    trading_not_run = _trading_not_run(manifest)
+    if trading_not_run:
         w(
-            f"The trading simulation runs the full pipeline on every news trigger. The pipeline "
-            f"was {pipe}, so there was no trading and no P&L to report.\n"
+            "The trading simulation runs the full pipeline on every news trigger. It did not "
+            f"run in this run ({trading_not_run}), so there is no trading and no P&L to report.\n"
         )
     else:
         dd = pnl.get("max_drawdown", {})
@@ -724,18 +791,13 @@ def build_report(run_dir: str | Path) -> Path:
 
     # -- leakage
     w("## How look-ahead was prevented\n")
+    w("The controls the harness puts in place whenever the systems that read evidence run:\n")
     for line in manifest.leakage_controls:
         w(f"- {line}")
     w("")
     w(
         f"In this run the window starts {manifest.window_start.isoformat()} and every assigned "
-        "model lists a knowledge cutoff before it (table above). "
-        + (
-            "No retrieval or episode returned the canary; a single hit would have aborted the run."
-            if manifest.status != "aborted"
-            else "The run was aborted: " + manifest.progress.stopped_reason
-        )
-        + "\n"
+        "model lists a knowledge cutoff before it (table above). " + _canary_sentence(manifest)
     )
 
     # -- fills assumptions
@@ -746,16 +808,35 @@ def build_report(run_dir: str | Path) -> Path:
 
     # -- limitations
     w("## Limitations\n")
-    n_events = snap.get("counts", {}).get("events", "a handful of")
+    scored = metrics.get("scored_events")
+    if scored is None:  # a run made before the scored events were counted
+        n_events = f"{snap.get('counts', {}).get('events', 'a handful of')} settled events"
+        held = f"The snapshot holds only {n_events}"
+    else:
+        per_series: dict[str, int] = {}
+        for ticker in scored:
+            series = ticker.split("-", 1)[0]
+            per_series[series] = per_series.get(series, 0) + 1
+        held = f"Scoring covered only {len(scored)} settled event(s)" + (
+            " (" + ", ".join(f"{n} {k}" for k, n in sorted(per_series.items())) + ")"
+            if per_series
+            else ""
+        )
+    if manifest.plan.releases_without_event:
+        held += (
+            f"; {len(manifest.plan.releases_without_event)} release(s) in the window had no "
+            "event in the snapshot (see Left out of scoring)"
+        )
     w(
-        f"- **This is a pilot.** The window holds only {n_events} settled events, a handful "
+        f"- **This is a pilot.** {held}. That is a handful "
         "per series, and each carries several correlated markets (five per Fed meeting, "
         "twenty or more per CPI release). The events, not the markets, are the independent "
         "observations, so the intervals are wide and no difference here separates skill from "
         "luck.\n"
-        "- The market price is a candle-based mid, sometimes the last trade, and for far "
-        "strikes it can be stale; markets priced at 0.01 or 0.99 dominate the row count and "
-        "pull every Brier score toward zero.\n"
+        f"- The market price is {MARKET_PRICE_RULE}, read from candles. Far strikes "
+        "often have one side of the quote empty, so their price is a last trade (kept inside "
+        "the standing quote); markets priced at 0.01 or 0.99 dominate the row count and pull "
+        "every Brier score toward zero.\n"
         "- Fills are simulated from candles without depth data; many would use the hourly "
         "fallback or meet an empty book. Simulated P&L is not evidence of tradable edge.\n"
         "- Forecasts at 7, 3 and 1 days before close of the same event are not independent of "
@@ -789,6 +870,131 @@ def build_report(run_dir: str | Path) -> Path:
     return path
 
 
+def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
+    """The "Left out of scoring" section: every release, event, point, market and row not scored."""
+    import re
+
+    plan = manifest.plan
+    snap = manifest.snapshot_manifest
+    dropped = snap.get("dropped_events")
+    skipped_markets = metrics.get("skipped_markets") or []
+    unresolved = metrics.get("unresolved_rows") or []
+    w("## Left out of scoring\n")
+    if not (
+        plan.releases_without_event
+        or dropped
+        or plan.skipped_events
+        or plan.skipped_points
+        or skipped_markets
+        or unresolved
+    ):
+        w(
+            "Nothing in the window was left out: every release in the calendar has an event in "
+            "the snapshot, and every scheduled point and every priced market with a result was "
+            "scored"
+            + (
+                ""
+                if dropped is not None
+                else " (this snapshot predates the record of events its builder dropped)"
+            )
+            + ".\n"
+        )
+        return
+    if plan.releases_without_event:
+        w(
+            f"The release calendar has {len(plan.releases_without_event)} release(s) in the "
+            "window with no event of the followed series in the snapshot, so nothing was "
+            "scored for them. The exchange does not list an event for every release.\n"
+        )
+        for line in plan.releases_without_event:
+            w(f"- {line}")
+        w("")
+        series = set(
+            re.findall(r"no (\S+) event in the snapshot", " ".join(plan.releases_without_event))
+        )
+        if dropped is None:
+            w(
+                "This snapshot was built before its builder recorded the events it dropped, "
+                "so the snapshot alone does not show whether the exchange listed an event for "
+                "these releases.\n"
+            )
+        elif not any(t.split("-", 1)[0] in series for t in dropped):
+            w(
+                "The snapshot's builder dropped no event of "
+                + ", ".join(sorted(series))
+                + ", so the exchange listed no event for these releases.\n"
+            )
+        else:
+            w(
+                "The snapshot's builder dropped events of these series (listed below); one of "
+                "them may belong to one of these releases.\n"
+            )
+    if dropped:
+        w(f"Events the exchange listed that the snapshot builder did not store ({len(dropped)}):\n")
+        for ticker, reason in dropped.items():
+            w(f"- {ticker}: {reason}")
+        w("")
+    if plan.skipped_events:
+        w(f"Events in the snapshot that were not scored ({len(plan.skipped_events)}):\n")
+        for line in plan.skipped_events:
+            w(f"- {line}")
+        w("")
+    if plan.skipped_points:
+        w(
+            "Scoring points that do not exist (before the window start or before the event "
+            "opened): " + "; ".join(plan.skipped_points) + ".\n"
+        )
+    if skipped_markets:
+        shown = skipped_markets[:20]
+        w(
+            f"Markets with no price at a scoring point, so no system has a row for them there "
+            f"({len(skipped_markets)}"
+            + (
+                f"; the first {len(shown)} below, all in `metrics.json`"
+                if len(shown) < len(skipped_markets)
+                else ""
+            )
+            + "):\n"
+        )
+        for line in shown:
+            w(f"- {line}")
+        w("")
+    if unresolved:
+        w(
+            f"Priced markets left out because the snapshot holds no final result for them: "
+            f"{len(unresolved)} market forecast(s), listed in `metrics.json` under "
+            "`unresolved_rows`.\n"
+        )
+
+
+def _canary_sentence(manifest: Any) -> str:
+    """What the canary actually guarded in this run, from the manifest's counts."""
+    if manifest.status == "aborted":
+        return "The run was aborted: " + manifest.progress.stopped_reason + "\n"
+    checks = manifest.leakage_checks
+    if not checks:
+        return (
+            "This run's manifest does not record how many retrievals and episodes were "
+            "checked for the canary.\n"
+        )
+    retrievals, episodes = checks.get("retrievals_checked", 0), checks.get("episodes_checked", 0)
+    if not checks.get("index_built"):
+        return (
+            "No system in this run reads evidence, so no evidence index was built and no "
+            "retrieval was made: the canary was not exercised, and the retrieval controls "
+            "above did not come into play. The market's price is read from the snapshot as "
+            "of each as-of time.\n"
+        )
+    published = str(checks.get("canary_published_at") or "")[:10]
+    return (
+        f"The canary guarded {retrievals} retrieval call(s) and {episodes} finished "
+        "episode(s); none returned it, and a single hit would have aborted the run. The "
+        f"canary is dated {published or 'after the window'}, after every as-of time in the "
+        "run, so it catches an as-of filter that is missing altogether; a filter that lets "
+        "through documents only hours or days late would pass it unnoticed.\n"
+    )
+
+
 def _latest_cutoff(manifest: Any) -> str:
     cutoffs = [i.knowledge_cutoff for i in manifest.models.values() if i.knowledge_cutoff]
     return max(cutoffs).isoformat() if cutoffs else "not listed"
@@ -803,13 +1009,37 @@ def _pnl_interval(block: dict[str, Any] | None) -> str:
     return f"[{_money(lo)}, {_money(hi)}]"
 
 
+def dirty_notice(manifest: Any) -> str:
+    """The plain statement a run made from a tree with uncommitted changes carries."""
+    changed = manifest.git_changes
+    listed = (
+        f" ({len(changed)} path(s) changed or untracked: "
+        + ", ".join(changed[:10])
+        + (", ..." if len(changed) > 10 else "")
+        + ")"
+        if changed
+        else ""
+    )
+    return (
+        "This run was made from a working tree with uncommitted changes"
+        + listed
+        + f", so commit {manifest.git_commit or '(not available)'} does not hold exactly the "
+        "code that produced it."
+    )
+
+
 def publish_run(run_dir: str | Path, name: str, *, root: str | Path = PUBLISH_ROOT) -> Path:
     """Copy the committed artifact set of ``run_dir`` to ``root/name`` and return it.
 
     The set is the manifest, the per-forecast table, the metrics, the report with
     its figures, and the saved traces. The report is built first if missing.
-    The target directory is replaced, so it holds exactly this set.
+    The target directory is replaced, so it holds exactly this set, and the
+    published manifest's ``outputs`` lists exactly what was copied. A run made
+    from a tree with uncommitted changes is published with that said in its
+    manifest notes and in a logged warning (and in the report).
     """
+    import logging
+
     run_dir = Path(run_dir)
     if not (run_dir / REPORT_FILE).exists():
         build_report(run_dir)
@@ -819,9 +1049,34 @@ def publish_run(run_dir: str | Path, name: str, *, root: str | Path = PUBLISH_RO
     for file in COMMITTED:
         shutil.copy2(run_dir / file, target / file)
     shutil.copytree(run_dir / FIGURES_DIR, target / FIGURES_DIR)
-    if (run_dir / "traces").is_dir() and any((run_dir / "traces").iterdir()):
-        shutil.copytree(run_dir / "traces", target / "traces")
+    traces = run_dir / "traces"
+    if traces.is_dir() and any(traces.iterdir()):
+        shutil.copytree(traces, target / "traces")
+    manifest = read_manifest(target)
+    outputs = [
+        *COMMITTED,
+        *(f"{FIGURES_DIR}/{p.name}" for p in sorted((target / FIGURES_DIR).iterdir())),
+        *(
+            f"traces/{p.name}"
+            for p in (sorted((target / "traces").iterdir()) if (target / "traces").is_dir() else [])
+        ),
+    ]
+    notes = list(manifest.notes)
+    if manifest.git_dirty:
+        notice = dirty_notice(manifest)
+        logging.getLogger(__name__).warning("publishing %s: %s", name, notice)
+        if notice not in notes:
+            notes.append(notice)
+    write_manifest(manifest.model_copy(update={"outputs": outputs, "notes": notes}), target)
     return target
 
 
-__all__ = ["COMMITTED", "FIGURES", "PUBLISH_ROOT", "REPORT_FILE", "build_report", "publish_run"]
+__all__ = [
+    "COMMITTED",
+    "FIGURES",
+    "PUBLISH_ROOT",
+    "REPORT_FILE",
+    "build_report",
+    "dirty_notice",
+    "publish_run",
+]

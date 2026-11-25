@@ -60,6 +60,7 @@ bls = true
 user_agent = "pmfa-research-client/0.1"
 min_seconds_between_requests = 2.0
 manual_dir = "data/manual"
+feeds = []
 
 # What starts an episode: price moves, schedule ticks, scoring horizons.
 [triggers]

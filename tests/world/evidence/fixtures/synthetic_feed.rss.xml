@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC TEST FIXTURE, written by hand for pmfa's tests. Not a real feed: the site,
+     the items and their text are invented, and nothing here was fetched from anywhere. -->
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example Economics Notes (synthetic)</title>
+    <link>https://www.example.org/</link>
+    <description>A made-up feed for tests.</description>
+    <item>
+      <title>Analysts expect a hold in December</title>
+      <link>https://www.example.org/notes/hold-in-december</link>
+      <guid isPermaLink="false">example-note-0001</guid>
+      <pubDate>Tue, 24 Nov 2026 15:30:00 -0500</pubDate>
+      <description>&lt;p&gt;Most analysts surveyed expect the committee to &lt;b&gt;hold&lt;/b&gt; rates.&lt;/p&gt;&lt;p&gt;A minority expect a cut.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Inflation preview</title>
+      <link>https://www.example.org/notes/inflation-preview</link>
+      <guid>example-note-0002</guid>
+      <pubDate>Wed, 25 Nov 2026 09:00:00 GMT</pubDate>
+      <description>A short summary.</description>
+      <content:encoded><![CDATA[<p>The October CPI release is due in December.</p><p>Forecasters see 2.9 percent.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>An item without a date</title>
+      <link>https://www.example.org/notes/undated</link>
+      <description>Never used: it cannot be dated.</description>
+    </item>
+    <item>
+      <title>An old note</title>
+      <link>https://www.example.org/notes/old</link>
+      <pubDate>Mon, 02 Mar 2026 12:00:00 +0000</pubDate>
+      <description>Outside any recent window.</description>
+    </item>
+  </channel>
+</rss>

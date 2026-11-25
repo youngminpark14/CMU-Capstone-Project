@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 
 def _print_plan(manifest: RunManifest) -> None:
+    from decimal import Decimal
+
     plan = manifest.plan
     typer.echo(f"Run directory: {manifest.name} ({manifest.status})")
     typer.echo(
@@ -49,10 +51,16 @@ def _print_plan(manifest: RunManifest) -> None:
         for note in s.notes:
             typer.echo(f"{'':<26}{note}")
     typer.echo("")
+    cap = Decimal(str(manifest.config["budget"]["max_usd_per_run"]))
     typer.echo(
         f"Estimated total: ${float(plan.usd_min):.2f} to ${float(plan.usd_max):.2f} "
-        f"(run cap ${manifest.config['budget']['max_usd_per_run']})"
+        f"(run cap ${cap})"
     )
+    if plan.usd_max > cap:
+        typer.echo(
+            f"The maximum exceeds the run's dollar cap of ${cap}: if the run spends that much "
+            "it stops at the cap and is marked partial, with what it did not run listed."
+        )
     typer.echo("Assumptions:")
     for line in plan.assumptions:
         typer.echo(f"  - {line}")
@@ -148,8 +156,14 @@ def register(app: typer.Typer) -> None:
         path = build_report(run_dir)
         typer.echo(f"Report written to {path}")
         if publish:
+            from pmfa.evaluation.manifest import read_manifest
+            from pmfa.evaluation.report import dirty_notice
+
             target = publish_run(run_dir, publish)
             typer.echo(f"Published to {target}")
+            manifest = read_manifest(run_dir)
+            if manifest.git_dirty:
+                typer.echo(f"Warning: {dirty_notice(manifest)}", err=True)
 
 
 __all__ = ["register"]

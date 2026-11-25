@@ -16,9 +16,12 @@ starts with its name:
   them were ``UNFILLED`` or ``REJECTED`` (with the defaults: two or more in ten).
 - ``source changed`` / ``source withdrawn``: a document cited by an episode
   that holds an open position (its passages, or its trigger document) has a
-  remembered content hash in the store, and the Evidence port now returns a
-  different hash for it, or no longer returns it at all. Documents the store
-  never remembered cannot be compared and are skipped.
+  remembered content hash in the store, and its source now gives a different
+  hash for it, or no longer gives it at all. When the Evidence port has a
+  ``recheck(doc_id, as_of=...)`` method (the live modes' ``LiveEvidence``,
+  which fetches the page again because its stored copy never changes), that
+  is asked; otherwise ``get_document`` (recorded and frozen worlds). Documents
+  the store never remembered cannot be compared and are skipped.
 - ``calibration``: for a category, the calibration error of the pipeline's
   resolved forecasts (``store.calibration``) is above
   ``routing.calibration_error_max`` at every weekly checkpoint ``now - k weeks``
@@ -156,13 +159,16 @@ def _source_reasons(
         if episode.trigger.doc_id:
             cited.setdefault(episode.trigger.doc_id)
 
+    # The live port's stored copy never changes, so it is asked to fetch the source again.
+    recheck = getattr(evidence, "recheck", None)
+    read = recheck if callable(recheck) else evidence.get_document
     reasons = []
     for doc_id in cited:
         remembered = store.document_hash(doc_id)
         if remembered is None:
             continue
         try:
-            doc = evidence.get_document(doc_id, as_of=now)
+            doc = read(doc_id, as_of=now)
         except NotFound:
             reasons.append(f"source withdrawn: {doc_id} behind an open position is gone")
             continue

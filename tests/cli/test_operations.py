@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from typer.testing import CliRunner
 from pmfa.cli.app import app
 from pmfa.cli.state import config_toml
 from pmfa.config import Config, load_config
-from pmfa.records.base import RunMode
+from pmfa.records.base import RunMode, Stage
 from pmfa.state.client import connect_stdio
 from pmfa.state.service import OPERATIONS
 from pmfa.state.store import SqliteStore
@@ -34,7 +35,6 @@ def test_halt_sets_the_flag_cancels_and_resume_clears_it(live):
     assert "halt flag set (shadow): going to lunch" in halted.output
     assert "cancelled 0 open order(s)" in halted.output
     assert "HALTED (shadow)" in invoke("halt", "--status").output
-    assert "not halted" in invoke("halt", "--status", "--mode", "demo").output
 
     # A halted agent still runs its episode, and places nothing.
     live.last_look()
@@ -45,6 +45,80 @@ def test_halt_sets_the_flag_cancels_and_resume_clears_it(live):
 
     assert "halt cleared" in invoke("halt", "--resume").output
     assert "not halted (shadow)" in invoke("halt", "--status").output
+
+
+def test_a_source_that_cannot_be_reached_is_one_line_not_a_traceback(live, monkeypatch):
+    from pmfa.live import session as session_module
+    from pmfa.world.evidence.http import FetchError
+
+    url = "https://www.federalreserve.gov/json/ne-press.json"
+
+    def unreachable(mode, config, *, review=False, models=None):  # type: ignore[no-untyped-def]
+        raise FetchError(url, None, f"could not reach {url}: ConnectError")
+
+    monkeypatch.setattr(session_module, "build_world", unreachable)
+    result = runner.invoke(app, ["shadow", "--once"])
+    assert result.exit_code == 1
+    assert f"shadow mode stopped: could not reach {url}" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "Traceback" not in result.output
+
+
+def halted_in(live, mode: RunMode) -> bool:  # type: ignore[no-untyped-def]
+    with stored(live, mode) as store:
+        return store.get_halt().halted
+
+
+def test_halt_without_a_mode_stops_every_live_mode(live):
+    halted = invoke("halt", "--reason", "stop everything")
+    assert halted.exit_code == 0, halted.output
+    assert "halt flag set (shadow): stop everything" in halted.output
+    assert "halt flag set (demo): stop everything" in halted.output
+    assert halted_in(live, RunMode.SHADOW) and halted_in(live, RunMode.DEMO)
+    status = invoke("halt", "--status").output
+    assert "HALTED (shadow)" in status and "HALTED (demo)" in status
+    assert "HALTED (demo)" in invoke("halt", "--status", "--mode", "demo").output
+
+    # --mode narrows: resuming demo leaves shadow halted.
+    assert "halt cleared (demo)" in invoke("halt", "--resume", "--mode", "demo").output
+    assert halted_in(live, RunMode.SHADOW) and not halted_in(live, RunMode.DEMO)
+    assert "not halted (demo)" in invoke("halt", "--status").output
+    assert "halt cleared (shadow)" in invoke("halt", "--resume").output
+    assert not halted_in(live, RunMode.SHADOW)
+
+    narrow = invoke("halt", "--mode", "shadow")
+    assert "halt flag set (shadow)" in narrow.output and "(demo)" not in narrow.output
+    assert halted_in(live, RunMode.SHADOW) and not halted_in(live, RunMode.DEMO)
+
+
+def test_a_halt_sets_every_flag_before_any_exchange_and_survives_missing_demo_keys(
+    live, monkeypatch
+):
+    from pmfa.errors import ConfigError
+    from pmfa.live import session as session_module
+
+    fake = session_module.build_world
+    seen: list[tuple[RunMode, bool, bool]] = []
+
+    def build(mode, config, *, review=False, models=None):  # type: ignore[no-untyped-def]
+        mode = RunMode(mode)
+        seen.append((mode, halted_in(live, RunMode.SHADOW), halted_in(live, RunMode.DEMO)))
+        if mode is RunMode.DEMO:
+            raise ConfigError("demo mode needs the demo API credentials in the environment")
+        return fake(mode, config, review=review, models=models)
+
+    monkeypatch.setattr(session_module, "build_world", build)
+    result = runner.invoke(app, ["halt", "--reason", "no keys here"])
+    assert result.exit_code == 0, result.output
+    # Both flags were set before the first world (and so the first exchange client) was built.
+    assert seen and all(shadow and demo for _, shadow, demo in seen)
+    assert halted_in(live, RunMode.SHADOW) and halted_in(live, RunMode.DEMO)
+    assert "demo: the flag is set; open orders were not cancelled" in result.output
+    assert "demo API credentials" in result.output
+
+    # Naming demo explicitly still reports the failed cancel as a failure.
+    named = runner.invoke(app, ["halt", "--mode", "demo"])
+    assert named.exit_code == 1 and "demo API credentials" in named.output
 
 
 # --------------------------------------------------------------------------- stage
@@ -68,6 +142,56 @@ def test_stage_advance_refuses_an_unmet_benchmark_and_demote_records_why(live):
     assert "demoted to shadow: demoted: two loss stops" in demoted.output
     with stored(live) as store:
         assert store.get_stage().stage.value == "shadow"
+
+
+def tiny_backtest(root: Path) -> Path:
+    """The evaluation tests' tiny scripted backtest (scoring pass only); returns its run directory."""
+    from pmfa.evaluation.backtest import run_backtest
+    from tests.evaluation.backtest.support import build_data, make_config, scripted
+
+    config = make_config(root / "bt-data")
+    build_data(config)
+    run_dir = root / "runs" / "tiny"
+    run_backtest(
+        config, run_dir=run_dir, systems=["pipeline"], models=scripted(config), trade=False
+    )
+    return run_dir
+
+
+def test_stage_reads_backtested_forecasts_from_a_backtest_run(live, tmp_path):
+    run_dir = tiny_backtest(tmp_path)
+    live.data_dir.mkdir(parents=True)
+    with stored(live) as store:
+        store.set_stage(Stage.BACKTEST, "fresh", AS_OF)
+    alone = invoke("stage", "status").output
+    assert "backtest -> shadow: not met  <- gates the next stage" in alone
+    assert "  n_markets: 0" in alone
+
+    out = invoke("stage", "status", "--from-run", str(run_dir)).output
+    n = int(re.search(r"  n_markets: (\d+)", out).group(1))
+    assert n > 0 and f"{n} backtested markets, needs 200" in out
+    assert f"backtest forecasts from: {run_dir}" in out
+    # The same run named twice is counted once.
+    twice = invoke("stage", "status", "--from-run", str(run_dir), "--from-run", str(run_dir))
+    assert f"  n_markets: {n}" in twice.output
+
+    refused = runner.invoke(app, ["stage", "advance", "--from-run", str(run_dir)])
+    assert refused.exit_code == 1 and f"{n} backtested markets, needs 200" in refused.output
+
+    # With the market count lowered to what the run has, the run's positive skill advances it.
+    live.config_file.write_text(
+        live.config_file.read_text(encoding="utf-8") + f"[stages]\nbacktest_min_markets = {n}\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["stage", "advance", "--from-run", str(run_dir)])
+    assert result.exit_code == 0 and "advanced to shadow" in result.output, result.output
+    with stored(live) as store:
+        assert store.get_stage().stage is Stage.SHADOW
+
+
+def test_stage_refuses_a_directory_that_is_not_a_backtest_run(live, tmp_path):
+    result = runner.invoke(app, ["stage", "status", "--from-run", str(tmp_path / "nope")])
+    assert result.exit_code == 1 and "scoring" in result.output
 
 
 # --------------------------------------------------------------------------- config

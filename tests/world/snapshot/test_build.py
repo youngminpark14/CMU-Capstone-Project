@@ -158,3 +158,22 @@ def test_counts_are_stored_compactly_and_exactly(tmp_path: Path, config: Config)
     first = store.candles(A, 1, after=WINDOW, until=JUL_CLOSE)[0]
     assert first.yes_bid is not None and first.yes_bid.close == Decimal("0.4100")
     assert first.volume == Decimal("100.00")
+
+
+def test_the_manifest_names_every_event_the_builder_dropped(tmp_path: Path, config: Config) -> None:
+    snapshot = SnapshotStore(tmp_path / "dropped.sqlite")
+    exchange = FakeExchange(listed_without_markets=[f"{CPI}-26OCT"])
+    # Built before the August event closed: it is listed, but not stored.
+    manifest = build_snapshot(config, exchange, snapshot, end=AUG_CLOSE - timedelta(days=1))
+    assert snapshot.event_tickers(FED) == [JUL]
+    assert manifest.dropped_events == {
+        AUG: f"closes {AUG_CLOSE.isoformat()}",
+        f"{CPI}-26OCT": "listed with no markets",
+    }
+    assert snapshot.manifest() == manifest
+    snapshot.close()
+
+
+def test_a_build_that_dropped_nothing_says_so(store: SnapshotStore) -> None:
+    manifest = store.manifest()
+    assert manifest is not None and manifest.dropped_events == {}

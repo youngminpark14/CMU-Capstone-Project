@@ -26,8 +26,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from pmfa.config import Config
+from pmfa.errors import RunBudgetExhausted
 from pmfa.models import ScriptedModels
 from pmfa.records.base import Record
+from pmfa.records.episode import ModelResult, Usage
 from pmfa.records.evidence import Document, ScheduledEvent
 from pmfa.records.market import OHLC, Candle, Event, Market, MarketStatus, Series, Side
 from pmfa.records.roles import (
@@ -37,6 +39,7 @@ from pmfa.records.roles import (
     GenerateOutput,
     MatchDecision,
     MatchInput,
+    ModelSlot,
     OptionProbability,
     PassageSelection,
     PassageSelectionInput,
@@ -422,3 +425,23 @@ def scripted(config: Config) -> ScriptedModels:
 
 
 ALL_SYSTEMS = ["market", "prompt_only", "single_pass", "single_pass_similarity", "pipeline"]
+
+
+class CappedModels:
+    """Scripted models whose run meter trips after ``allowed`` calls, as the gateway's would."""
+
+    def __init__(self, inner: ScriptedModels, allowed: int) -> None:
+        self.inner = inner
+        self.allowed = allowed
+        self.made = 0
+
+    def call(
+        self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
+    ) -> ModelResult:
+        if self.made >= self.allowed:
+            raise RunBudgetExhausted("run dollar cap reached: $25.00 spent of $25.00")
+        self.made += 1
+        return self.inner.call(task, payload, episode_id=episode_id, slot=slot)
+
+    def usage(self, episode_id: str) -> Usage:
+        return self.inner.usage(episode_id)

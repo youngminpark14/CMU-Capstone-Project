@@ -62,7 +62,7 @@ The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trad
 
 | System | What it is | What comparing it isolates |
 | --- | --- | --- |
-| `market` | The YES mid at the as-of time: the latest candle at or before it, or the last trade when one side of the quote is empty. No model. | The baseline. Brier skill is measured against it. |
+| `market` | The market's price at the as-of time, from the latest candle at or before it: the YES mid when both sides are quoted, else the last trade clamped into the standing quote (a trade from weeks ago above a no-bid ask scores at the ask). No model. | The baseline. Brier skill is measured against it. |
 | `prompt_only` | One call to the baseline slot (`claude-fable-5-2`, high effort, the strongest model in the pipeline) with the event's rules and markets and no passages. | Against `market`: what the model adds from the question alone. |
 | `single_pass` | The same call with the passages retrieved as of the as-of time, ranked by similarity, recency and origin. | Against `prompt_only`: what retrieval adds. |
 | `single_pass_similarity` | The same with similarity-only ranking. Not in the default `evaluation.systems`; request it with `--systems`. | Against `single_pass`: what recency- and origin-aware ranking adds. The two retrieve over the same queries, built in code, and differ only in ranking. |
@@ -95,7 +95,13 @@ need one are recorded as "not run: no API key" and produce no rows.
   the most likely path at resolution ran through a frozen one
   ([decision 0025](decisions/0025-pruning-audit.md)).
 - **Fill pricing**: how many orders met a one-minute candle, the hourly fallback, or an empty book.
-- **Price freshness**: how many market prices came from a mid or a last trade, and how old they were.
+- **Where the market price came from**: how many prices were a mid and how many a last trade (and
+  how many of those were clamped into the quote), with the quote's age (time since it last changed,
+  which is not staleness: a standing quote is still the quote) and the last trade's age reported
+  apart.
+- **Left out of scoring**: calendar releases with no event in the snapshot, events the snapshot
+  builder dropped (recorded in the snapshot manifest with the reason), events and points not
+  scored, markets with no price at a point, and forecasts left out for want of a final result.
 
 ### Statistics
 
@@ -107,7 +113,10 @@ would treat correlated rows as independent and overstate the sample. Reports sho
 events side by side. With fewer than two events there is nothing to resample between, and the bounds
 are reported as not defined.
 
-The intervals are wide because the window holds few events: 7 so far. Forecasts of one event at 7, 3
+The intervals are wide because the window holds few events: 7 so far. The exchange does not list an
+event for every release: there is no KXCPIYOY event for the October 2026 CPI release (2026-11-10),
+so the window holds four CPI events and three Fed events, and each report lists such releases under
+"Left out of scoring". Forecasts of one event at 7, 3
 and 1 days are not independent either; the pooled row keeps an event's rows together across
 horizons, the per-horizon rows cannot. No difference on this sample separates skill from luck. The
 harness is the deliverable; its numbers are a pilot.
@@ -117,7 +126,7 @@ harness is the deliverable; its numbers are a pilot.
 | Control | Where |
 | --- | --- |
 | The as-of rule is inside the ports. The snapshot exchange shows quotes, listings and results only up to the simulated clock; the frozen evidence port returns only documents published at or before the as-of time; every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search. | [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py), [evidence/corpus.py](../src/pmfa/world/evidence/corpus.py), [knowledge/index.py](../src/pmfa/knowledge/index.py) |
-| A canary document dated one day after the window, containing `evaluation.canary_text` and the words every query uses, sits in the evidence index but not in the corpus. A guard on the knowledge port raises `LeakageDetected` the moment any retrieval returns it, and every finished episode is scanned for it. One hit aborts the run and marks it aborted. | `CanaryGuard`, `assert_episode_clean` in [world/backtest.py](../src/pmfa/world/backtest.py) |
+| A canary document dated one day after the window, containing `evaluation.canary_text` and the words every query uses, sits in the evidence index but not in the corpus. A guard on the knowledge port raises `LeakageDetected` the moment any retrieval returns it, and every finished episode is scanned for it. One hit aborts the run and marks it aborted. The manifest's `leakage_checks` counts the retrievals and episodes checked, and the report says so; a market-only run builds no index, so its canary is not exercised. Dated after every as-of time, the canary catches a missing as-of filter, not one that lets documents through hours or days late. | `CanaryGuard`, `assert_episode_clean` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | No web access: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and no port holds an HTTP client. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | The response cache key includes the as-of time, which every role input carries, so a question asked at a later time is a different entry. | [models/cache.py](../src/pmfa/models/cache.py) |
 | The knowledge-cutoff guard described above. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
@@ -128,11 +137,18 @@ harness is the deliverable; its numbers are a pilot.
   system, with its token assumptions, and calls no model
   ([estimate.py](../src/pmfa/evaluation/estimate.py)). A call is priced from the mean recorded cost
   of the same task on the same model in the response cache when there is one, and from assumed
-  tokens times the catalog price otherwise. The floor assumes every pipeline episode stops after its
-  first call; the ceiling assumes a full depth-3 tree.
+  tokens times the catalog price otherwise (baseline calls always use the assumptions, because the
+  cache does not record whether an answer had passages). The floor assumes every pipeline episode
+  stops after its first call; the ceiling bounds every call an episode can make, with each
+  evidence follow-up's re-score priced on the critic slot of its level. When the ceiling exceeds the
+  run's cap, the plan says the run would stop partial.
 - **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $25)
   before every call ([meter.py](../src/pmfa/models/meter.py)). When it trips, the run stops cleanly,
-  is marked partial, and writes everything it ran. `--cap` changes it for one run.
+  is marked partial, and writes everything it ran. Each system's status then says how far it got:
+  `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
+  pipeline) when it stopped part way, `not run: ...` when the cap came before its first forecast.
+  The report marks the rows of a system scored on fewer points, and shows no P&L when the trading
+  pass ran no trigger. `--cap` changes it for one run.
 - **Response cache.** Validated answers are stored on disk by content under `data/cache/models`, so
   rerunning the same questions costs nothing.
 - **Subsample first.** `--limit N` keeps an evenly spaced subsample of N scoring points and N
@@ -164,15 +180,18 @@ approve-tier proposals are filled and tagged, and reported apart from auto-tier 
 
 `pmfa backtest` writes a run directory under `runs/` (ignored by git), named
 `<date>-<run name>`: `manifest.json` (configuration, model ids, effort levels and listed cutoffs,
-window, commit and whether the working tree was dirty, snapshot and corpus manifests, plan, progress,
-usage, and the leakage, cost and fill statements), `forecasts.csv` (one row per system, market and
+window, commit and, when the working tree was dirty, the changed and untracked paths, snapshot and
+corpus manifests with the snapshot file's SHA-256 and a digest of the corpus content hashes, plan,
+progress, usage, the canary checks, and the leakage, cost and fill statements), `forecasts.csv` (one row per system, market and
 as-of time, with the outcome, the market price and any abstention note), `trades.csv`,
 `episodes.jsonl`, `metrics.json`, and `traces/` (up to three full pipeline episodes saved as
 replayable examples, each checked by replaying it). `pmfa report RUN_DIR` adds `report.md` and
 `figures/` from the manifest and metrics alone ([report.py](../src/pmfa/evaluation/report.py)).
 `--publish NAME` copies `manifest.json`, `forecasts.csv`, `metrics.json`, `report.md`, `figures/` and
-`traces/` to `evaluation/runs/NAME/`. `trades.csv` and `episodes.jsonl` stay in the local run
-directory, although the manifest's `outputs` list names them.
+`traces/` to `evaluation/runs/NAME/`, and the published manifest's `outputs` lists exactly those
+files. `trades.csv` and `episodes.jsonl` stay in the local run directory. A run made from a working
+tree with uncommitted changes says so in its report, in the published manifest's notes and in a
+warning when it is published: its commit does not hold exactly the code that produced it.
 
 ## Results
 
@@ -185,10 +204,10 @@ $0.
 
 | Horizon | Forecasts | Markets | Events | Market Brier score | 95% interval |
 | --- | --- | --- | --- | --- | --- |
-| all | 312 | 104 | 7 | 0.0345 | 0.0108 to 0.0773 |
-| 7 days | 104 | 104 | 7 | 0.0377 | 0.0117 to 0.0800 |
-| 3 days | 104 | 104 | 7 | 0.0330 | 0.0092 to 0.0759 |
-| 1 day | 104 | 104 | 7 | 0.0328 | 0.0095 to 0.0755 |
+| all | 312 | 104 | 7 | 0.0345 | 0.0107 to 0.0775 |
+| 7 days | 104 | 104 | 7 | 0.0376 | 0.0116 to 0.0799 |
+| 3 days | 104 | 104 | 7 | 0.0330 | 0.0091 to 0.0759 |
+| 1 day | 104 | 104 | 7 | 0.0329 | 0.0095 to 0.0760 |
 
 What these numbers mean:
 
@@ -198,11 +217,14 @@ What these numbers mean:
 - The scores are low because most rows are easy. 185 of 312 prices sat below 0.10 and 82 above 0.90,
   mostly far strikes of CPI ladders; those rows contribute almost nothing to any system's error, so
   the comparison will be decided by the few rows priced in between.
-- The market sharpens slightly toward the close (0.0377 at 7 days, 0.0328 at 1 day), but the
+- The market sharpens slightly toward the close (0.0376 at 7 days, 0.0329 at 1 day), but the
   intervals overlap almost entirely.
-- Expected calibration error is 0.0566 over all horizons.
-- Prices are often stale: 226 of 312 came from the last trade because one side of the quote was
-  empty, the median price was 35.5 hours old, and 54% were older than 24 hours.
+- Expected calibration error is 0.0559 over all horizons.
+- 226 of 312 prices came from the last trade, because one side of the quote was empty (mostly far
+  strikes with no bid). The standing quote was fresh on most rows (median 0.45 hours since it last
+  changed); the last trades were older (median 60.5 hours). 18 of those trades lay outside the
+  standing one-sided quote and were clamped to it, which moves the pooled Brier score by less than
+  0.000001.
 
 ### Not yet run
 
@@ -230,19 +252,20 @@ market                   would run                     21       0-0             
 prompt_only              not run: no API key           21      21-21            5.29-5.29
 single_pass              not run: no API key           21      21-21            5.80-5.80
 single_pass_similarity   not run: no API key           21      21-21            5.80-5.80
-pipeline                 not run: no API key           76      76-1719          0.04-72.17
+pipeline                 not run: no API key           76      76-1683          0.04-85.99
                           scheduled episodes by tree depth: depth 1: 18, depth 2: 3
                           55 news-triggered episode(s), each bounded with a full depth-3 tree after one Monitor call
 
-Estimated total: $16.93 to $89.05 (run cap $25.0)
+Estimated total: $16.93 to $102.87 (run cap $25)
+The maximum exceeds the run's dollar cap of $25: if the run spends that much it stops at the cap and is marked partial, with what it did not run listed.
 ```
 
-With the default systems (without `single_pass_similarity`) the total is $11.13 to $83.25. The
+With the default systems (without `single_pass_similarity`) the total is $11.13 to $97.08. The
 estimate uses assumed token counts until the cache holds recorded costs; the high-effort calls are
 assumed to write 6,000 output tokens each, thinking included. The upper end exceeds the default $25
 cap, so a full run at the default cap would stop partway and be marked partial.
 
-**2. A subsample.** Three scoring points and three triggers; the dry run estimated $1.59 to $6.42 for
+**2. A subsample.** Three scoring points and three triggers; the dry run estimated $1.59 to $7.28 for
 the default systems. Its report shows the real cost per call and per episode, and its answers stay in
 the cache.
 

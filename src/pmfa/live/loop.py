@@ -260,7 +260,12 @@ def run_once(
 
     events = _open_events(world, notes)
     events_indexed = _index(world.knowledge, "index_events", events)
-    documents = _new_documents(world, last_look, started, notes)
+    try:
+        documents = _new_documents(world, last_look, started, notes)
+    except PmfaError as exc:
+        # An unreachable source must not skip the self-halt checks or the equity mark.
+        notes.append(f"evidence not read: {exc}")
+        documents = []
     passages = _index(world.knowledge, "index_documents", documents)
 
     resolved = _resolve(world, resolver, notes)
@@ -324,6 +329,20 @@ def run_once(
     )
 
 
+def _failed_pass(world: World, started: datetime, exc: PmfaError) -> PassSummary:
+    """The summary of a pass that stopped on an error: what failed, and the halt flag."""
+    halt = world.store.get_halt()
+    return PassSummary(
+        mode=world.mode,
+        started_at=started,
+        finished_at=world.clock.now(),
+        first_look=read_last_look(cursor_path(world)) is None,
+        halted=halt.halted,
+        halt_reason=halt.reason,
+        notes=[f"pass failed: {type(exc).__name__}: {exc}"],
+    )
+
+
 def run_loop(
     world: World,
     controller: EpisodeController,
@@ -338,7 +357,10 @@ def run_loop(
 
     Stops after ``max_passes``, when a pass reports the run's dollar cap was
     reached, or when the person interrupts it (``KeyboardInterrupt`` propagates
-    to the caller). ``on_pass`` sees each summary. Returns the passes run.
+    to the caller). A pass that fails with a project error (``PmfaError``: a
+    source or the exchange unreachable) is reported as a summary with one
+    ``pass failed`` note, and the loop goes on. ``on_pass`` sees each summary.
+    Returns the passes run.
     """
     if interval_seconds <= 0:
         raise ValueError("interval_seconds must be positive")
@@ -346,7 +368,11 @@ def run_loop(
     passes = 0
     while max_passes is None or passes < max_passes:
         start = world.clock.now()
-        summary = run_once(world, controller, resolver=resolver)
+        try:
+            summary = run_once(world, controller, resolver=resolver)
+        except PmfaError as exc:
+            # One failed pass (a source or the exchange down) is reported; the next one runs.
+            summary = _failed_pass(world, start, exc)
         passes += 1
         if on_pass is not None:
             on_pass(summary)
