@@ -1,0 +1,97 @@
+{
+ "event": {
+  "event_ticker": "KXFEDDECISION-26DEC",
+  "series_ticker": "KXFEDDECISION",
+  "title": "Fed decision in Dec 2026?",
+  "sub_title": "On Dec 9, 2026",
+  "category": "Economics",
+  "mutually_exclusive": true,
+  "markets": [
+   {
+    "ticker": "KXFEDDECISION-26DEC-C26",
+    "event_ticker": "KXFEDDECISION-26DEC",
+    "title": "Will the Federal Reserve Cut rates by >25bps at their December 2026 meeting?",
+    "subtitle": "Cut >25bps",
+    "yes_sub_title": "Cut >25bps",
+    "status": "active",
+    "open_time": "2025-09-29T14:00:00Z",
+    "close_time": "2026-12-09T18:59:00Z",
+    "strike_type": "custom",
+    "custom_strike": {
+     "Cut": ">25"
+    },
+    "rules_primary": "If the Federal Reserve does a Cut of   25bps on December 09, 2026, then the market resolves to Yes.",
+    "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFEDDECISION-26DEC-C25",
+    "event_ticker": "KXFEDDECISION-26DEC",
+    "title": "Will the Federal Reserve Cut rates by 25bps at their December 2026 meeting?",
+    "subtitle": "Cut 25bps",
+    "yes_sub_title": "Cut 25bps",
+    "status": "active",
+    "open_time": "2025-09-29T14:00:00Z",
+    "close_time": "2026-12-09T18:59:00Z",
+    "strike_type": "custom",
+    "custom_strike": {
+     "Cut": "25"
+    },
+    "rules_primary": "If the Federal Reserve does a Cut of 25bps on December 09, 2026, then the market resolves to Yes.",
+    "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFEDDECISION-26DEC-H0",
+    "event_ticker": "KXFEDDECISION-26DEC",
+    "title": "Will the Federal Reserve Hike rates by 0bps at their December 2026 meeting?",
+    "subtitle": "Hike 0bps",
+    "yes_sub_title": "Fed maintains rate",
+    "status": "active",
+    "open_time": "2025-09-29T14:00:00Z",
+    "close_time": "2026-12-09T18:59:00Z",
+    "strike_type": "custom",
+    "custom_strike": {
+     "Hike": "0"
+    },
+    "rules_primary": "If the Federal Reserve does a Hike of 0bps on December 09, 2026, then the market resolves to Yes.",
+    "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFEDDECISION-26DEC-H25",
+    "event_ticker": "KXFEDDECISION-26DEC",
+    "title": "Will the Federal Reserve Hike rates by 25bps at their December 2026 meeting?",
+    "subtitle": "Hike 25bps",
+    "yes_sub_title": "Hike 25bps",
+    "status": "active",
+    "open_time": "2025-09-29T14:00:00Z",
+    "close_time": "2026-12-09T18:59:00Z",
+    "strike_type": "custom",
+    "custom_strike": {
+     "Hike": "25"
+    },
+    "rules_primary": "If the Federal Reserve does a Hike of 25bps on December 09, 2026, then the market resolves to Yes.",
+    "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFEDDECISION-26DEC-H26",
+    "event_ticker": "KXFEDDECISION-26DEC",
+    "title": "Will the Federal Reserve Hike rates by >25bps at their December 2026 meeting?",
+    "subtitle": "Hike >25bps",
+    "yes_sub_title": "Hike >25bps",
+    "status": "active",
+    "open_time": "2025-09-29T14:00:00Z",
+    "close_time": "2026-12-09T18:59:00Z",
+    "strike_type": "custom",
+    "custom_strike": {
+     "Hike": ">25"
+    },
+    "rules_primary": "If the Federal Reserve does a Hike of   25bps on December 09, 2026, then the market resolves to Yes.",
+    "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+    "result": ""
+   }
+  ]
+ }
+}

@@ -78,8 +78,8 @@ class FollowConfig(Section):
             enabled=False,
             outcome_kind="ladder",
             variable="change in total nonfarm payroll employment",
-            unit="thousand jobs",
-            increment=1.0,
+            unit="jobs",
+            increment=1000.0,
             primary_sources=["bls.gov"],
         ),
     ]
@@ -401,8 +401,13 @@ class Config(Section):
         return self
 
     def full_tree_calls(self) -> int:
-        """Generator plus critic calls of a full tree at the configured width and depth 3."""
-        return 2 * (1 + self.forecast.beam_width + self.forecast.beam_width + 1)
+        """Most generator plus critic calls a full tree can make at depth 3.
+
+        One parent at the first level, then the beam plus the protected slot at
+        each of the next two, with one generator and one critic call per parent.
+        """
+        parents = 1 + 2 * (self.forecast.beam_width + 1)
+        return 2 * parents
 
 
 CONFIG_ENV = "PMFA_CONFIG"
