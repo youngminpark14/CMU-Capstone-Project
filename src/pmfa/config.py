@@ -442,7 +442,8 @@ def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None
     Order: built-in defaults, then the TOML file (``path``, else ``$PMFA_CONFIG``,
     else ``./pmfa.toml`` when it exists), then ``overrides``.
     """
-    chosen = path or os.environ.get(CONFIG_ENV)
+    # An empty variable (as in an unedited copy of .env.example) means "not set".
+    chosen = path or os.environ.get(CONFIG_ENV) or None
     if chosen is None and Path(DEFAULT_CONFIG_FILE).exists():
         chosen = DEFAULT_CONFIG_FILE
     data: dict[str, Any] = {}

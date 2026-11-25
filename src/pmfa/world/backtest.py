@@ -211,6 +211,7 @@ class BacktestData:
                 retrieval.passage_words,
                 retrieval.passage_overlap_words,
                 retrieval.near_duplicate_similarity,
+                retrieval.origin_copy_overlap,
             ],
             "canary": config.evaluation.canary_text,
             "series": [s.ticker for s in config.follow.enabled_series()],

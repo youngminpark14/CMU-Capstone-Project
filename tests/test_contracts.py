@@ -78,3 +78,9 @@ def test_quantiles_must_not_decrease():
 
 def test_stable_ids_are_deterministic():
     assert stable_id("ep", "a", 1) == stable_id("ep", "a", 1) != stable_id("ep", "a", 2)
+
+
+def test_an_empty_config_variable_means_not_set(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PMFA_CONFIG", "")
+    assert load_config() == Config()

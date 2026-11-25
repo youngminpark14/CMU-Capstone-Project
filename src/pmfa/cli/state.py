@@ -77,7 +77,10 @@ def _toml_value(value: Any) -> str:
         return "true" if value else "false"
     if isinstance(value, Enum):
         return json.dumps(value.value)
-    if isinstance(value, int | Decimal):
+    if isinstance(value, Decimal):
+        # Written without trailing zeros, so a file read back and written again is unchanged.
+        return format(value.normalize(), "f")
+    if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
         return repr(value)
