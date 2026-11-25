@@ -6,6 +6,8 @@ Times are chosen so every as-of rule has a case on both sides of it:
   settles 18:10 with A = YES.
 - ``26AUG`` opens later: market C on 2026-07-25, market D (a strike added
   later) on 2026-08-01; it closes 2026-08-10 and is not settled.
+- Markets B and C have one candle of each interval on 2026-07-26, D on
+  2026-08-01 (after it opens).
 - Market A has one-minute candles at 12:01, 12:02, 12:30 and 12:40 on
   2026-07-20 and hourly candles ending 12:00 and 13:00 that day.
 """
@@ -106,11 +108,19 @@ def events() -> list[Event]:
         mutually_exclusive=True,
         markets=[
             market(
-                A, JUL, opens=utc(2026, 6, 15, 14), closes=JUL_CLOSE, settled=JUL_SETTLED,
+                A,
+                JUL,
+                opens=utc(2026, 6, 15, 14),
+                closes=JUL_CLOSE,
+                settled=JUL_SETTLED,
                 result=Side.YES,
             ),
             market(
-                B, JUL, opens=utc(2026, 6, 15, 14), closes=JUL_CLOSE, settled=JUL_SETTLED,
+                B,
+                JUL,
+                opens=utc(2026, 6, 15, 14),
+                closes=JUL_CLOSE,
+                settled=JUL_SETTLED,
                 result=Side.NO,
             ),
         ],
@@ -131,22 +141,44 @@ def events() -> list[Event]:
 def minute_candles_a() -> list[Candle]:
     return [
         candle(
-            A, T0 + timedelta(minutes=1), 1,
-            bid=ohlc("0.40", "0.42", "0.39", "0.41"), ask=ohlc("0.44", "0.46", "0.43", "0.45"),
-            price=ohlc("0.42", "0.43", "0.42", "0.43"), volume="100", oi="1000",
+            A,
+            T0 + timedelta(minutes=1),
+            1,
+            bid=ohlc("0.40", "0.42", "0.39", "0.41"),
+            ask=ohlc("0.44", "0.46", "0.43", "0.45"),
+            price=ohlc("0.42", "0.43", "0.42", "0.43"),
+            volume="100",
+            oi="1000",
         ),
         candle(
-            A, T0 + timedelta(minutes=2), 1,
-            bid=ohlc("0.41", "0.41", "0.40", "0.40"), ask=ohlc("0.45", "0.47", "0.45", "0.46"),
-            price=flat("0.44"), volume="50", oi="1050",
+            A,
+            T0 + timedelta(minutes=2),
+            1,
+            bid=ohlc("0.41", "0.41", "0.40", "0.40"),
+            ask=ohlc("0.45", "0.47", "0.45", "0.46"),
+            price=flat("0.44"),
+            volume="50",
+            oi="1050",
         ),
         candle(
-            A, T0 + timedelta(minutes=30), 1,
-            bid=flat("0.50"), ask=flat("0.52"), price=flat("0.51"), volume="30", oi="1080",
+            A,
+            T0 + timedelta(minutes=30),
+            1,
+            bid=flat("0.50"),
+            ask=flat("0.52"),
+            price=flat("0.51"),
+            volume="30",
+            oi="1080",
         ),
         candle(
-            A, T0 + timedelta(minutes=40), 1,
-            bid=flat("0.50"), ask=flat("0.52"), price=flat("0.51"), volume="7", oi="1087",
+            A,
+            T0 + timedelta(minutes=40),
+            1,
+            bid=flat("0.50"),
+            ask=flat("0.52"),
+            price=flat("0.51"),
+            volume="7",
+            oi="1087",
         ),
     ]
 
@@ -154,13 +186,24 @@ def minute_candles_a() -> list[Candle]:
 def hourly_candles_a() -> list[Candle]:
     return [
         candle(
-            A, T0, 60, bid=flat("0.38"), ask=flat("0.42"), price=flat("0.40"), volume="400",
+            A,
+            T0,
+            60,
+            bid=flat("0.38"),
+            ask=flat("0.42"),
+            price=flat("0.40"),
+            volume="400",
             oi="900",
         ),
         candle(
-            A, T0 + timedelta(hours=1), 60,
-            bid=ohlc("0.40", "0.50", "0.39", "0.50"), ask=ohlc("0.44", "0.52", "0.43", "0.52"),
-            price=ohlc("0.42", "0.51", "0.42", "0.51"), volume="187", oi="1087",
+            A,
+            T0 + timedelta(hours=1),
+            60,
+            bid=ohlc("0.40", "0.50", "0.39", "0.50"),
+            ask=ohlc("0.44", "0.52", "0.43", "0.52"),
+            price=ohlc("0.42", "0.51", "0.42", "0.51"),
+            volume="187",
+            oi="1087",
         ),
     ]
 
@@ -168,17 +211,28 @@ def hourly_candles_a() -> list[Candle]:
 def candles() -> dict[tuple[str, int], list[Candle]]:
     """Every invented candle, by (ticker, interval)."""
     out = {(A, 1): minute_candles_a(), (A, 60): hourly_candles_a()}
-    for ticker in (B, C, D):
+    for ticker, day in ((B, 26), (C, 26), (D, 32)):
+        when = utc(2026, 7, 1) + timedelta(days=day - 1, hours=14)
         out[(ticker, 60)] = [
             candle(
-                ticker, utc(2026, 7, 26, 15), 60, bid=flat("0.10"), ask=flat("0.12"),
-                price=flat("0.11"), volume="5",
+                ticker,
+                when + timedelta(hours=1),
+                60,
+                bid=flat("0.10"),
+                ask=flat("0.12"),
+                price=flat("0.11"),
+                volume="5",
             )
         ]
         out[(ticker, 1)] = [
             candle(
-                ticker, utc(2026, 7, 26, 14, 30), 1, bid=flat("0.10"), ask=flat("0.12"),
-                price=flat("0.11"), volume="5",
+                ticker,
+                when + timedelta(minutes=30),
+                1,
+                bid=flat("0.10"),
+                ask=flat("0.12"),
+                price=flat("0.11"),
+                volume="5",
             )
         ]
     return out
@@ -225,7 +279,4 @@ class FakeExchange:
         if self.fail_after is not None and len(self.candle_calls) >= self.fail_after:
             raise Interrupted(f"interrupted before {ticker} {interval_minutes}m")
         self.candle_calls.append((ticker, interval_minutes, start, end))
-        return [
-            c for c in candles().get((ticker, interval_minutes), []) if start < c.end_ts <= end
-        ]
-
+        return [c for c in candles().get((ticker, interval_minutes), []) if start < c.end_ts <= end]

@@ -12,7 +12,7 @@ Imports happen inside the commands, so ``pmfa --help`` stays fast.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -61,9 +61,12 @@ def build(
     end: str | None = typer.Option(
         None, help="Last close date to include, YYYY-MM-DD. Default: now."
     ),
-    series: list[str] = typer.Option(
-        [], "--series", help="A series to build (repeatable). Default: every enabled series."
-    ),
+    series: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--series", help="A series to build (repeatable). Default: every enabled series."
+        ),
+    ] = None,
     minute_days: int | None = typer.Option(
         None, min=1, help="Keep one-minute candles only for the last N days before each close."
     ),

@@ -90,7 +90,9 @@ class SnapshotExchange:
             event = self._event_as_of(event_ticker, now)
             if event is None:
                 continue
-            is_open = any(m.status in (MarketStatus.OPEN, MarketStatus.PAUSED) for m in event.markets)
+            is_open = any(
+                m.status in (MarketStatus.OPEN, MarketStatus.PAUSED) for m in event.markets
+            )
             if is_open or include_closed:
                 events.append(event)
         return sorted(events, key=lambda e: (e.close_time, e.event_ticker))
@@ -167,7 +169,9 @@ class SnapshotExchange:
                 "settled_at": market.settled_at if settled else None,
                 "yes_bid": None if quote is None or quote.yes_bid is None else quote.yes_bid.close,
                 "yes_ask": None if quote is None or quote.yes_ask is None else quote.yes_ask.close,
-                "last_price": None if traded is None or traded.price is None else traded.price.close,
+                "last_price": None
+                if traded is None or traded.price is None
+                else traded.price.close,
                 "yes_bid_size": None,
                 "yes_ask_size": None,
                 "volume": self._volume_between(market.ticker, None, now),

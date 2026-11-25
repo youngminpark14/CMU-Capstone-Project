@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime, time as dtime, timedelta
+from datetime import UTC, datetime, timedelta
+from datetime import time as dtime
 from typing import TYPE_CHECKING, Protocol
 
 from pmfa.records.market import Candle, Event, Series
@@ -106,7 +107,9 @@ def build_snapshot(
                 if minute_days is not None:
                     minute_from = max(minute_from, market.close_time - timedelta(days=minute_days))
                 for interval, lo in ((60, hourly_from), (1, minute_from)):
-                    _fetch_range(exchange, store, market.ticker, interval, lo, market.close_time, say)
+                    _fetch_range(
+                        exchange, store, market.ticker, interval, lo, market.close_time, say
+                    )
 
     hourly = store.coverage_summary(60)
     minute = store.coverage_summary(1)
