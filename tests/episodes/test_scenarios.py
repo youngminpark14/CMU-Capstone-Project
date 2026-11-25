@@ -7,14 +7,15 @@ routing tier, and the orders.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 
-from pmfa.episode import EpisodeController
-from pmfa.errors import BudgetExhausted, ModelOutputError
+from pmfa.episode import EpisodeController, episode_id_for
+from pmfa.errors import BudgetExhausted, ModelOutputError, RunBudgetExhausted
 from pmfa.records.base import RunMode, Stage
 from pmfa.records.decision import (
     OrderResult,
@@ -277,19 +278,87 @@ def test_06_a_trade_changing_tail_scenario_takes_the_protected_slot_and_one_that
 # --------------------------------------------------------------------------- 7
 
 
-def test_07_a_proposal_over_a_cap_is_gate_rejected_with_no_retry():
+def test_07_a_proposal_over_a_cap_is_gate_rejected_with_no_retry(monkeypatch):
+    """The gate is the independent check: sizing (patched here) hands over 80 contracts,
+    over the 25-contract order cap and, at $55.62, over the $50 per-market cap."""
+    import pmfa.episode.pipeline as pipeline
+    from pmfa.decision import fee
+
+    real = pipeline.size_event
+    sized: list[int] = []
+
+    def oversized(inputs, config):
+        decision = real(inputs, config)
+        assert decision.proposal is not None
+        p = decision.proposal
+        n = 80
+        order_fee = fee(n, p.limit_price, inputs.series.fee_type, inputs.series.fee_multiplier)
+        big = p.model_validate(
+            {
+                **p.model_dump(),
+                "contracts": n,
+                "fee": order_fee,
+                "cost": n * p.limit_price + order_fee,
+            }
+        )
+        sized.append(n)
+        return decision.model_copy(update={"proposal": big})
+
+    monkeypatch.setattr(pipeline, "size_event", oversized)
+    record, world = run_episode(fed_file(), hawkish_script())
+    assert record.exit is Exit.GATE_REJECTED
+    assert record.gate is not None
+    assert {"contracts_per_order", "dollars_per_market"} <= set(record.gate.reasons)
+    assert (
+        "contracts_per_order" in record.exit_detail and "dollars_per_market" in record.exit_detail
+    )
+    assert orders(world) == []
+    [(proposal, status)] = world.store.list_proposals()
+    assert status is ProposalStatus.CANCELLED and proposal.contracts == 80
+    assert sized == [80]  # sized once: never retried, at any size
+
+
+def stopped_world(points):
     world = make_world(fed_file(), hawkish_script())
-    # Equity stood at 1,050 earlier today and is 1,000 now: past the 3% daily loss stop.
-    world.store.record_equity(AS_OF - timedelta(hours=5), Decimal("1050"))
+    for at, equity in points:
+        world.store.record_equity(at, Decimal(equity))
+    return world
+
+
+def second_trigger():
+    later = AS_OF + timedelta(minutes=5)
+    return Trigger(
+        trigger_id="sched-after-stop", kind=TriggerKind.SCHEDULE, at=later, event_ticker=FED
+    )
+
+
+@pytest.mark.parametrize(
+    ("points", "reason"),
+    [
+        # Equity stood at 1,050 earlier today and is 1,000 now: past the 3% daily loss stop.
+        ([(AS_OF - timedelta(hours=5), "1050")], "daily loss stop"),
+        # A peak of 1,200 three days ago, 1,000 since yesterday: a 16.7% drawdown.
+        (
+            [(AS_OF - timedelta(days=3), "1200"), (AS_OF - timedelta(days=1), "1000")],
+            "drawdown",
+        ),
+    ],
+)
+def test_a_tripped_stop_halts_persists_the_flag_and_refuses_the_next_episode(points, reason):
+    world = stopped_world(points)
     with EpisodeController(world) as controller:
         record = controller.run(world.file.trigger)
-    check_trace(record)
-    assert record.exit is Exit.GATE_REJECTED
-    assert record.gate is not None and record.gate.reasons == ["daily_loss_stop"]
+        check_trace(record)
+        assert record.exit is Exit.HALTED and reason in record.exit_detail
+        halt = world.store.get_halt()
+        assert halt.halted and reason in halt.reason
+        assert orders(world) == []
+        world.clock.set(AS_OF + timedelta(minutes=5))  # type: ignore[attr-defined]
+        nxt = controller.run(second_trigger())
+    check_trace(nxt)
+    assert nxt.exit is Exit.HALTED
     assert orders(world) == []
-    [(proposal, status)] = world.store.list_proposals()  # sized once, never retried
-    assert status is ProposalStatus.CANCELLED and proposal == record.proposal
-    assert sum(1 for s in record.trace if s.node == "gate" and s.kind == "action") == 1
+    assert world.store.get_halt().reason == halt.reason  # the original reason is kept
 
 
 # --------------------------------------------------------------------------- 8
@@ -619,7 +688,8 @@ def test_a_would_be_auto_trade_below_the_autonomous_stage_goes_to_review_and_is_
 def test_fill_tagged_fills_an_approve_tier_proposal_and_tags_it():
     record, world = run_episode(fed_file(), hawkish_script(), policy=ReviewPolicy.FILL_TAGGED)
     assert record.routing is not None and record.routing.tier is RoutingTier.APPROVE
-    assert record.exit is Exit.EXECUTED and "fill_tagged" in record.exit_detail
+    assert record.exit is Exit.EXECUTED and record.fill_tagged
+    assert any("fill_tagged" in s.summary for s in record.trace if s.node == "route")
     assert record.review is None
     assert len(orders(world)) == 1
 
@@ -723,7 +793,7 @@ def test_a_critic_evidence_request_is_retrieved_and_routed_through_the_researche
     assert record.forecast is not None
 
 
-def test_a_self_halt_condition_at_routing_halts_and_sends_nothing():
+def test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing():
     world = make_world(fed_file(), hawkish_script())
     for i in range(10):  # two of the last ten orders did not fill: more than one in ten
         status = OrderStatus.UNFILLED if i < 2 else OrderStatus.FILLED
@@ -755,3 +825,93 @@ def test_too_little_explained_mass_exits_low_coverage():
     record, world = run_episode(fed_file(), script)
     assert record.exit is Exit.LOW_COVERAGE
     assert record.forecast is None and orders(world) == []
+
+
+def test_a_rematch_over_a_shared_calendar_level_keeps_the_nodes_of_both_attempts():
+    jan = fed_event(FED_JAN, close=FED_CLOSE + timedelta(days=50))
+    dec = fed_event()
+    file = fed_file(
+        events=[dec, jan],
+        order_books={**books_for(dec), **books_for(jan)},
+        scheduled_events=[JOBS_DEC],  # before both closes: level 1 of both trees
+    )
+    # Asserting a resolution option at the jobs level fails the rules check.
+    tree = {
+        (JOBS_DEC.scheduled_event_id, None): [
+            T("Strong jobs mean a hold", ("hold",)),
+            T("Weak jobs mean a cut", ("cut_25",)),
+        ]
+    }
+    record, world = run_episode(file, Script(matches=[FED, FED_JAN], tree=tree))
+    assert record.exit is Exit.RULES_MISMATCH
+    nodes = world.store.get_nodes(record.episode_id)
+    assert len(nodes) == 4 and len({n.node_id for n in nodes}) == 4
+    assert sorted(n.claim for n in nodes) == sorted(
+        ["Strong jobs mean a hold", "Weak jobs mean a cut"] * 2
+    )
+
+
+def test_the_run_budget_stops_the_run_after_the_episode_is_recorded():
+    file = fed_file()
+    script = hawkish_script(fail={RoleTask.PLAN_QUERIES: RunBudgetExhausted("$25.00 spent")})
+    world = make_world(file, script)
+    with EpisodeController(world) as controller:
+        with pytest.raises(RunBudgetExhausted):
+            controller.run(file.trigger)
+        thread = {"configurable": {"thread_id": episode_id_for(world.mode, file.trigger)}}
+        assert controller.checkpointer.get_tuple(thread) is None
+    [record] = world.store.list_episodes()
+    check_trace(record)
+    assert record.exit is Exit.ERROR and "run's dollar cap was reached" in record.exit_detail
+    assert record.status is EpisodeStatus.DONE and orders(world) == []
+
+
+class LiveExecutor:
+    """The paper executor, reporting itself as a real (non-simulated) one, as the demo's is."""
+
+    simulated = False
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def real_orders_world(file, mode, policy=ReviewPolicy.PAUSE):
+    world = make_world(file, hawkish_script(), policy=policy, mode=mode)
+    return dataclasses.replace(world, executor=LiveExecutor(world.executor))
+
+
+def test_demo_mode_runs_at_the_approval_stage_whatever_the_stored_stage():
+    world = real_orders_world(fed_file(stage=Stage.BACKTEST), RunMode.DEMO)
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    assert record.gate is not None and record.gate.approved  # the stage check passed
+    assert record.status is EpisodeStatus.PENDING_REVIEW
+    assert world.store.get_stage().stage is Stage.BACKTEST  # the stored stage is unchanged
+
+
+def test_real_orders_outside_demo_mode_need_the_stored_approval_stage():
+    world = real_orders_world(fed_file(stage=Stage.BACKTEST), RunMode.SHADOW)
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    assert record.exit is Exit.GATE_REJECTED and "stage" in record.gate.reasons
+    assert orders(world) == []
+
+
+def test_demo_mode_still_honours_auto_only_at_the_autonomous_stage():
+    file = autonomous_file(stage=Stage.BACKTEST)
+    world = real_orders_world(file, RunMode.DEMO)
+    with EpisodeController(world) as controller:
+        record = controller.run(file.trigger)
+    routing = record.routing
+    assert routing is not None and routing.tier is RoutingTier.APPROVE and routing.would_be_auto
+    assert record.status is EpisodeStatus.PENDING_REVIEW and orders(world) == []
+
+
+def test_a_human_approved_fill_is_not_fill_tagged():
+    controller, world, paused = paused_episode()
+    with controller:
+        record = controller.resume(paused.episode_id, approve(paused, world))
+    assert record.exit is Exit.EXECUTED and not record.fill_tagged

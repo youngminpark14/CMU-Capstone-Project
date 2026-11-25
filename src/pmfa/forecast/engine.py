@@ -318,6 +318,7 @@ class ForecastEngine:
         for index, thought in enumerate(output.thoughts[: fc.max_thoughts_per_node]):
             node = make_node(
                 episode_id=request.episode_id,
+                event_ticker=request.event.event_ticker,
                 parent=parent,
                 level=level,
                 depth=depth,

@@ -49,15 +49,24 @@ def test_an_event_closing_within_the_hour_gets_the_fast_path():
     assert not is_fast_path(FED, AS_OF, Config())
 
 
-def _node(level_brief: ScheduledEventBrief, **kw):
+def _node(level_brief: ScheduledEventBrief, event_ticker: str = "KXFEDDECISION-26DEC", **kw):
     return make_node(
         episode_id="ep",
+        event_ticker=event_ticker,
         parent=None,
         level=level_brief,
         depth=1,
         index=0,
         thought=thought("claim", **kw),
     )
+
+
+def test_node_ids_differ_between_events_on_the_same_level():
+    early = level("cpi", 5)
+    first = _node(early, event_ticker="KXFEDDECISION-26DEC")
+    second = _node(early, event_ticker="KXFEDDECISION-27JAN")
+    assert first.node_id != second.node_id
+    assert first.node_id == _node(early, event_ticker="KXFEDDECISION-26DEC").node_id
 
 
 def test_rules_check():

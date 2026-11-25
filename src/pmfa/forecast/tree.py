@@ -38,15 +38,24 @@ INVALID_DISTRIBUTION = "invalid distribution"
 def make_node(
     *,
     episode_id: str,
+    event_ticker: str,
     parent: TreeNode | None,
     level: ScheduledEventBrief,
     depth: int,
     index: int,
     thought: ScenarioThought,
 ) -> TreeNode:
+    """A proposed scenario from one generator thought.
+
+    The id includes the event: an episode that re-matches searches a second
+    event, possibly over the same calendar levels, and its nodes must not
+    overwrite the first search's.
+    """
     parent_id = parent.node_id if parent is not None else None
     return TreeNode(
-        node_id=stable_id("node", episode_id, parent_id or "root", level.scheduled_event_id, index),
+        node_id=stable_id(
+            "node", episode_id, event_ticker, parent_id or "root", level.scheduled_event_id, index
+        ),
         episode_id=episode_id,
         parent_id=parent_id,
         depth=depth,

@@ -46,7 +46,7 @@ from pmfa.forecast import (
 from pmfa.forecast.tree import passage_brief
 from pmfa.models.meter import add_usage
 from pmfa.ports import World
-from pmfa.records.base import RunMode, stable_id
+from pmfa.records.base import RunMode, Stage, stable_id
 from pmfa.records.decision import (
     GateResult,
     OrderIntent,
@@ -126,6 +126,8 @@ class EpisodeState(TypedDict, total=False):
     """What the review command resumed the graph with."""
     review: dict[str, Any] | None
     fill_tagged: bool
+    run_budget_exhausted: bool
+    """The run's dollar cap was reached: the controller re-raises after recording."""
     usage: dict[str, Any] | None
     """Model usage when the episode paused, so a resume in a fresh process keeps it."""
 
@@ -238,7 +240,12 @@ class Pipeline:
                 return fn(state)
             except ModelOutputError as exc:
                 return self._exit(state, trace_node, Exit.ERROR, f"model output error: {exc}")
-            except (BudgetExhausted, RunBudgetExhausted) as exc:
+            except RunBudgetExhausted as exc:
+                update = self._exit(
+                    state, trace_node, Exit.ERROR, f"the run's dollar cap was reached: {exc}"
+                )
+                return {**update, "run_budget_exhausted": True}
+            except BudgetExhausted as exc:
                 return self._exit(state, trace_node, Exit.ERROR, f"budget exhausted: {exc}")
 
         return run
@@ -252,6 +259,18 @@ class Pipeline:
 
     def _trigger(self, state: EpisodeState) -> Trigger:
         return Trigger.model_validate(state["trigger"])
+
+    def _stage(self) -> Stage:
+        """The stage the gate and routing use.
+
+        The demo exchange may run at the approval stage regardless, because its funds
+        are mock: in demo mode the stored stage is raised to approval when it is below.
+        Every other mode uses the stored stage. Auto still needs the autonomous stage.
+        """
+        stored = self.world.store.get_stage().stage
+        if self.world.mode is RunMode.DEMO and stored.rank < Stage.APPROVAL.rank:
+            return Stage.APPROVAL
+        return stored
 
     def _followed(self, event: Event) -> SeriesConfig | None:
         sc = self.config.follow.for_ticker(event.series_ticker)
@@ -795,12 +814,30 @@ class Pipeline:
     # ------------------------------------------------------------------ 6. gate
 
     def gate(self, state: EpisodeState) -> dict[str, Any]:
+        from pmfa.execution.halt import enforce
+
         world = self.world
         eid = state["episode_id"]
         p = Proposal.model_validate(state["proposal"])
         sizing = SizingInputs.model_validate(state["sizing"])
         forecast = Forecast.model_validate(state["forecast"])
         reviewed = state.get("review") is not None
+
+        # The self-halt conditions run first, so a tripped loss stop or drawdown sets the
+        # persisted flag and cancels open orders; the gate re-checks both on its own.
+        self.tracer.action(eid, "gate", "check the self-halt conditions")
+        stops = enforce(
+            world.store,
+            world.executor,
+            self.config,
+            world.clock,
+            world.evidence,
+            bankroll=world.executor.balance().equity,
+        )
+        if stops:
+            world.store.save_proposal(p, ProposalStatus.CANCELLED)
+            return self._exit(state, "gate", Exit.HALTED, "self-halt: " + "; ".join(stops))
+
         book = (
             world.executor.execution_book(p.market_ticker)
             if reviewed
@@ -817,7 +854,7 @@ class Pipeline:
             config=self.config,
             now=now,
             halted=world.store.get_halt().halted,
-            stage=world.store.get_stage().stage,
+            stage=self._stage(),
             simulated=world.executor.simulated,
             series=sizing.series,
             series_config=sizing.series_config,
@@ -857,7 +894,7 @@ class Pipeline:
     # ------------------------------------------------------------------ 7. route
 
     def route(self, state: EpisodeState) -> dict[str, Any]:
-        from pmfa.execution.halt import enforce, halt
+        from pmfa.execution.halt import halt
         from pmfa.execution.review import ReviewQueue, build_card
 
         world, config = self.world, self.config
@@ -866,20 +903,13 @@ class Pipeline:
         sizing = SizingInputs.model_validate(state["sizing"])
         equity = world.executor.balance().equity
 
-        self.tracer.action(eid, "route", "check the self-halt conditions")
-        stops = enforce(
-            world.store, world.executor, config, world.clock, world.evidence, bankroll=equity
-        )
-        if stops:
-            return self._exit(state, "route", Exit.HALTED, "self-halt: " + "; ".join(stops))
-
         now = world.clock.now()
         before = sizing.books[p.market_ticker].mid_yes()
         current = world.executor.execution_book(p.market_ticker).mid_yes()
         move = abs(current - before) if before is not None and current is not None else Decimal(1)
         context = RoutingContext(
             config=config,
-            stage=world.store.get_stage().stage,
+            stage=self._stage(),
             halted=world.store.get_halt().halted,
             risk=risk_state(world.store.equity_series(), now, config, bankroll=equity),
             liquidity_dollars=world.exchange.liquidity_dollars(p.market_ticker, p.side),
@@ -1060,8 +1090,6 @@ class Pipeline:
         detail = (
             f"{order.status.value}: {filled} of {order.requested_contracts} at <= {p.limit_price}"
         )
-        if state.get("fill_tagged"):
-            detail += "; approve tier filled with no human present (fill_tagged)"
         return {"exit": Exit.EXECUTED.value, "exit_detail": detail, "goto": "record"}
 
     # ------------------------------------------------------------------ 10. record
@@ -1168,6 +1196,7 @@ class Pipeline:
             routing=_load(Routing, state.get("routing")),
             review=_load(Review, state.get("review")),
             orders=world.store.list_orders(episode_id=eid),
+            fill_tagged=bool(state.get("fill_tagged")),
             usage=usage,
             trace=world.store.get_trace(eid),
             started_at=_time(state["started_at"]),

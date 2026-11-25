@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pmfa.errors import NotFound, PmfaError
+from pmfa.errors import NotFound, PmfaError, RunBudgetExhausted
 from pmfa.ports import World
 from pmfa.records.decision import ProposalStatus, Review
 from pmfa.records.episode import EpisodeRecord, EpisodeStatus
@@ -79,6 +79,8 @@ class EpisodeController:
 
         The episode id is deterministic, so running a trigger that already has an
         episode in the store returns that episode without running anything again.
+        Raises ``RunBudgetExhausted`` after recording the episode (exit ``error``)
+        when the run's dollar cap was reached: the caller must stop the run.
         """
         episode_id = episode_id_for(self.world.mode, trigger)
         existing = self.world.store.get_episode(episode_id)
@@ -102,7 +104,8 @@ class EpisodeController:
         reason code) raises and leaves the episode paused. A proposal that has
         expired, by time or because the price passed its edge bound, ends the
         episode ``expired`` whatever the review says. Resuming an episode that is
-        no longer paused returns its record and does nothing.
+        no longer paused returns its record and does nothing. Raises
+        ``RunBudgetExhausted`` after recording, as ``run`` does.
         """
         from pmfa.execution.review import ReviewQueue
 
@@ -181,6 +184,9 @@ class EpisodeController:
             raise NotFound(f"episode {episode_id} was not recorded")
         if not result.get("__interrupt__") and record.status is EpisodeStatus.DONE:
             self.checkpointer.delete_thread(episode_id)
+        if result.get("run_budget_exhausted"):
+            # The episode is recorded (exit error); the run must stop, so the caller hears it.
+            raise RunBudgetExhausted(record.exit_detail)
         return record
 
     def _resume(self, episode_id: str, answer: dict[str, Any]) -> EpisodeRecord:

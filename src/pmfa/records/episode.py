@@ -108,6 +108,8 @@ class EpisodeRecord(Record):
     routing: Routing | None = None
     review: Review | None = None
     orders: list[OrderResult] = []
+    fill_tagged: bool = False
+    """An approve-tier proposal was filled with no human present (backtests); reports separate these."""
     usage: Usage = Usage()
     trace: list[TraceStep] = []
     started_at: UtcTime
