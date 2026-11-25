@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from pmfa.examples import TapeModels, replay, review_policy, run_on_world
+from pmfa.records.base import RunMode
 from pmfa.records.decision import ReviewDecision
 from pmfa.records.episode import EpisodeRecord, Exit
 from pmfa.records.evidence import EventHit, Passage
@@ -27,11 +28,13 @@ from .factories import AS_OF, CANARY, CUT, DEC, JAN, MINUTES, UNRELATED, UNUSED_
 from .factories import world_file as make_file
 
 
-def record(source):
+def record(source, mode=RunMode.REPLAY):
     """Run the source world's trigger through a recording; return file, cassette, run."""
     config = recorded_config(source)
     tape = TapeModels(scripted(config), config)
-    world = build_recorded_world(source, models=tape, review_policy=review_policy(source))
+    world = build_recorded_world(
+        source, models=tape, review_policy=review_policy(source), mode=mode
+    )
     recording = Recording(world)
     run = run_on_world(recording.world, source)
     file = recording.file(source.trigger, description=source.description).model_copy(
@@ -203,3 +206,39 @@ def test_save_example_writes_the_layout_and_keeps_a_hand_written_readme(tmp_path
     save_example(folder, file, cassette, run.episode, None)
     assert (folder / "README.md").read_text(encoding="utf-8") == "hand-written\n"
     assert not (folder / "expected" / "review_card.json").exists()
+
+
+def test_an_episode_recorded_in_backtest_mode_replays_in_that_mode(tmp_path):
+    file, cassette, run = record(make_file(), mode=RunMode.BACKTEST)
+    assert file.mode is RunMode.BACKTEST and run.episode.mode is RunMode.BACKTEST
+    save_example(tmp_path / "bt", file, cassette, run.episode, run.card)
+    result = replay(tmp_path / "bt")
+    assert result.episode.episode_id == run.episode.episode_id
+    assert decided(result.episode) == decided(run.episode)
+
+
+def test_a_world_holding_a_position_in_another_event_records_and_replays_identically(tmp_path):
+    from pmfa.records.decision import Fill
+    from pmfa.records.evidence import Trigger, TriggerKind
+
+    held = f"{JAN}-H0"
+    fill = Fill(
+        fill_id="prior-fill-1",
+        order_id="prior-order-1",
+        market_ticker=held,
+        side=Side.YES,
+        contracts="5",
+        price="0.62",
+        fee="0.02",
+        filled_at=AS_OF.replace(day=17),
+        simulated=True,
+    )
+    # A schedule trigger names its event, so the episode itself never reads January.
+    trigger = Trigger(trigger_id="sched-dec", kind=TriggerKind.SCHEDULE, at=AS_OF, event_ticker=DEC)
+    file, cassette, run = record(make_file(fills=[fill], trigger=trigger))
+    assert JAN in {e.event_ticker for e in file.events}
+    assert file.fills == [fill]
+    save_example(tmp_path / "held", file, cassette, run.episode, run.card)
+    result = replay(tmp_path / "held")
+    assert decided(result.episode) == decided(run.episode)
+    assert without_call_source(result.episode) == without_call_source(run.episode)

@@ -308,6 +308,7 @@
   "review": {
     "decision": "approve"
   },
+  "mode": "replay",
   "knowledge_calls": [
     {
       "method": "search_events",

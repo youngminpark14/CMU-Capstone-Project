@@ -302,6 +302,7 @@
   ],
   "bankroll": "1000",
   "stage": "approval",
+  "mode": "replay",
   "knowledge_calls": [
     {
       "method": "search_events",

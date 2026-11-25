@@ -1,5 +1,5 @@
 {
-  "episode_id": "episode-185a4f24404f5cbd",
+  "episode_id": "episode-b11d27a524b9e452",
   "mode": "replay",
   "trigger": {
     "trigger_id": "new-document:bls:cpi_release:2026-08",
@@ -28,8 +28,8 @@
     }
   ],
   "forecast": {
-    "forecast_id": "fc-5d272fdcb598451b",
-    "episode_id": "episode-185a4f24404f5cbd",
+    "forecast_id": "fc-286e5ba567ed3f90",
+    "episode_id": "episode-b11d27a524b9e452",
     "event_ticker": "KXCPIYOY-26SEP",
     "as_of": "2026-09-11T12:35:00Z",
     "system": "pipeline",
@@ -63,7 +63,7 @@
     "paths": [
       {
         "node_ids": [
-          "node-c7d62da6ecaf4a5e"
+          "node-cc2af27e38c22ca3"
         ],
         "claims": [
           "September 12-month CPI inflation stays close to August's 3.4 percent"
@@ -73,7 +73,7 @@
       },
       {
         "node_ids": [
-          "node-aae188da09a4de5e"
+          "node-3960bb84d3f60f8e"
         ],
         "claims": [
           "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent"
@@ -83,7 +83,7 @@
       },
       {
         "node_ids": [
-          "node-bc4be82d9df99e48"
+          "node-9fb7b63c0c5fdb08"
         ],
         "claims": [
           "12-month CPI inflation eases to 3.3 percent or below"
@@ -512,7 +512,7 @@
         "output": {
           "scores": [
             {
-              "scenario_id": "node-c7d62da6ecaf4a5e",
+              "scenario_id": "node-cc2af27e38c22ca3",
               "verdict": "scored",
               "probability": 0.5,
               "option_probabilities": [],
@@ -528,7 +528,7 @@
               "rationale": "Two months at 3.4 percent make a nearby reading the single likeliest case."
             },
             {
-              "scenario_id": "node-aae188da09a4de5e",
+              "scenario_id": "node-3960bb84d3f60f8e",
               "verdict": "scored",
               "probability": 0.3,
               "option_probabilities": [],
@@ -544,7 +544,7 @@
               "rationale": "Energy could keep adding to the headline, but one month is thin evidence."
             },
             {
-              "scenario_id": "node-bc4be82d9df99e48",
+              "scenario_id": "node-9fb7b63c0c5fdb08",
               "verdict": "scored",
               "probability": 0.2,
               "option_probabilities": [],
@@ -587,7 +587,7 @@
       "data": {
         "nodes": [
           {
-            "node_id": "node-c7d62da6ecaf4a5e",
+            "node_id": "node-cc2af27e38c22ca3",
             "parent_id": null,
             "claim": "September 12-month CPI inflation stays close to August's 3.4 percent",
             "status": "leaf",
@@ -599,7 +599,7 @@
             ]
           },
           {
-            "node_id": "node-aae188da09a4de5e",
+            "node_id": "node-3960bb84d3f60f8e",
             "parent_id": null,
             "claim": "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent",
             "status": "leaf",
@@ -611,7 +611,7 @@
             ]
           },
           {
-            "node_id": "node-bc4be82d9df99e48",
+            "node_id": "node-9fb7b63c0c5fdb08",
             "parent_id": null,
             "claim": "12-month CPI inflation eases to 3.3 percent or below",
             "status": "leaf",
@@ -635,8 +635,8 @@
       "role": null,
       "data": {
         "forecast": {
-          "forecast_id": "fc-5d272fdcb598451b",
-          "episode_id": "episode-185a4f24404f5cbd",
+          "forecast_id": "fc-286e5ba567ed3f90",
+          "episode_id": "episode-b11d27a524b9e452",
           "event_ticker": "KXCPIYOY-26SEP",
           "as_of": "2026-09-11T12:35:00Z",
           "system": "pipeline",
@@ -670,7 +670,7 @@
           "paths": [
             {
               "node_ids": [
-                "node-c7d62da6ecaf4a5e"
+                "node-cc2af27e38c22ca3"
               ],
               "claims": [
                 "September 12-month CPI inflation stays close to August's 3.4 percent"
@@ -680,7 +680,7 @@
             },
             {
               "node_ids": [
-                "node-aae188da09a4de5e"
+                "node-3960bb84d3f60f8e"
               ],
               "claims": [
                 "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent"
@@ -690,7 +690,7 @@
             },
             {
               "node_ids": [
-                "node-bc4be82d9df99e48"
+                "node-9fb7b63c0c5fdb08"
               ],
               "claims": [
                 "12-month CPI inflation eases to 3.3 percent or below"

@@ -312,6 +312,7 @@
     "note": "First position on this event: keep it to 10 contracts.",
     "after_seconds": 90.0
   },
+  "mode": "replay",
   "knowledge_calls": [
     {
       "method": "search_events",

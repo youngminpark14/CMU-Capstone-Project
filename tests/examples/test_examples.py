@@ -1,8 +1,8 @@
 """The committed sample episodes replay offline to exactly their expected/ files.
 
-Nothing is normalised in the comparison: the replay runs on a simulated clock
-and every id is derived from the inputs, so no field of the episode record or
-the review card is volatile.
+The comparison is of whole records; the only field normalised is each model
+call's ``call.source`` (where that run's answer came from), which a replay
+always reports as ``cassette``. Nothing else is volatile.
 """
 
 from __future__ import annotations

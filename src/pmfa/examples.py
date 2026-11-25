@@ -262,7 +262,7 @@ def replay(path: str | Path) -> ReplayResult:
     cassette = load_cassette(paths.cassette)
     player = CassettePlayer({cassette.episode_id: cassette})
     world = build_recorded_world(
-        file, models=player, review_policy=review_policy(file), mode=RunMode.REPLAY
+        file, models=player, review_policy=review_policy(file), mode=file.mode or RunMode.REPLAY
     )
     run = run_on_world(world, file)
     knowledge = world.knowledge
@@ -284,9 +284,11 @@ def replay(path: str | Path) -> ReplayResult:
 def check(result: ReplayResult) -> list[str]:
     """Differences between a replay and its example's ``expected/`` files; empty when it matches.
 
-    Whole records are compared. Nothing is normalised: the world runs on a
-    simulated clock and every id is derived from its inputs, so no field of
-    the episode record or the review card is volatile.
+    Whole records are compared, with one field normalised: each model call's
+    ``call.source`` (``live``, ``cache``, ``scripted`` or ``cassette``) says where
+    that run's answer came from, so a replay always reads ``cassette`` while the
+    run that was recorded does not. Nothing else is volatile: the world runs on a
+    simulated clock and every id is derived from its inputs.
     """
     paths = result.paths
     if paths is None or paths.directory is None:
@@ -297,8 +299,8 @@ def check(result: ReplayResult) -> list[str]:
     if not expected_episode.is_file():
         problems.append(f"{expected_episode} is missing")
     else:
-        recorded = json.loads(expected_episode.read_text(encoding="utf-8"))
-        now = result.episode.model_dump(mode="json")
+        recorded = _without_call_source(json.loads(expected_episode.read_text(encoding="utf-8")))
+        now = _without_call_source(result.episode.model_dump(mode="json"))
         difference = first_difference(recorded, now)
         if difference is not None:
             problems.append(f"{EXPECTED_DIR}/{EPISODE_FILE} differs at {difference}")
@@ -321,6 +323,15 @@ def check(result: ReplayResult) -> list[str]:
             f"{result.unplayed_knowledge} recorded knowledge call(s) were never replayed"
         )
     return problems
+
+
+def _without_call_source(data: dict[str, Any]) -> dict[str, Any]:
+    """An episode record as JSON with each trace step's ``call.source`` removed (see ``check``)."""
+    for step in data.get("trace", []):
+        call = step.get("call") if isinstance(step, dict) else None
+        if isinstance(call, dict):
+            call.pop("source", None)
+    return data
 
 
 def summary_line(directory: Path) -> str:

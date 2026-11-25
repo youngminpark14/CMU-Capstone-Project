@@ -1,5 +1,5 @@
 {
-  "episode_id": "episode-4beae283471895ee",
+  "episode_id": "episode-2f3a99bc9b660de6",
   "mode": "replay",
   "trigger": {
     "trigger_id": "new-document:fed:fomcminutes20260916",
@@ -44,8 +44,8 @@
     }
   ],
   "forecast": {
-    "forecast_id": "fc-3283e700b6412093",
-    "episode_id": "episode-4beae283471895ee",
+    "forecast_id": "fc-e2a4a55688e18dfa",
+    "episode_id": "episode-2f3a99bc9b660de6",
     "event_ticker": "KXFEDDECISION-26OCT",
     "as_of": "2026-10-07T18:05:00Z",
     "system": "pipeline",
@@ -74,8 +74,8 @@
     "paths": [
       {
         "node_ids": [
-          "node-d098a0fe65351854",
-          "node-edaad42bdbfa4809"
+          "node-82b13c08a8c56de2",
+          "node-da2c70719ba2a7ba"
         ],
         "claims": [
           "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
@@ -86,8 +86,8 @@
       },
       {
         "node_ids": [
-          "node-da60e9e3aaa4eaa9",
-          "node-78c26d491d1ba310"
+          "node-7a23e17369d420e6",
+          "node-c78c17ff3ca68b31"
         ],
         "claims": [
           "The September CPI report on October 14 shows inflation cooling noticeably",
@@ -98,8 +98,8 @@
       },
       {
         "node_ids": [
-          "node-d098a0fe65351854",
-          "node-a3903315d05c8861"
+          "node-82b13c08a8c56de2",
+          "node-0d01d52bfcf0c713"
         ],
         "claims": [
           "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
@@ -110,8 +110,8 @@
       },
       {
         "node_ids": [
-          "node-da60e9e3aaa4eaa9",
-          "node-cb25bc01bba44f51"
+          "node-7a23e17369d420e6",
+          "node-ce8bc599bdfac9c9"
         ],
         "claims": [
           "The September CPI report on October 14 shows inflation cooling noticeably",
@@ -128,8 +128,8 @@
     ]
   },
   "proposal": {
-    "proposal_id": "proposal-bd61a65d271f417b",
-    "episode_id": "episode-4beae283471895ee",
+    "proposal_id": "proposal-407840f044986ef6",
+    "episode_id": "episode-2f3a99bc9b660de6",
     "event_ticker": "KXFEDDECISION-26OCT",
     "market_ticker": "KXFEDDECISION-26OCT-H0",
     "side": "no",
@@ -263,7 +263,7 @@
     ]
   },
   "review": {
-    "proposal_id": "proposal-bd61a65d271f417b",
+    "proposal_id": "proposal-407840f044986ef6",
     "decision": "resize",
     "contracts": 10,
     "reason_code": "size_too_large",
@@ -273,9 +273,9 @@
   },
   "orders": [
     {
-      "order_id": "paper-order-41c97670a023136c",
-      "client_order_id": "order-e8b06f5da78b6608",
-      "episode_id": "episode-4beae283471895ee",
+      "order_id": "paper-order-779d171132927fd9",
+      "client_order_id": "order-cdf0ef604d91d73f",
+      "episode_id": "episode-2f3a99bc9b660de6",
       "market_ticker": "KXFEDDECISION-26OCT-H0",
       "side": "no",
       "requested_contracts": 10,
@@ -283,8 +283,8 @@
       "status": "filled",
       "fills": [
         {
-          "fill_id": "paper-fill-8d82e2c9a9c0df5d",
-          "order_id": "paper-order-41c97670a023136c",
+          "fill_id": "paper-fill-0be2f2f49a7c7045",
+          "order_id": "paper-order-779d171132927fd9",
           "market_ticker": "KXFEDDECISION-26OCT-H0",
           "side": "no",
           "contracts": "10",
@@ -715,7 +715,7 @@
         "output": {
           "scores": [
             {
-              "scenario_id": "node-d098a0fe65351854",
+              "scenario_id": "node-82b13c08a8c56de2",
               "verdict": "scored",
               "probability": 0.7,
               "option_probabilities": [
@@ -746,7 +746,7 @@
               "rationale": "Nothing in the passages points to a quick cooling; energy shocks persist."
             },
             {
-              "scenario_id": "node-da60e9e3aaa4eaa9",
+              "scenario_id": "node-7a23e17369d420e6",
               "verdict": "scored",
               "probability": 0.3,
               "option_probabilities": [
@@ -804,7 +804,7 @@
       "data": {
         "nodes": [
           {
-            "node_id": "node-d098a0fe65351854",
+            "node_id": "node-82b13c08a8c56de2",
             "parent_id": null,
             "claim": "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
             "status": "expanded",
@@ -817,7 +817,7 @@
             ]
           },
           {
-            "node_id": "node-da60e9e3aaa4eaa9",
+            "node_id": "node-7a23e17369d420e6",
             "parent_id": null,
             "claim": "The September CPI report on October 14 shows inflation cooling noticeably",
             "status": "expanded",
@@ -906,7 +906,7 @@
         "output": {
           "scores": [
             {
-              "scenario_id": "node-a3903315d05c8861",
+              "scenario_id": "node-0d01d52bfcf0c713",
               "verdict": "scored",
               "probability": 0.33,
               "option_probabilities": [
@@ -937,7 +937,7 @@
               "rationale": "Most participants favour another increase by year end, but October and December are both open."
             },
             {
-              "scenario_id": "node-edaad42bdbfa4809",
+              "scenario_id": "node-da2c70719ba2a7ba",
               "verdict": "scored",
               "probability": 0.67,
               "option_probabilities": [
@@ -1048,7 +1048,7 @@
         "output": {
           "scores": [
             {
-              "scenario_id": "node-78c26d491d1ba310",
+              "scenario_id": "node-c78c17ff3ca68b31",
               "verdict": "scored",
               "probability": 0.85,
               "option_probabilities": [
@@ -1079,7 +1079,7 @@
               "rationale": "A cooler report makes waiting the likelier choice."
             },
             {
-              "scenario_id": "node-cb25bc01bba44f51",
+              "scenario_id": "node-ce8bc599bdfac9c9",
               "verdict": "scored",
               "probability": 0.15,
               "option_probabilities": [
@@ -1137,8 +1137,8 @@
       "data": {
         "nodes": [
           {
-            "node_id": "node-a3903315d05c8861",
-            "parent_id": "node-d098a0fe65351854",
+            "node_id": "node-0d01d52bfcf0c713",
+            "parent_id": "node-82b13c08a8c56de2",
             "claim": "After an elevated September CPI, the Committee raises the target range 25 bp on October 28",
             "status": "leaf",
             "reason": "leaf",
@@ -1149,8 +1149,8 @@
             ]
           },
           {
-            "node_id": "node-edaad42bdbfa4809",
-            "parent_id": "node-d098a0fe65351854",
+            "node_id": "node-da2c70719ba2a7ba",
+            "parent_id": "node-82b13c08a8c56de2",
             "claim": "After an elevated September CPI, the Committee holds on October 28 and leaves the next increase for December",
             "status": "leaf",
             "reason": "leaf",
@@ -1162,8 +1162,8 @@
             ]
           },
           {
-            "node_id": "node-78c26d491d1ba310",
-            "parent_id": "node-da60e9e3aaa4eaa9",
+            "node_id": "node-c78c17ff3ca68b31",
+            "parent_id": "node-7a23e17369d420e6",
             "claim": "After a cooler September CPI, the Committee holds the target range on October 28",
             "status": "leaf",
             "reason": "leaf",
@@ -1174,8 +1174,8 @@
             ]
           },
           {
-            "node_id": "node-cb25bc01bba44f51",
-            "parent_id": "node-da60e9e3aaa4eaa9",
+            "node_id": "node-ce8bc599bdfac9c9",
+            "parent_id": "node-7a23e17369d420e6",
             "claim": "The Committee raises the target range 25 bp on October 28 despite a cooler CPI",
             "status": "leaf",
             "reason": "leaf",
@@ -1198,8 +1198,8 @@
       "role": null,
       "data": {
         "forecast": {
-          "forecast_id": "fc-3283e700b6412093",
-          "episode_id": "episode-4beae283471895ee",
+          "forecast_id": "fc-e2a4a55688e18dfa",
+          "episode_id": "episode-2f3a99bc9b660de6",
           "event_ticker": "KXFEDDECISION-26OCT",
           "as_of": "2026-10-07T18:05:00Z",
           "system": "pipeline",
@@ -1228,8 +1228,8 @@
           "paths": [
             {
               "node_ids": [
-                "node-d098a0fe65351854",
-                "node-edaad42bdbfa4809"
+                "node-82b13c08a8c56de2",
+                "node-da2c70719ba2a7ba"
               ],
               "claims": [
                 "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
@@ -1240,8 +1240,8 @@
             },
             {
               "node_ids": [
-                "node-da60e9e3aaa4eaa9",
-                "node-78c26d491d1ba310"
+                "node-7a23e17369d420e6",
+                "node-c78c17ff3ca68b31"
               ],
               "claims": [
                 "The September CPI report on October 14 shows inflation cooling noticeably",
@@ -1252,8 +1252,8 @@
             },
             {
               "node_ids": [
-                "node-d098a0fe65351854",
-                "node-a3903315d05c8861"
+                "node-82b13c08a8c56de2",
+                "node-0d01d52bfcf0c713"
               ],
               "claims": [
                 "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
@@ -1264,8 +1264,8 @@
             },
             {
               "node_ids": [
-                "node-da60e9e3aaa4eaa9",
-                "node-cb25bc01bba44f51"
+                "node-7a23e17369d420e6",
+                "node-ce8bc599bdfac9c9"
               ],
               "claims": [
                 "The September CPI report on October 14 shows inflation cooling noticeably",
@@ -1307,8 +1307,8 @@
       "role": null,
       "data": {
         "proposal": {
-          "proposal_id": "proposal-bd61a65d271f417b",
-          "episode_id": "episode-4beae283471895ee",
+          "proposal_id": "proposal-407840f044986ef6",
+          "episode_id": "episode-2f3a99bc9b660de6",
           "event_ticker": "KXFEDDECISION-26OCT",
           "market_ticker": "KXFEDDECISION-26OCT-H0",
           "side": "no",
@@ -1514,8 +1514,8 @@
       "role": null,
       "data": {
         "card": {
-          "proposal_id": "proposal-bd61a65d271f417b",
-          "episode_id": "episode-4beae283471895ee",
+          "proposal_id": "proposal-407840f044986ef6",
+          "episode_id": "episode-2f3a99bc9b660de6",
           "event_title": "Fed decision in Oct 2026?",
           "market_title": "Fed maintains rate",
           "market_ticker": "KXFEDDECISION-26OCT-H0",
@@ -1567,7 +1567,7 @@
       "role": null,
       "data": {
         "review": {
-          "proposal_id": "proposal-bd61a65d271f417b",
+          "proposal_id": "proposal-407840f044986ef6",
           "decision": "resize",
           "contracts": 10,
           "reason_code": "size_too_large",
@@ -1739,9 +1739,9 @@
       "role": null,
       "data": {
         "intent": {
-          "client_order_id": "order-e8b06f5da78b6608",
-          "episode_id": "episode-4beae283471895ee",
-          "proposal_id": "proposal-bd61a65d271f417b",
+          "client_order_id": "order-cdf0ef604d91d73f",
+          "episode_id": "episode-2f3a99bc9b660de6",
+          "proposal_id": "proposal-407840f044986ef6",
           "market_ticker": "KXFEDDECISION-26OCT-H0",
           "side": "no",
           "contracts": 10,
@@ -1759,9 +1759,9 @@
       "role": null,
       "data": {
         "order": {
-          "order_id": "paper-order-41c97670a023136c",
-          "client_order_id": "order-e8b06f5da78b6608",
-          "episode_id": "episode-4beae283471895ee",
+          "order_id": "paper-order-779d171132927fd9",
+          "client_order_id": "order-cdf0ef604d91d73f",
+          "episode_id": "episode-2f3a99bc9b660de6",
           "market_ticker": "KXFEDDECISION-26OCT-H0",
           "side": "no",
           "requested_contracts": 10,
@@ -1769,8 +1769,8 @@
           "status": "filled",
           "fills": [
             {
-              "fill_id": "paper-fill-8d82e2c9a9c0df5d",
-              "order_id": "paper-order-41c97670a023136c",
+              "fill_id": "paper-fill-0be2f2f49a7c7045",
+              "order_id": "paper-order-779d171132927fd9",
               "market_ticker": "KXFEDDECISION-26OCT-H0",
               "side": "no",
               "contracts": "10",

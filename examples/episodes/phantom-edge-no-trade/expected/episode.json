@@ -1,5 +1,5 @@
 {
-  "episode_id": "episode-185a4f24404f5cbd",
+  "episode_id": "episode-b11d27a524b9e452",
   "mode": "replay",
   "trigger": {
     "trigger_id": "new-document:bls:cpi_release:2026-08",
@@ -44,8 +44,8 @@
     }
   ],
   "forecast": {
-    "forecast_id": "fc-409060dbf6dcabd9",
-    "episode_id": "episode-185a4f24404f5cbd",
+    "forecast_id": "fc-1c90825f1b9c7901",
+    "episode_id": "episode-b11d27a524b9e452",
     "event_ticker": "KXFEDDECISION-26SEP",
     "as_of": "2026-09-11T12:35:00Z",
     "system": "pipeline",
@@ -74,7 +74,7 @@
     "paths": [
       {
         "node_ids": [
-          "node-4696490e4be6494c"
+          "node-2586dde3e699eb29"
         ],
         "claims": [
           "The Committee raises the target range 25 bp on September 16"
@@ -84,7 +84,7 @@
       },
       {
         "node_ids": [
-          "node-c411f40012f453df"
+          "node-e63d0628de5719d9"
         ],
         "claims": [
           "The Committee holds the target range on September 16"
@@ -519,7 +519,7 @@
         "output": {
           "scores": [
             {
-              "scenario_id": "node-4696490e4be6494c",
+              "scenario_id": "node-2586dde3e699eb29",
               "verdict": "scored",
               "probability": 0.78,
               "option_probabilities": [
@@ -550,7 +550,7 @@
               "rationale": "A hot headline print after three hike dissents makes a September increase likely, though not certain."
             },
             {
-              "scenario_id": "node-c411f40012f453df",
+              "scenario_id": "node-e63d0628de5719d9",
               "verdict": "scored",
               "probability": 0.22,
               "option_probabilities": [
@@ -608,7 +608,7 @@
       "data": {
         "nodes": [
           {
-            "node_id": "node-4696490e4be6494c",
+            "node_id": "node-2586dde3e699eb29",
             "parent_id": null,
             "claim": "The Committee raises the target range 25 bp on September 16",
             "status": "leaf",
@@ -621,7 +621,7 @@
             ]
           },
           {
-            "node_id": "node-c411f40012f453df",
+            "node_id": "node-e63d0628de5719d9",
             "parent_id": null,
             "claim": "The Committee holds the target range on September 16",
             "status": "leaf",
@@ -645,8 +645,8 @@
       "role": null,
       "data": {
         "forecast": {
-          "forecast_id": "fc-409060dbf6dcabd9",
-          "episode_id": "episode-185a4f24404f5cbd",
+          "forecast_id": "fc-1c90825f1b9c7901",
+          "episode_id": "episode-b11d27a524b9e452",
           "event_ticker": "KXFEDDECISION-26SEP",
           "as_of": "2026-09-11T12:35:00Z",
           "system": "pipeline",
@@ -675,7 +675,7 @@
           "paths": [
             {
               "node_ids": [
-                "node-4696490e4be6494c"
+                "node-2586dde3e699eb29"
               ],
               "claims": [
                 "The Committee raises the target range 25 bp on September 16"
@@ -685,7 +685,7 @@
             },
             {
               "node_ids": [
-                "node-c411f40012f453df"
+                "node-e63d0628de5719d9"
               ],
               "claims": [
                 "The Committee holds the target range on September 16"

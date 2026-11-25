@@ -159,6 +159,9 @@ class RecordedWorldFile(Record):
     config_overrides: dict[str, Any] = {}
     """Merged into the default configuration, section by section."""
     review: ScriptedReview | None = None
+    mode: RunMode | None = None
+    """The run mode the episode was recorded in. Replay runs in it, so the episode id and any
+    mode-dependent rule match the recording. ``None``: replay mode."""
     knowledge_calls: list[RecordedKnowledgeCall] = []
     """Recorded ``Knowledge`` calls, served back in order by ``RecordedKnowledge``.
     Empty: the built world indexes ``documents``, ``events`` and ``ledger`` instead."""

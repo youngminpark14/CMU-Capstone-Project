@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "episode_id": "episode-4beae283471895ee",
+  "episode_id": "episode-2f3a99bc9b660de6",
   "entries": [
     {
       "seq": 1,
@@ -465,7 +465,7 @@
         "path": [],
         "scenarios": [
           {
-            "scenario_id": "node-d098a0fe65351854",
+            "scenario_id": "node-82b13c08a8c56de2",
             "claim": "The September CPI report on October 14 shows inflation still elevated, with no clear cooling",
             "outcome_ids": [],
             "value_low": null,
@@ -476,7 +476,7 @@
             ]
           },
           {
-            "scenario_id": "node-da60e9e3aaa4eaa9",
+            "scenario_id": "node-7a23e17369d420e6",
             "claim": "The September CPI report on October 14 shows inflation cooling noticeably",
             "outcome_ids": [],
             "value_low": null,
@@ -518,7 +518,7 @@
       "output": {
         "scores": [
           {
-            "scenario_id": "node-d098a0fe65351854",
+            "scenario_id": "node-82b13c08a8c56de2",
             "verdict": "scored",
             "probability": 0.7,
             "option_probabilities": [
@@ -549,7 +549,7 @@
             "rationale": "Nothing in the passages points to a quick cooling; energy shocks persist."
           },
           {
-            "scenario_id": "node-da60e9e3aaa4eaa9",
+            "scenario_id": "node-7a23e17369d420e6",
             "verdict": "scored",
             "probability": 0.3,
             "option_probabilities": [
@@ -782,7 +782,7 @@
         ],
         "scenarios": [
           {
-            "scenario_id": "node-a3903315d05c8861",
+            "scenario_id": "node-0d01d52bfcf0c713",
             "claim": "After an elevated September CPI, the Committee raises the target range 25 bp on October 28",
             "outcome_ids": [
               "hike_25"
@@ -794,7 +794,7 @@
             ]
           },
           {
-            "scenario_id": "node-edaad42bdbfa4809",
+            "scenario_id": "node-da2c70719ba2a7ba",
             "claim": "After an elevated September CPI, the Committee holds on October 28 and leaves the next increase for December",
             "outcome_ids": [
               "hold"
@@ -831,7 +831,7 @@
       "output": {
         "scores": [
           {
-            "scenario_id": "node-a3903315d05c8861",
+            "scenario_id": "node-0d01d52bfcf0c713",
             "verdict": "scored",
             "probability": 0.33,
             "option_probabilities": [
@@ -862,7 +862,7 @@
             "rationale": "Most participants favour another increase by year end, but October and December are both open."
           },
           {
-            "scenario_id": "node-edaad42bdbfa4809",
+            "scenario_id": "node-da2c70719ba2a7ba",
             "verdict": "scored",
             "probability": 0.67,
             "option_probabilities": [
@@ -1094,7 +1094,7 @@
         ],
         "scenarios": [
           {
-            "scenario_id": "node-78c26d491d1ba310",
+            "scenario_id": "node-c78c17ff3ca68b31",
             "claim": "After a cooler September CPI, the Committee holds the target range on October 28",
             "outcome_ids": [
               "hold"
@@ -1106,7 +1106,7 @@
             ]
           },
           {
-            "scenario_id": "node-cb25bc01bba44f51",
+            "scenario_id": "node-ce8bc599bdfac9c9",
             "claim": "The Committee raises the target range 25 bp on October 28 despite a cooler CPI",
             "outcome_ids": [
               "hike_25"
@@ -1142,7 +1142,7 @@
       "output": {
         "scores": [
           {
-            "scenario_id": "node-78c26d491d1ba310",
+            "scenario_id": "node-c78c17ff3ca68b31",
             "verdict": "scored",
             "probability": 0.85,
             "option_probabilities": [
@@ -1173,7 +1173,7 @@
             "rationale": "A cooler report makes waiting the likelier choice."
           },
           {
-            "scenario_id": "node-cb25bc01bba44f51",
+            "scenario_id": "node-ce8bc599bdfac9c9",
             "verdict": "scored",
             "probability": 0.15,
             "option_probabilities": [

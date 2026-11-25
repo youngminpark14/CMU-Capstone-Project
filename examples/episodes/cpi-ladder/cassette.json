@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "episode_id": "episode-185a4f24404f5cbd",
+  "episode_id": "episode-b11d27a524b9e452",
   "entries": [
     {
       "seq": 1,
@@ -399,7 +399,7 @@
         "path": [],
         "scenarios": [
           {
-            "scenario_id": "node-c7d62da6ecaf4a5e",
+            "scenario_id": "node-cc2af27e38c22ca3",
             "claim": "September 12-month CPI inflation stays close to August's 3.4 percent",
             "outcome_ids": [],
             "value_low": 3.3,
@@ -409,7 +409,7 @@
             ]
           },
           {
-            "scenario_id": "node-aae188da09a4de5e",
+            "scenario_id": "node-3960bb84d3f60f8e",
             "claim": "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent",
             "outcome_ids": [],
             "value_low": 3.5,
@@ -419,7 +419,7 @@
             ]
           },
           {
-            "scenario_id": "node-bc4be82d9df99e48",
+            "scenario_id": "node-9fb7b63c0c5fdb08",
             "claim": "12-month CPI inflation eases to 3.3 percent or below",
             "outcome_ids": [],
             "value_low": null,
@@ -453,7 +453,7 @@
       "output": {
         "scores": [
           {
-            "scenario_id": "node-c7d62da6ecaf4a5e",
+            "scenario_id": "node-cc2af27e38c22ca3",
             "verdict": "scored",
             "probability": 0.5,
             "option_probabilities": [],
@@ -469,7 +469,7 @@
             "rationale": "Two months at 3.4 percent make a nearby reading the single likeliest case."
           },
           {
-            "scenario_id": "node-aae188da09a4de5e",
+            "scenario_id": "node-3960bb84d3f60f8e",
             "verdict": "scored",
             "probability": 0.3,
             "option_probabilities": [],
@@ -485,7 +485,7 @@
             "rationale": "Energy could keep adding to the headline, but one month is thin evidence."
           },
           {
-            "scenario_id": "node-bc4be82d9df99e48",
+            "scenario_id": "node-9fb7b63c0c5fdb08",
             "verdict": "scored",
             "probability": 0.2,
             "option_probabilities": [],

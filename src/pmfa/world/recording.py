@@ -18,8 +18,9 @@ What a recorded file can and cannot say:
   (``execution_books``), first answer per market, which is how a price move
   before execution survives.
 - The starting state is read from the store when the recording starts: stage,
-  halt flag, prior ledger entries, prior fills, and the bankroll. Earlier
-  equity points are not carried over.
+  halt flag, prior ledger entries, prior fills, and the bankroll, plus the event
+  and series of every market a prior fill is in (the executor looks them up).
+  Earlier equity points are not carried over.
 - The configuration is recorded as its differences from the defaults.
 
 ``save_example`` writes a recorded file, its cassette, and the episode's
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pmfa.config import Config
+from pmfa.errors import NotFound
 from pmfa.models.cassette import Cassette
 from pmfa.ports import Evidence, Exchange, Executor, Knowledge, World
 from pmfa.records.decision import OrderIntent, OrderResult, ReviewCard
@@ -301,6 +303,11 @@ class Recording:
             Decimal(bankroll) if bankroll is not None else world.executor.balance().equity
         )
 
+        # The executor looks up the event and series of every market it holds, so the
+        # events behind prior fills are recorded even when the episode never reads them.
+        for ticker in sorted({f.market_ticker for f in self._fills}):
+            self._add_held_market(world.exchange, ticker)
+
         self.world: World = dataclasses.replace(
             world,
             exchange=_RecordingExchange(self, world.exchange),
@@ -310,6 +317,16 @@ class Recording:
         )
 
     # -- capture
+
+    def _add_held_market(self, exchange: Exchange, ticker: str) -> None:
+        try:
+            market = exchange.get_market(ticker)
+            event = exchange.get_event(market.event_ticker)
+            series = exchange.get_series(event.series_ticker)
+        except NotFound:
+            return  # not listed as of the clock: nothing a replay could read either
+        self._add_event(event)
+        self._add_series(series)
 
     def _add_series(self, series: Series) -> None:
         with self._lock:
@@ -366,6 +383,7 @@ class Recording:
                 stage=self._stage,
                 halted=self._halted,
                 config_overrides=config_overrides(self.inner.config),
+                mode=self.inner.mode,
                 knowledge_calls=list(self._knowledge),
             )
 
