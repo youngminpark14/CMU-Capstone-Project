@@ -264,7 +264,7 @@ class KalshiConfig(Section):
     demo_private_key_env: str = "KALSHI_DEMO_PRIVATE_KEY"
     demo_private_key_path_env: str = "KALSHI_DEMO_PRIVATE_KEY_PATH"
     demo_subaccount: int = 1
-    max_requests_per_second: float = 4.0
+    max_requests_per_second: float = 2.0
     request_timeout_seconds: float = 30.0
 
 
