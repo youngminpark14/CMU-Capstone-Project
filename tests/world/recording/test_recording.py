@@ -242,3 +242,30 @@ def test_a_world_holding_a_position_in_another_event_records_and_replays_identic
     result = replay(tmp_path / "held")
     assert decided(result.episode) == decided(run.episode)
     assert without_call_source(result.episode) == without_call_source(run.episode)
+
+
+def test_the_book_an_order_filled_against_is_recorded_and_replayed(tmp_path):
+    from pmfa.records.decision import OrderStatus
+    from pmfa.records.market import BookLevel
+
+    # The decision reads the deep execution book; the order fills against a thin one
+    # (as a backtest's candle after the as-of time would be), so it fills partly.
+    thin = OrderBook(
+        ticker=CUT,
+        as_of=AS_OF,
+        yes_bids=[BookLevel(price="0.32", contracts="3")],
+        no_bids=[BookLevel(price="0.66", contracts="1000")],
+    )
+    file, cassette, run = record(make_file(fill_books={CUT: thin}))
+    [order] = run.episode.orders
+    assert order.status is OrderStatus.PARTIALLY_FILLED and order.filled_contracts == 3
+    assert file.fill_books == {CUT: thin}
+    assert file.execution_books[CUT] != thin
+    save_example(tmp_path / "thin", file, cassette, run.episode, run.card)
+    result = replay(tmp_path / "thin")
+    assert decided(result.episode) == decided(run.episode)
+
+
+def test_a_fill_book_equal_to_the_execution_book_is_not_recorded(tmp_path):
+    file, _, run = record(make_file())
+    assert run.episode.orders and file.fill_books == {}

@@ -282,3 +282,23 @@ def test_an_installed_package_without_a_checkout_says_where_the_examples_are(tmp
     named = runner.invoke(app, ["replay", "cpi-ladder"])
     assert named.exit_code == 2
     assert "source checkout" in named.output
+
+
+def test_an_installed_package_finds_the_examples_it_carries(tmp_path, monkeypatch):
+    # As from a wheel: pyproject.toml force-includes examples/episodes at pmfa/_examples/episodes.
+    import shutil
+
+    import pmfa.examples as examples_module
+
+    package = tmp_path / "site-packages" / "pmfa"
+    packaged = package / "_examples" / "episodes"
+    source = next(iter(examples_module.list_examples()))
+    shutil.copytree(source, packaged / source.name)
+    monkeypatch.setattr(examples_module, "__file__", str(package / "examples.py"))
+    monkeypatch.chdir(tmp_path)
+    assert examples_module.examples_root() == packaged
+    listed = runner.invoke(app, ["replay", "--list"])
+    assert listed.exit_code == 0, listed.output
+    assert source.name in listed.output
+    named = runner.invoke(app, ["replay", source.name, "--check"])
+    assert named.exit_code == 0, named.output

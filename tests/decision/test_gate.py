@@ -125,6 +125,30 @@ def test_each_check_fails_alone(name, proposal, context):
     assert failed.detail
 
 
+def test_the_caps_use_the_current_equity_and_the_loss_stop_the_day_start_equity():
+    """After an intraday gain the caps grow with the equity, the loss stop does not."""
+    from pmfa.records.episode import RiskState
+
+    def risk_after(day_pnl: str) -> RiskState:
+        return RiskState(
+            bankroll=D("1100"),
+            day_start_equity=D("1000"),
+            peak_equity=D("1100"),
+            day_pnl=D(day_pnl),
+            drawdown_fraction=D("0"),
+            loss_stop_tripped=False,
+            drawdown_tripped=False,
+        )
+
+    # 80 YES held at 0.50 is $40: $52.94 is over 5% of $1000 but under 5% of $1100.
+    held = [position(contracts=80)]
+    assert gate(PROPOSAL, _context(positions=held, risk=risk_after("0"))).approved
+    # A $31 loss is over 3% of the $1000 day start, though under 3% of $1100.
+    result = gate(PROPOSAL, _context(risk=risk_after("-31")))
+    assert result.reasons == ["daily_loss_stop"]
+    assert gate(PROPOSAL, _context(risk=risk_after("-29.99"))).approved
+
+
 def test_min_edge_fails_alone_when_fee_rounding_breaks_the_edge():
     # One contract at 0.50 with p = 0.5385: 0.021 of edge before rounding, 0.0185 after.
     # The book is YES 0.49 / 0.50 (mid 0.495); shrinking 0.582 halfway onto it gives 0.5385.

@@ -102,6 +102,7 @@ def gate(proposal: Proposal, context: GateContext) -> GateResult:
 
     # Exposure after the order, at cost: contracts still held from before keep
     # their cost basis; new contracts cost the limit price; the fee is cash out.
+    # The caps are fractions of the current equity, the base sizing caps on.
     bankroll = context.risk.bankroll
 
     in_event = [p for p in context.positions if p.event_ticker == proposal.event_ticker]
@@ -136,7 +137,8 @@ def gate(proposal: Proposal, context: GateContext) -> GateResult:
     guarded("dollars_per_event", event_test)
 
     risk = context.risk
-    loss_limit = caps.daily_loss_stop_fraction * risk.bankroll
+    # The loss stop is a fraction of the day-start equity, however equity moved since.
+    loss_limit = caps.daily_loss_stop_fraction * risk.day_start_equity
     check(
         "daily_loss_stop",
         not risk.loss_stop_tripped and risk.day_pnl > -loss_limit,

@@ -4,7 +4,8 @@ Replay, the examples, and the episode tests run on it. A ``RecordedWorldFile``
 is both the record and the on-disk format, and is kept small enough to read:
 the trigger (whose ``at`` is the as-of time), the series and events with their
 markets and quotes as of the trigger, the order books at the trigger, the books
-an order meets at execution time, the documents and calendar, prior ledger
+the pipeline reads at execution time and, when they differ, the books orders
+filled against, the documents and calendar, prior ledger
 entries and holdings, the stage and halt flag, configuration overrides, and an
 optional scripted human review.
 
@@ -142,6 +143,10 @@ class RecordedWorldFile(Record):
     execution_books: dict[str, OrderBook] = {}
     """What an order meets at execution time, per market. Absent: the trigger-time book.
     This is how a fixture says "the price moved before execution"."""
+    fill_books: dict[str, OrderBook] = {}
+    """What an order actually fills against, per market, when that differs from the execution
+    book (a backtest fills against the candle after the as-of time plus the latency, which the
+    decision never sees). Absent: the execution book."""
     liquidity: dict[str, dict[Side, Dollars]] = {}
     """Overrides for ``liquidity_dollars`` per market and side."""
     candles: dict[str, list[Candle]] = {}
@@ -222,7 +227,12 @@ def _find_market(file: RecordedWorldFile, ticker: str) -> Market:
 
 
 class RecordedBooks:
-    """The book an order meets at execution time: the recorded execution book, else the trigger's."""
+    """The books of execution time.
+
+    ``book`` is what the pipeline reads before sending: the recorded execution
+    book, else the trigger's. ``fill_book`` is what an order fills against: the
+    recorded fill book, else ``book``.
+    """
 
     def __init__(self, file: RecordedWorldFile) -> None:
         self.file = file
@@ -230,6 +240,10 @@ class RecordedBooks:
     def book(self, ticker: str) -> OrderBook:
         recorded = self.file.execution_books.get(ticker)
         return recorded if recorded is not None else _trigger_book(self.file, ticker)
+
+    def fill_book(self, ticker: str) -> OrderBook:
+        recorded = self.file.fill_books.get(ticker)
+        return recorded if recorded is not None else self.book(ticker)
 
     __call__ = book
 
@@ -300,6 +314,7 @@ class RecordedExchange:
         )
 
     def liquidity_dollars(self, ticker: str, side: Side) -> Decimal:
+        self.get_market(ticker)  # raises NotFound for a market not open by the clock's time
         override = self.file.liquidity.get(ticker, {}).get(side)
         if override is not None:
             return override
@@ -554,8 +569,15 @@ def build_recorded_world(
         knowledge = index
 
     exchange = RecordedExchange(file, clock, config)
+    books = RecordedBooks(file)
     executor = PaperExecutor(
-        store, clock, config, exchange, RecordedBooks(file), bankroll=file.bankroll
+        store,
+        clock,
+        config,
+        exchange,
+        books,
+        bankroll=file.bankroll,
+        fill_books=books.fill_book,
     )
     if not store.equity_series():
         executor.mark(at)

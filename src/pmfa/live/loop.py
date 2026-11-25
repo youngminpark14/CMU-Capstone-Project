@@ -14,10 +14,14 @@ A pass (``run_once``), in order:
 5. **Detect triggers** (``pmfa.live.triggers``) and run one episode per
    trigger. When the agent is halted the episodes still run and record their
    forecasts, and the pipeline refuses every order (exit ``halted``).
-6. **Mark equity** in the state store.
+6. **Mark equity** in the state store, through the executor's own ``mark``:
+   holdings at their own side's best bid, at cost without one. The paper
+   executor marks at every fill and settlement the same way, so the equity
+   series behind the daily loss stop and the drawdown halt has one definition.
 
 The last look is kept in a small cursor file under the data directory
-(``live-<mode>-cursor.json``). On the very first look there is no cursor:
+(``live-<mode>-cursor.json``), with each open event's last price-move trigger
+that ran (the anchor its next move is measured from, see ``pmfa.live.triggers``). On the very first look there is no cursor:
 the indexes are filled with everything visible, and no document trigger fires,
 since documents published before the agent started watching are background,
 not news.
@@ -32,8 +36,9 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -43,7 +48,7 @@ from pmfa.ports import World
 from pmfa.records.base import Dollars, Record, RunMode, UtcTime
 from pmfa.records.decision import OrderResult, Proposal
 from pmfa.records.episode import EpisodeRecord, EpisodeStatus, Exit
-from pmfa.records.evidence import Document, Trigger
+from pmfa.records.evidence import Document, Trigger, TriggerKind
 from pmfa.records.market import Event
 
 if TYPE_CHECKING:
@@ -104,19 +109,51 @@ def cursor_path(world: World) -> Path:
     return Path(world.config.paths.data_dir) / f"live-{world.mode.value}-cursor.json"
 
 
-def read_last_look(path: Path) -> datetime | None:
+def _read_cursor(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return None
+        return {}
     try:
-        return datetime.fromisoformat(json.loads(path.read_text(encoding="utf-8"))["last_look"])
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_last_look(path: Path) -> datetime | None:
+    try:
+        return datetime.fromisoformat(_read_cursor(path)["last_look"])
     except (ValueError, KeyError, TypeError):
         return None
 
 
-def write_last_look(path: Path, at: datetime) -> None:
+def read_price_anchors(path: Path) -> dict[str, datetime]:
+    """Each event's last price-move trigger that ran, as kept in the cursor file.
+
+    Price moves are measured from these (``pmfa.live.triggers``), so the chain
+    of crossings is the same from one pass to the next.
+    """
+    raw = _read_cursor(path).get("price_move_anchors")
+    anchors: dict[str, datetime] = {}
+    if isinstance(raw, dict):
+        for event, at in raw.items():
+            try:
+                anchors[str(event)] = datetime.fromisoformat(at)
+            except (ValueError, TypeError):
+                continue
+    return anchors
+
+
+def write_last_look(
+    path: Path, at: datetime, *, price_anchors: Mapping[str, datetime] | None = None
+) -> None:
+    """Save the last look; ``price_anchors`` replaces the stored anchors (``None`` keeps them)."""
+    anchors = read_price_anchors(path) if price_anchors is None else dict(price_anchors)
+    data: dict[str, Any] = {"last_look": at.isoformat()}
+    if anchors:
+        data["price_move_anchors"] = {e: t.isoformat() for e, t in sorted(anchors.items())}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps({"last_look": at.isoformat()}) + "\n", encoding="utf-8")
+    tmp.write_text(json.dumps(data) + "\n", encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -237,6 +274,23 @@ def outcome(record: EpisodeRecord, trigger: Trigger, *, already_run: bool) -> Ep
     )
 
 
+def mark_equity(world: World) -> Decimal:
+    """Record a marked equity point now and return it.
+
+    The executor's ``mark`` records the point itself (the paper executor into its
+    store; the demo executor through its ``equity_sink``, which
+    ``build_demo_world`` sets to the store). An executor without one has no
+    marks, and its at-cost equity is recorded instead.
+    """
+    now = world.clock.now()
+    mark = getattr(world.executor, "mark", None)
+    if callable(mark):
+        return Decimal(mark(now))
+    equity = world.executor.balance().equity
+    world.store.record_equity(now, equity)
+    return equity
+
+
 # --------------------------------------------------------------------------- the pass
 
 
@@ -275,9 +329,12 @@ def run_once(
     if demoted is not None:
         notes.append(f"stage demoted to {demoted.stage.value}: {demoted.reason}")
 
+    anchors = read_price_anchors(path)
     found = trig.combine(
         trig.document_triggers(documents, config) if last_look is not None else [],
-        trig.price_move_triggers(world.exchange, events, config, started, notes=notes),
+        trig.price_move_triggers(
+            world.exchange, events, config, started, notes=notes, anchors=anchors
+        ),
         trig.schedule_triggers(
             world.executor, config, started, open_events=[e.event_ticker for e in events]
         ),
@@ -300,11 +357,17 @@ def run_once(
 
     equity = None
     try:
-        equity = world.executor.balance().equity
-        store.record_equity(clock.now(), equity)
-    except (PmfaError, ExchangeError) as exc:
+        equity = mark_equity(world)
+    except PmfaError as exc:
         notes.append(f"equity not marked: {exc}")
-    write_last_look(path, started)
+    open_now = {e.event_ticker for e in events}
+    for o in outcomes:
+        t = o.trigger
+        if t.kind is TriggerKind.PRICE_MOVE and t.event_ticker is not None:
+            anchors[t.event_ticker] = max(anchors.get(t.event_ticker, t.at), t.at)
+    write_last_look(
+        path, started, price_anchors={e: at for e, at in anchors.items() if e in open_now}
+    )
     halt = store.get_halt()
     return PassSummary(
         mode=world.mode,
@@ -390,7 +453,9 @@ __all__ = [
     "cursor_path",
     "default_resolver",
     "describe_resolution",
+    "mark_equity",
     "read_last_look",
+    "read_price_anchors",
     "run_loop",
     "run_once",
     "write_last_look",

@@ -204,3 +204,36 @@ def test_a_hedged_pair_settling_together_loses_only_its_fees():
     assert len(curve) == 3
     assert max_drawdown(curve, BANKROLL).dollars == D("0.88")
     assert curve[-1].equity == BANKROLL - D("0.88")
+
+
+def test_a_hedge_whose_prices_do_not_sum_to_one_nets_at_the_second_fill_as_the_account_does():
+    # Buy 25 YES at 0.40 (fee 0.42), then 25 NO at 0.50 (fee 0.44) an hour later; settle YES.
+    # The NO fill closes the 25 YES one for one: each pair returns a dollar now, so the
+    # pairs' gain, 25 x (1 - 0.40 - 0.50) = 2.50, is realized at the second fill.
+    from pmfa.execution.portfolio import account
+    from pmfa.records.decision import Fill
+
+    yes = trade(Side.YES, "25", "0.40", "0.42", result=Side.YES)
+    no = trade(Side.NO, "25", "0.50", "0.44", result=Side.YES, filled_hours=1)
+    curve = equity_curve([yes, no], BANKROLL)
+    assert [p.equity for p in curve] == [D("999.58"), D("1001.64"), D("1001.64")]
+    assert [p.cash for p in curve] == [D("989.58"), D("1001.64"), D("1001.64")]
+    assert curve[-1].equity - BANKROLL == total_pnl([yes, no])
+    fills = [
+        Fill(
+            fill_id=f"f{i}",
+            order_id=f"o{i}",
+            market_ticker=t.market_ticker,
+            side=t.side,
+            contracts=t.contracts,
+            price=t.price,
+            fee=t.fee,
+            filled_at=t.filled_at,
+            simulated=True,
+        )
+        for i, t in enumerate([yes, no])
+    ]
+    settlements = [(yes.market_ticker, Side.YES, yes.settled_at)]
+    for p in curve:
+        acct = account(fills, settlements, bankroll=BANKROLL, as_of=p.at)
+        assert (p.cash, p.equity) == (acct.cash, acct.equity)

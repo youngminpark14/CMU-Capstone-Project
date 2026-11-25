@@ -145,6 +145,18 @@ def test_fractional_levels_offer_only_their_whole_contracts():
     assert p is not None and (p.contracts, p.limit_price) == (10, D("0.50"))
 
 
+def test_fractional_levels_that_add_up_to_a_contract_do_not_set_the_limit():
+    # YES asks 0.49 x 0.5, 0.50 x 0.5, 0.51 x 10, and a confidence small enough for one
+    # contract. The two halves add up to 1.0, but neither holds a whole contract, so the
+    # walk must reach 0.51: a limit of 0.50 would fill nothing.
+    frac = book(no_bids=[("0.51", "0.5"), ("0.50", "0.5"), ("0.49", "10")])
+    p = size_event(
+        inputs(forecast={HOLD: 0.80}, books={HOLD: frac}, confidence=0.005), CONFIG
+    ).proposal
+    assert p is not None
+    assert (p.contracts, p.limit_price) == (1, D("0.51"))
+
+
 def test_the_limit_is_the_highest_level_needed_to_fill():
     deep = book(no_bids=[("0.50", "10"), ("0.48", "10"), ("0.40", "100")])
     p = size_event(inputs(forecast={HOLD: 0.70}, books={HOLD: deep}), CONFIG).proposal

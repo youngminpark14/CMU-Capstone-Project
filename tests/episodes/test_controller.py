@@ -9,7 +9,14 @@ import sys
 import pytest
 
 from pmfa.episode import EpisodeController, episode_id_for, mermaid, open_checkpointer
-from pmfa.records.decision import ProposalStatus, Review, ReviewDecision, ReviewPolicy
+from pmfa.errors import ExchangeError
+from pmfa.records.decision import (
+    ProposalStatus,
+    ReasonCode,
+    Review,
+    ReviewDecision,
+    ReviewPolicy,
+)
 from pmfa.records.episode import EpisodeStatus, Exit
 
 from .support import (
@@ -119,6 +126,9 @@ class Crashing:
             raise RuntimeError("the process died before the order was recorded")
         return result
 
+    def find_order(self, intent):
+        return self._inner.find_order(intent)
+
     def __getattr__(self, name):
         return getattr(self._inner, name)
 
@@ -174,33 +184,157 @@ def test_an_approved_episode_that_died_after_sending_its_order_is_continued_with
     assert record.orders == [order] and order.requested_contracts == paused.proposal.contracts
 
 
-def test_an_approved_episode_that_died_before_sending_expires_if_continued_too_late():
-    file = fed_file()
-    world = crashing(
-        make_world(file, hawkish_script(), policy=ReviewPolicy.PAUSE), after_placing=False
+def rejection(paused, world) -> Review:
+    return Review(
+        proposal_id=paused.proposal.proposal_id,
+        decision=ReviewDecision.REJECT,
+        reason_code=ReasonCode.DISAGREE_WITH_FORECAST,
+        decided_at=world.clock.now(),
     )
-    with EpisodeController(world) as controller:
-        paused = controller.run(file.trigger)
-        with pytest.raises(RuntimeError, match="died"):
-            controller.resume(paused.episode_id, approval(paused, world))
-        advance(world, 11 * 60)  # past the ten-minute expiry
-        record = controller.expire(paused.episode_id)
+
+
+def approved_then_died(world):
+    """Pause, approve, and die in ``place``: the thread stops at ``execute``."""
+    controller = EpisodeController(world)
+    paused = controller.run(world.file.trigger)
+    with pytest.raises(RuntimeError, match="died"):
+        controller.resume(paused.episode_id, approval(paused, world))
+    assert world.executor.calls == 1
+    return controller, paused
+
+
+def continue_with(then: str, controller, world, paused):
+    """Continue the stopped thread the way an operator would: ``then`` names the call."""
+    if then == "approve":
+        return controller.resume(paused.episode_id, approval(paused, world))
+    if then == "reject":
+        return controller.resume(paused.episode_id, rejection(paused, world))
+    if then in ("expire", "expire_late"):
+        return controller.expire(paused.episode_id)
+    assert then == "run"
+    return controller.run(world.file.trigger)
+
+
+CONTINUATIONS = ["approve", "reject", "expire", "expire_late", "run"]
+
+
+@pytest.mark.parametrize("then", CONTINUATIONS)
+def test_a_continued_episode_that_died_before_sending_sends_nothing(then):
+    """Whatever the operator does next, the stale approval is never acted on: the order
+    was not sent, so the proposal is cancelled and the episode ends in error."""
+    world = crashing(
+        make_world(fed_file(), hawkish_script(), policy=ReviewPolicy.PAUSE), after_placing=False
+    )
+    controller, paused = approved_then_died(world)
+    with controller:
+        advance(world, 11 * 60 if then == "expire_late" else 60)
+        record = continue_with(then, controller, world, paused)
+        again = controller.resume(paused.episode_id, approval(paused, world))
     check_trace(record)
-    assert record.exit is Exit.EXPIRED and world.store.list_orders() == []
-    assert world.store.get_proposal(paused.proposal.proposal_id)[1] is ProposalStatus.EXPIRED
+    assert world.executor.calls == 1  # the attempt that died; the continuation placed nothing
+    assert record.exit is Exit.ERROR and "before the order was sent" in record.exit_detail
+    assert record.status is EpisodeStatus.DONE and again == record
+    assert world.store.list_orders() == [] and record.orders == []
+    assert world.store.get_proposal(paused.proposal.proposal_id)[1] is ProposalStatus.CANCELLED
 
 
-def test_running_a_trigger_again_continues_an_episode_that_died_at_execute():
+@pytest.mark.parametrize("then", CONTINUATIONS)
+def test_a_continued_episode_that_died_after_sending_records_its_order_and_sends_no_other(then):
+    """The order went out before the process died: a continuation records it (a reject or
+    an expiry cannot unsend it) and places nothing more."""
+    world = crashing(
+        make_world(fed_file(), hawkish_script(), policy=ReviewPolicy.PAUSE), after_placing=True
+    )
+    controller, paused = approved_then_died(world)
+    with controller:
+        advance(world, 11 * 60 if then == "expire_late" else 60)
+        record = continue_with(then, controller, world, paused)
+    check_trace(record)
+    assert world.executor.calls == 1
+    assert record.exit is Exit.EXECUTED and record.status is EpisodeStatus.DONE
+    [order] = world.store.list_orders()
+    assert record.orders == [order] and order.requested_contracts == paused.proposal.contracts
+    assert world.store.get_proposal(paused.proposal.proposal_id)[1] is ProposalStatus.EXECUTED
+
+
+class ExchangeThenDies:
+    """Sends the order to a separate account standing in for the exchange, then dies
+    before anything reaches the local store. ``find_order`` asks the exchange."""
+
+    def __init__(self, inner, exchange, *, lookup_fails: bool = False) -> None:
+        self._inner = inner
+        self.exchange = exchange
+        self.lookup_fails = lookup_fails
+        self.calls = 0
+
+    def place(self, intent):
+        self.calls += 1
+        self.exchange.place(intent)
+        raise RuntimeError("the process died before the order was recorded")
+
+    def find_order(self, intent):
+        if self.lookup_fails:
+            raise ExchangeError("GET /portfolio/orders -> 503 service_unavailable")
+        return self.exchange.find_order(intent)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def exchange_world(*, lookup_fails: bool = False):
+    from pmfa.execution.paper import PaperExecutor
+    from pmfa.state.store import MEMORY, SqliteStore
+    from pmfa.world.recorded import RecordedBooks
+
+    world = make_world(fed_file(), hawkish_script(), policy=ReviewPolicy.PAUSE)
+    exchange = PaperExecutor(
+        SqliteStore(MEMORY), world.clock, world.config, world.exchange, RecordedBooks(world.file)
+    )
+    executor = ExchangeThenDies(world.executor, exchange, lookup_fails=lookup_fails)
+    return dataclasses.replace(world, executor=executor)
+
+
+@pytest.mark.parametrize("then", ["approve", "reject", "expire"])
+def test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_other(then):
+    world = exchange_world()
+    controller, paused = approved_then_died(world)
+    assert world.store.list_orders() == []  # only the exchange knows the order
+    with controller:
+        advance(world, 60)
+        record = continue_with(then, controller, world, paused)
+    check_trace(record)
+    assert world.executor.calls == 1 and record.exit is Exit.EXECUTED
+    [order] = world.store.list_orders()
+    assert order == world.executor.exchange.store.list_orders()[0] and record.orders == [order]
+
+
+def test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outcome_is_unknown():
+    world = exchange_world(lookup_fails=True)
+    controller, paused = approved_then_died(world)
+    with controller:
+        advance(world, 60)
+        record = controller.resume(paused.episode_id, approval(paused, world))
+    check_trace(record)
+    assert world.executor.calls == 1 and record.exit is Exit.ERROR
+    assert "unknown" in record.exit_detail and "503" in record.exit_detail
+    assert world.store.list_orders() == []
+
+
+@pytest.mark.parametrize("after_placing", [True, False])
+def test_running_a_trigger_again_continues_an_episode_that_died_at_execute(after_placing):
     file = fed_file()
-    world = crashing(make_world(file, hawkish_script()), after_placing=True)  # fill_tagged
-    with EpisodeController(world) as controller:
+    world = crashing(make_world(file, hawkish_script()), after_placing=after_placing)
+    with EpisodeController(world) as controller:  # fill_tagged: no pause before execute
         with pytest.raises(RuntimeError, match="died"):
             controller.run(file.trigger)
         assert world.store.list_episodes()[0].status is EpisodeStatus.RUNNING
         record = controller.run(file.trigger)
     check_trace(record)
-    assert record.exit is Exit.EXECUTED and record.status is EpisodeStatus.DONE
-    assert len(world.store.list_orders()) == 1 and world.executor.calls == 1
+    assert record.status is EpisodeStatus.DONE and world.executor.calls == 1
+    if after_placing:
+        assert record.exit is Exit.EXECUTED and len(world.store.list_orders()) == 1
+    else:
+        assert record.exit is Exit.ERROR and world.store.list_orders() == []
 
 
 def test_the_graph_is_drawn_as_mermaid():

@@ -4,8 +4,9 @@
 writes them under ``config.paths``) and builds, or reopens, a persistent
 retrieval index over them. The index directory is named by a key made of the
 snapshot manifest, the corpus manifest, the embedder's identity, the chunking
-settings and the canary text, so a rebuilt snapshot or corpus, or another
-embedder, gets a fresh index and never a stale one.
+settings, the canary text and ``INDEX_FORMAT``, so a rebuilt snapshot or
+corpus, another embedder, or code that stores rows of another shape gets a
+fresh index and never a stale one.
 
 The index also holds a **canary**: a document dated a day after the end of
 the window whose text contains ``config.evaluation.canary_text`` and the words
@@ -13,7 +14,9 @@ every query uses. It is placed in the evidence index only, not in the corpus,
 so the Evidence port never sees it, and the as-of filter inside retrieval is
 the only thing that keeps it out. ``CanaryGuard`` wraps the Knowledge port
 and raises ``LeakageDetected`` the moment any retrieval returns one of its
-passages; the runner also scans every finished episode for it.
+passages; the runner also scans every finished episode for it. ``LeakageDetected``
+is an ``AsOfViolation``, which the episode pipeline never turns into an exit,
+so a leak aborts the run wherever it is found.
 
 ``build_backtest_world`` assembles the ports for one simulated clock and one
 state store. There is no web access anywhere in it: the exchange is the
@@ -33,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pmfa.config import Config
-from pmfa.errors import ConfigError, PmfaError
+from pmfa.errors import AsOfViolation, ConfigError
 from pmfa.ports import Clock, Models, StateStore, World
 from pmfa.records.base import RunMode
 from pmfa.records.decision import ReviewPolicy
@@ -52,6 +55,14 @@ if TYPE_CHECKING:
 INDEX_MARKER = "pmfa_backtest_index.json"
 """Written into a finished index directory; an index without it is rebuilt."""
 
+INDEX_FORMAT = 2
+"""The shape of the rows the index stores, part of the index key.
+
+Bump it whenever the stored rows change shape, so an index cached by older code
+is rebuilt rather than reused. 2: the events index holds one row per listing
+change of an event instead of one row with its full strike list.
+"""
+
 CANARY_SOURCE = "canary.invalid"
 CANARY_TOPIC = (
     "federal funds rate decision hold cut hike basis points FOMC statement Committee "
@@ -60,8 +71,12 @@ CANARY_TOPIC = (
 """Words every baseline and pipeline query shares, so the canary would rank first if it leaked."""
 
 
-class LeakageDetected(PmfaError):
-    """A retrieval or an episode reached the canary document: the as-of rule failed. The run aborts."""
+class LeakageDetected(AsOfViolation):
+    """A retrieval or an episode reached the canary document: the as-of rule failed. The run aborts.
+
+    It is an ``AsOfViolation`` so that the episode pipeline re-raises it instead of
+    ending one episode in exit ``error`` and letting the run continue.
+    """
 
 
 def backtest_config(config: Config) -> Config:
@@ -234,6 +249,7 @@ class BacktestData:
             ],
             "canary": config.evaluation.canary_text,
             "series": [s.ticker for s in config.follow.enabled_series()],
+            "format": INDEX_FORMAT,
         }
         self.index_key = hashlib.sha256(_stable_json(material).encode()).hexdigest()[:16]
         root = Path(index_root) if index_root is not None else config.paths.index_dir()
@@ -404,6 +420,7 @@ def build_backtest_world(
 
 __all__ = [
     "CANARY_SOURCE",
+    "INDEX_FORMAT",
     "BacktestData",
     "CanaryGuard",
     "LeakageDetected",

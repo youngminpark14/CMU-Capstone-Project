@@ -32,7 +32,15 @@ What the executor does, per the spec's "Execution and oversight" section:
 - **Halt.** Given a ``halt_check`` (the state store's ``get_halt``), the
   executor reads the persisted halt flag when an order starts and again
   immediately before the order is sent, and refuses (``REJECTED``, error
-  ``halted: ...``) without sending when it is set.
+  ``halted: ...``) without sending when it is set. ``build_demo_world`` sets it.
+- **Lookup.** :meth:`DemoExecutor.find_order` finds the order already placed
+  for an intent by its client order id, so a continued episode can reconcile
+  after a crash or an exchange error without sending again.
+- **Marks.** :meth:`DemoExecutor.mark` values the subaccount as the paper
+  executor's marks do: cash plus each position at its own side's best bid in
+  the demo book, at cost when there is no bid. Given an ``equity_sink`` (the
+  state store's ``record_equity``; ``build_demo_world`` sets it), it records the
+  point, which is what the daily loss stop and the drawdown halt read.
 - **Rejections.** A refused order carries the deterministic id
   ``stable_id("demo-rejected", client_order_id)``, so distinct rejections are
   stored as distinct orders and count toward the fill-failure halt.
@@ -54,7 +62,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from pmfa.config import Config
-from pmfa.errors import ConfigError, ExchangeError
+from pmfa.errors import ConfigError, ExchangeError, NotFound
 from pmfa.ports import Clock
 from pmfa.records.base import ONE, ZERO, stable_id
 from pmfa.records.decision import Fill, OrderIntent, OrderResult, OrderStatus
@@ -127,6 +135,7 @@ class DemoExecutor:
         fill_read_attempts: int = 3,
         fill_read_delay_seconds: float = 0.5,
         halt_check: Callable[[], HaltState] | None = None,
+        equity_sink: Callable[[datetime, Decimal], None] | None = None,
     ) -> None:
         if not is_demo_url(client.base_url):
             raise ConfigError(
@@ -148,6 +157,8 @@ class DemoExecutor:
         self._exchange_index: dict[str, int] = {}
         self.halt_check = halt_check
         """Reads the persisted halt flag; set it after building when the store comes later."""
+        self.equity_sink = equity_sink
+        """Records an equity point (the store's ``record_equity``); set it like ``halt_check``."""
 
     # -- holdings
 
@@ -172,6 +183,25 @@ class DemoExecutor:
     def execution_book(self, ticker: str) -> OrderBook:
         """The demo exchange's current book for ``ticker``."""
         return self.data.get_order_book(ticker)
+
+    def mark(self, at: datetime | None = None) -> Decimal:
+        """The subaccount's marked equity; recorded at ``at`` (else now) through ``equity_sink``.
+
+        Cash plus each open position at its own side's best bid in the demo book,
+        or at cost when that side has no bid or the book cannot be read: the same
+        definition as ``PaperExecutor.mark``, so the equity series behind the
+        stops means one thing in every mode. ``balance().equity`` stays at cost
+        (the bankroll sizing uses).
+        """
+        body = self.client.get("/portfolio/balance", {"subaccount": self.subaccount})
+        cash = parse_balance(body, []).cash
+        equity = cash
+        for position in self.positions():
+            bid = self._best_bid(position.market_ticker, position.side)
+            equity += position.cost_basis if bid is None else bid * position.contracts
+        if self.equity_sink is not None:
+            self.equity_sink(at if at is not None else self.clock.now(), equity)
+        return equity
 
     # -- orders
 
@@ -223,6 +253,18 @@ class DemoExecutor:
             average_fee=decimal(average_fee) if average_fee is not None else None,
         )
 
+    def find_order(self, intent: OrderIntent) -> OrderResult | None:
+        """The order already placed with ``intent``'s client order id, if the exchange has one.
+
+        Places nothing. Its fills are reconciled as :meth:`place` reconciles them.
+        ``None`` also when the order list cannot be read: the caller then treats
+        the outcome as unknown.
+        """
+        found = self._find_order(intent)
+        if found is None:
+            return None
+        return self._from_order(intent, found, self.clock.now())
+
     def cancel_all(self) -> int:
         """Cancel every resting order of the subaccount; returns how many were resting.
 
@@ -251,6 +293,15 @@ class DemoExecutor:
         if not state.halted:
             return None
         return self._rejected(intent, placed_at, f"halted: {state.reason}")
+
+    def _best_bid(self, ticker: str, side: Side) -> Decimal | None:
+        """The best bid for ``side`` in the demo book now, or ``None`` without one or a book."""
+        try:
+            book = self.data.get_order_book(ticker)
+        except (ExchangeError, NotFound):
+            return None
+        prices = [lvl.price for lvl in book.bids(side) if lvl.contracts > 0]
+        return max(prices) if prices else None
 
     def _exchange_shard(self, ticker: str) -> int:
         if ticker not in self._exchange_index:
@@ -445,6 +496,15 @@ def demo_exchange(
     return KalshiData(client, clock, config)
 
 
+def no_credentials_message(config: Config) -> str:
+    """What :func:`demo_executor` says when no demo credential is set at all (names, never values)."""
+    cfg = config.kalshi
+    return (
+        f"demo mode needs {cfg.demo_key_id_env} and {cfg.demo_private_key_env} "
+        f"or {cfg.demo_private_key_path_env}"
+    )
+
+
 def demo_executor(
     config: Config,
     clock: Clock,
@@ -463,11 +523,7 @@ def demo_executor(
     """
     signer = load_signer(config, environ=environ)
     if signer is None:
-        cfg = config.kalshi
-        raise ConfigError(
-            f"demo mode needs {cfg.demo_key_id_env} and {cfg.demo_private_key_env} "
-            f"or {cfg.demo_private_key_path_env}"
-        )
+        raise ConfigError(no_credentials_message(config))
     client = _demo_client(
         config, signer=signer, transport=transport, sleep=sleep, monotonic=monotonic
     )
@@ -481,5 +537,6 @@ __all__ = [
     "demo_exchange",
     "demo_executor",
     "is_demo_url",
+    "no_credentials_message",
     "order_payload",
 ]

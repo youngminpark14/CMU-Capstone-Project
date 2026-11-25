@@ -38,7 +38,7 @@ def test_day_pnl_peak_and_drawdown():
     assert state.peak_equity == D("1100")
     assert state.day_pnl == D("12")
     assert state.drawdown_fraction == (D("1100") - D("1012")) / D("1100")
-    assert state.bankroll == D("1000")
+    assert state.bankroll == D("1012")  # the current equity: what the dollar caps use
     assert not state.loss_stop_tripped and not state.drawdown_tripped
 
 
@@ -69,10 +69,16 @@ def test_the_drawdown_halt_trips_at_ten_percent():
     assert not state.loss_stop_tripped  # the loss happened before today
 
 
-def test_an_explicit_bankroll_sizes_the_stop():
-    series = [(at(-1), D("1000")), (at(1), D("985"))]
-    assert not risk_state(series, at(2), CONFIG).loss_stop_tripped
-    assert risk_state(series, at(2), CONFIG, bankroll=D("500")).loss_stop_tripped  # 3% = $15
+def test_an_explicit_bankroll_is_the_caps_base_and_does_not_move_the_stop():
+    # Day start 1000, down 29.50: under 3% of 1000 ($30), though over 3% of 970.50.
+    series = [(at(-1), D("1000")), (at(1), D("970.50"))]
+    state = risk_state(series, at(2), CONFIG, bankroll=D("970.50"))
+    assert state.bankroll == D("970.50") and state.day_start_equity == D("1000")
+    assert not state.loss_stop_tripped
+    # A larger or smaller caps base leaves the stop where the day start put it.
+    assert not risk_state(series, at(2), CONFIG, bankroll=D("500")).loss_stop_tripped
+    down = [(at(-1), D("1000")), (at(1), D("970"))]
+    assert risk_state(down, at(2), CONFIG, bankroll=D("5000")).loss_stop_tripped
 
 
 def test_the_first_point_of_the_day_is_the_start_when_nothing_precedes_it():

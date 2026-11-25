@@ -95,9 +95,9 @@ class PaperExecutor:
         halt flag is set is refused (``REJECTED``) and not stored, so the same
         intent can be placed after a resume.
         """
-        for existing in self.store.list_orders():
-            if existing.client_order_id == intent.client_order_id:
-                return existing
+        existing = self.find_order(intent)
+        if existing is not None:
+            return existing
 
         now = self.clock.now()
         order_id = stable_id("paper-order", intent.client_order_id)
@@ -133,6 +133,17 @@ class PaperExecutor:
         self.store.save_order(result)
         self.mark(now)
         return result
+
+    def find_order(self, intent: OrderIntent) -> OrderResult | None:
+        """The stored order with ``intent``'s client order id, if there is one. Places nothing.
+
+        The store is the paper account's only record, so an order this executor
+        filled is found here even when the caller crashed before seeing the result.
+        """
+        for existing in self.store.list_orders():
+            if existing.client_order_id == intent.client_order_id:
+                return existing
+        return None
 
     def cancel_all(self) -> int:
         """Nothing rests on a paper account, so nothing is cancelled."""

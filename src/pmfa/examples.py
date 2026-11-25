@@ -1,7 +1,8 @@
 """The committed sample episodes: finding them, replaying them, and checking them.
 
 Shared by ``pmfa replay``, ``scripts/build_examples.py`` and the tests. An
-example is a directory under ``examples/episodes/`` laid out by
+example is a directory under ``examples/episodes/`` (an installed wheel carries
+a copy at ``pmfa/_examples/episodes``) laid out by
 ``pmfa.world.recording.save_example``::
 
     world.json               the inputs: trigger, event snapshot, books, documents
@@ -57,25 +58,30 @@ class ExampleError(PmfaError):
 
 
 NO_CHECKOUT_HINT = (
-    "The sample episodes ship with a source checkout of the repository, not with the installed "
-    "package: "
-    "run `pmfa replay` from a clone of the repository, or pass the path of an example "
-    "directory or world file."
+    "No sample episodes were found: they ship inside the installed package "
+    "(pmfa/_examples/episodes) and with a source checkout (examples/episodes), and neither is "
+    "here. Pass the path of an example directory or world file, or run `pmfa replay` from a "
+    "clone of the repository."
 )
-"""Said when no ``examples/episodes`` directory is found, as from an installed wheel."""
+"""Said when no examples directory is found (an install that left out the packaged copy)."""
 
 
 def examples_root() -> Path:
-    """``examples/episodes`` in the working directory, else in the source checkout.
+    """Where the sample episodes are: the repository's copy when there is one, else the package's.
 
-    The examples are not package data, so an installed wheel has neither: the
-    path returned then does not exist, and callers say so with
+    Looked for in order: ``examples/episodes`` in the working directory, then in
+    the source checkout this module was imported from, then the copy an
+    installed wheel carries at ``pmfa/_examples/episodes``. When none exists the
+    last is returned (it does not exist), and callers say so with
     :data:`NO_CHECKOUT_HINT`.
     """
     here = Path.cwd() / "examples" / "episodes"
     if here.is_dir():
         return here
-    return Path(__file__).resolve().parents[2] / "examples" / "episodes"
+    checkout = Path(__file__).resolve().parents[2] / "examples" / "episodes"
+    if checkout.is_dir():
+        return checkout
+    return Path(__file__).resolve().parent / "_examples" / "episodes"
 
 
 def list_examples(root: Path | None = None) -> list[Path]:

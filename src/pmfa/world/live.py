@@ -17,7 +17,8 @@ Safety properties, each checked by a test:
   to the paper executor, which only writes to the state store.
 - **Demo never falls back to production.** It needs the demo credentials (the
   variables named in ``config.kalshi``) and the demo host; without either it
-  refuses to build, naming what is missing. Every order needs a human.
+  refuses to build, naming what is missing. Every order needs a human, and
+  the executor reads the halt flag again right before it sends one.
 - **No tracing service.** Both builders switch LangSmith and LangChain tracing
   off for the process, so an inherited environment variable cannot send prompts
   anywhere. No builder logs or prints a secret.
@@ -191,7 +192,12 @@ def build_demo_world(config: Config, *, models: Models | None = None) -> LiveWor
     variables, never a value). There is no fallback to any other host.
     """
     from pmfa.world.clocks import SystemClock
-    from pmfa.world.kalshi.demo import DEMO_HOSTS, demo_executor, is_demo_url
+    from pmfa.world.kalshi.demo import (
+        DEMO_HOSTS,
+        demo_executor,
+        is_demo_url,
+        no_credentials_message,
+    )
 
     disable_tracing()
     cfg = config.kalshi
@@ -205,10 +211,9 @@ def build_demo_world(config: Config, *, models: Models | None = None) -> LiveWor
     try:
         executor = demo_executor(config, clock)
     except ConfigError as exc:
-        # The inner message names the variables itself when none is set; a partial or
-        # unreadable credential gets its own detail, appended once.
-        names = (cfg.demo_key_id_env, cfg.demo_private_key_env, cfg.demo_private_key_path_env)
-        detail = "" if all(name in str(exc) for name in names) else f" ({exc})"
+        # With nothing set, the inner message only repeats the variable names. A partial
+        # or unreadable credential (only the key id set, say) gets its own detail.
+        detail = "" if str(exc) == no_credentials_message(config) else f" ({exc})"
         raise ConfigError(
             f"demo mode needs the demo API credentials in the environment: {cfg.demo_key_id_env}, "
             f"and {cfg.demo_private_key_env} or {cfg.demo_private_key_path_env}{detail}"
@@ -217,6 +222,10 @@ def build_demo_world(config: Config, *, models: Models | None = None) -> LiveWor
         stack.callback(executor.client.close)
         stack.callback(executor.data.client.close)
         store, evidence, knowledge = _common(config, mode, clock, stack)
+        # The executor reads the persisted halt flag again right before each order is
+        # sent, and records its marked equity points in this mode's store.
+        executor.halt_check = store.get_halt
+        executor.equity_sink = store.record_equity
         state_db, checkpoint_db = live_paths(config, mode)
         world = LiveWorld(
             mode=mode,

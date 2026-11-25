@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from itertools import pairwise
 
 from pmfa.config import Config, load_config
 from pmfa.live import triggers as trig
@@ -102,7 +103,9 @@ def test_a_move_within_thirty_minutes_that_spans_a_bucket_edge_starts_a_trigger(
     exchange = FakeCandles({hold: mid_candles(hold, points)})
     [t] = trig.price_move_triggers(exchange, [event], Config(), minute(41, base))
     assert t.at == minute(40, base)
-    assert t.trigger_id == trig.price_move_trigger(FED, minute(30, base), t.at, "").trigger_id
+    assert t.trigger_id == trig.price_move_trigger(FED, t.at, "").trigger_id
+    # A pass in the next bucket finds the same one move, once.
+    assert trig.price_move_triggers(exchange, [event], Config(), minute(65, base)) == [t]
 
 
 def test_one_step_fires_once_even_while_it_stays_inside_the_window():
@@ -123,7 +126,78 @@ def test_a_move_late_in_the_previous_window_is_still_found_in_the_next_pass():
     exchange = FakeCandles({hold: mid_candles(hold, [(minute(-20), "0.62"), (minute(-1), "0.66")])})
     [t] = trig.price_move_triggers(exchange, [event], Config(), minute(4))
     assert t.at == minute(-1)
-    assert t.trigger_id == trig.price_move_trigger(FED, minute(-30), minute(-1), "").trigger_id
+    assert t.trigger_id == trig.price_move_trigger(FED, minute(-1), "").trigger_id
+
+
+def _scan(points, times, base: datetime = BUCKET, *, anchored: bool = False) -> list[datetime]:
+    """Run passes at ``base + times`` minutes; return every trigger's time, once each.
+
+    ``anchored`` carries each event's last trigger from pass to pass, as the loop does.
+    """
+    event = fed_event()
+    hold = f"{FED}-H0"
+    exchange = FakeCandles({hold: mid_candles(hold, [(minute(n, base), p) for n, p in points])})
+    seen: dict[str, datetime] = {}
+    anchors: dict[str, datetime] = {}
+    for n in times:
+        for t in trig.price_move_triggers(
+            exchange, [event], Config(), minute(n, base), anchors=anchors if anchored else None
+        ):
+            assert seen.setdefault(t.trigger_id, t.at) == t.at  # an id always means one time
+            anchors[FED] = max(anchors.get(FED, t.at), t.at)
+    return sorted(seen.values())
+
+
+def test_a_second_step_inside_the_window_fires_again():
+    # +3c at 10:25, +3c more at 10:45: the 0.50 of 10:00 is still in the window at
+    # 10:25 and the 0.53 of 10:25 at 10:45, but each step is a move of its own.
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    points = [(0, "0.50"), (25, "0.53"), (45, "0.56")]
+    for anchored in (False, True):
+        assert _scan(points, range(5, 90, 5), base, anchored=anchored) == [
+            minute(25, base),
+            minute(45, base),
+        ]
+    dense = [(n, "0.50" if n < 25 else "0.53" if n < 45 else "0.56") for n in range(70)]
+    assert _scan(dense, range(5, 90), base) == [minute(25, base), minute(45, base)]
+
+
+def test_a_reversal_fires_again():
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    points = [(0, "0.50"), (20, "0.50"), (25, "0.53"), (35, "0.50")]
+    assert _scan(points, range(5, 90, 5), base) == [minute(25, base), minute(35, base)]
+
+
+def test_a_sustained_trend_fires_each_time_it_adds_up_to_the_threshold():
+    # +1c every 10 minutes for two hours (12c): one trigger per 3c, every 30 minutes.
+    base = datetime(2026, 11, 25, 10, 0, tzinfo=UTC)
+    trend = [(n, f"{Decimal('0.40') + Decimal('0.01') * (n // 10):.2f}") for n in range(121)]
+    expected = [minute(n, base) for n in (30, 60, 90, 120)]
+    assert _scan(trend, range(5, 130, 5), base) == expected
+    assert _scan(trend, range(5, 130, 5), base, anchored=True) == expected
+
+
+def test_an_uneven_trend_gives_the_same_triggers_from_pass_to_pass_with_anchors():
+    # +1c every 7 minutes: with the last trigger carried over, a later pass continues
+    # the same chain of crossings instead of starting a new one from its own first candle.
+    base = datetime(2026, 11, 25, 6, 0, tzinfo=UTC)
+    trend = [(n, f"{Decimal('0.20') + Decimal('0.01') * (n // 7):.2f}") for n in range(300)]
+    found = _scan(trend, range(1, 300, 3), base, anchored=True)
+    steps = {(b - a) for a, b in pairwise(found)}
+    assert steps == {timedelta(minutes=21)}  # every 3c, never an extra trigger in between
+
+
+def test_markets_of_one_event_crossing_together_give_one_trigger():
+    event = fed_event()
+    hold, cut = f"{FED}-H0", f"{FED}-C25"
+    exchange = FakeCandles(
+        {
+            hold: mid_candles(hold, [(minute(1), "0.60"), (minute(5), "0.64")]),
+            cut: mid_candles(cut, [(minute(1), "0.34"), (minute(5), "0.30")]),
+        }
+    )
+    [t] = trig.price_move_triggers(exchange, [event], Config(), NOW)
+    assert t.at == minute(5) and cut in t.detail  # the first ticker names it
 
 
 def test_only_open_markets_of_followed_series_are_read():

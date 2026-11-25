@@ -14,9 +14,12 @@ What a recorded file can and cannot say:
 
 - Exchange reads keep the first answer seen per market. A recorded exchange is
   static, so a world whose quotes changed during the episode is recorded as it
-  stood at the first read. The book an order meets is recorded separately
-  (``execution_books``), first answer per market, which is how a price move
-  before execution survives.
+  stood at the first read. The book the pipeline reads at execution is recorded
+  separately (``execution_books``), first answer per market, which is how a
+  price move before execution survives. When the executor fills orders against
+  a different book (a backtest's ``fill_books``), the book each order filled
+  against is recorded too (``fill_books``), where it differs from the
+  execution book.
 - The starting state is read from the store when the recording starts: stage,
   halt flag, prior ledger entries, prior fills, and the bankroll, plus the event
   and series of every market a prior fill is in (the executor looks them up).
@@ -38,7 +41,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pmfa.config import Config
-from pmfa.errors import NotFound
+from pmfa.errors import NotFound, PmfaError
 from pmfa.models.cassette import Cassette
 from pmfa.ports import Evidence, Exchange, Executor, Knowledge, World
 from pmfa.records.decision import OrderIntent, OrderResult, ReviewCard
@@ -132,7 +135,12 @@ class _RecordingExchange:
 
 
 class _RecordingExecutor:
-    """The ``Executor`` port: orders pass through; the books orders meet are remembered."""
+    """The ``Executor`` port: orders pass through; the books orders meet are remembered.
+
+    The execution book is what the pipeline reads; the fill book is what the
+    inner executor's ``fill_books`` (when it has one) gives for an order's
+    market at the time it is placed, read just before the order goes through.
+    """
 
     def __init__(self, recording: Recording, inner: Executor) -> None:
         self._r = recording
@@ -152,7 +160,20 @@ class _RecordingExecutor:
         return book
 
     def place(self, intent: OrderIntent) -> OrderResult:
+        fill_books = getattr(self._inner, "fill_books", None)
+        if callable(fill_books):
+            try:
+                book = fill_books(intent.market_ticker)
+            except PmfaError:
+                pass  # the order itself meets the same error; there is nothing to record
+            else:
+                with self._r._lock:
+                    self._r._fill_books.setdefault(intent.market_ticker, book)
         return self._inner.place(intent)
+
+    def find_order(self, intent: OrderIntent) -> OrderResult | None:
+        find = getattr(self._inner, "find_order", None)
+        return find(intent) if callable(find) else None
 
     def cancel_all(self) -> int:
         return self._inner.cancel_all()
@@ -286,6 +307,7 @@ class Recording:
         self._events: dict[str, Event] = {}
         self._books: dict[str, OrderBook] = {}
         self._execution_books: dict[str, OrderBook] = {}
+        self._fill_books: dict[str, OrderBook] = {}
         self._liquidity: dict[str, dict[Side, Decimal]] = {}
         self._candles: dict[str, dict[tuple[int, datetime], Candle]] = {}
         self._documents: dict[str, Document] = {}
@@ -365,6 +387,11 @@ class Recording:
                 events=sorted(self._events.values(), key=lambda e: e.event_ticker),
                 order_books=dict(sorted(self._books.items())),
                 execution_books=dict(sorted(self._execution_books.items())),
+                fill_books={
+                    t: book
+                    for t, book in sorted(self._fill_books.items())
+                    if self._execution_books.get(t) != book
+                },
                 liquidity={
                     t: dict(sorted(sides.items())) for t, sides in sorted(self._liquidity.items())
                 },

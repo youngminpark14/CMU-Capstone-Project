@@ -15,7 +15,7 @@ from decimal import Decimal
 import pytest
 
 from pmfa.episode import EpisodeController, episode_id_for
-from pmfa.errors import BudgetExhausted, ModelOutputError, RunBudgetExhausted
+from pmfa.errors import AsOfViolation, BudgetExhausted, ModelOutputError, RunBudgetExhausted
 from pmfa.records.base import RunMode, Stage
 from pmfa.records.decision import (
     OrderResult,
@@ -676,6 +676,29 @@ def test_13_a_canary_document_dated_after_the_as_of_time_is_never_retrieved(tran
     assert all(not pid.startswith(FUTURE_CANARY.doc_id) for pid in record.forecast.passage_ids)
 
 
+class LeakyKnowledge:
+    """A knowledge port whose evidence search trips an as-of check, as the backtest's
+    canary guard does when a planted passage dated after the window comes back."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def search_evidence(self, queries, **kwargs):
+        raise AsOfViolation("a passage published after the as-of time was returned")
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def test_13_an_as_of_violation_from_a_port_aborts_the_run_instead_of_ending_the_episode():
+    world = make_world(fed_file(), hawkish_script())
+    world = dataclasses.replace(world, knowledge=LeakyKnowledge(world.knowledge))
+    with EpisodeController(world) as controller, pytest.raises(AsOfViolation, match="as-of"):
+        controller.run(world.file.trigger)
+    assert all(e.status is not EpisodeStatus.DONE for e in world.store.list_episodes())
+    assert orders(world) == []
+
+
 # --------------------------------------------------------------------------- 14
 
 
@@ -950,6 +973,9 @@ class LiveExecutor:
     def __init__(self, inner) -> None:
         self._inner = inner
 
+    def find_order(self, intent):
+        return self._inner.find_order(intent)
+
     def __getattr__(self, name):
         return getattr(self._inner, name)
 
@@ -1127,6 +1153,9 @@ class SpyExecutor:
         if self.on_place is not None:
             return self.on_place(intent)
         return self._inner.place(intent)
+
+    def find_order(self, intent):
+        return self._inner.find_order(intent)
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
@@ -1353,3 +1382,22 @@ def test_the_daily_loss_stop_is_a_fraction_of_the_day_start_equity():
     check = next(c for c in record.gate.checks if c.name == "daily_loss_stop")
     assert check.passed
     assert StageManager(world.store, world.config, world.clock).stop_days() == []
+
+
+def test_after_an_intraday_gain_a_proposal_sized_at_the_market_cap_passes_the_gate():
+    """Equity 1,100 now, 1,000 at the day's start. Sizing caps the market at 1.2% of the
+    current equity ($13.20); the gate's cap has the same base, so it does not reject a
+    proposal the sizer put just under it (1.2% of the day start would be $12.00)."""
+    file = fed_file(
+        bankroll="1100",
+        config_overrides={
+            "sizing": {"kelly_fraction": "1"},
+            "caps": {"per_market_fraction": "0.012"},
+        },
+    )
+    world = make_world(file, hawkish_script())
+    world.store.record_equity(AS_OF - timedelta(hours=5), Decimal("1000"))
+    with EpisodeController(world) as controller:
+        record = controller.run(file.trigger)
+    assert record.proposal is not None and record.proposal.cost > Decimal("12")
+    assert record.exit is Exit.EXECUTED, record.gate and record.gate.reasons

@@ -3,10 +3,13 @@
 The critic's answer is checked in code before it touches the tree:
 
 - exactly one score per scenario (otherwise ``ModelOutputError``);
-- a rejected verdict, an unknown option id, or a missing distribution makes the
-  scenario rejected (the latter two with reason ``invalid distribution``);
-- categorical option probabilities are clipped at 0 and normalised to sum to 1;
-  ladder quantiles go through ``quantiles.bin_probabilities``;
+- a rejected verdict, an unknown option id, a missing distribution, or option
+  probabilities that do not sum to 1 within ``OPTION_SUM_TOLERANCE`` make the
+  scenario rejected (all but the first with reason ``invalid distribution``);
+- categorical option probabilities are clipped at 0 and, within that tolerance,
+  normalised to sum to 1 (a partial answer, only ``hold`` at 0.6 say, is refused
+  rather than rescaled into a certainty it never stated); ladder quantiles go
+  through ``quantiles.bin_probabilities``;
 - sibling probabilities are clipped to [0, 1] and, if they sum to more than 1,
   scaled down to sum to 1. The remainder is unexplored mass.
 """
@@ -33,6 +36,12 @@ from pmfa.records.roles import (
 from .quantiles import bin_probabilities
 
 INVALID_DISTRIBUTION = "invalid distribution"
+
+OPTION_SUM_TOLERANCE = 0.02
+"""How far a categorical answer's probabilities may sum from 1 and still be normalised.
+
+Rounding in a model's answer (three options at 0.33) stays inside it; a partial
+answer does not. The evaluation's baselines apply the same tolerance to theirs."""
 
 
 def make_node(
@@ -126,7 +135,7 @@ def distribution(score: ScenarioScore, space: OutcomeSpace) -> dict[str, float] 
         return None
     raw = {op.outcome_id: max(0.0, _finite(op.probability)) for op in score.option_probabilities}
     total = sum(raw.values())
-    if total <= 0.0:
+    if total <= 0.0 or abs(total - 1.0) > OPTION_SUM_TOLERANCE:
         return None
     return {oid: raw.get(oid, 0.0) / total for oid in space.outcome_ids()}
 

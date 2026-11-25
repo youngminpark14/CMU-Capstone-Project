@@ -345,7 +345,9 @@ def test_each_check_deletes_a_scenario_and_records_why():
 
 
 def test_sibling_probabilities_are_clipped_and_scaled_to_sum_to_one():
-    models = one_level_world({"X": Spec(0.8, {"hold": 2.0, "cut_25": 2.0}), "Y": Spec(0.6, BASE)})
+    models = one_level_world(
+        {"X": Spec(0.8, {"hold": 0.505, "cut_25": 0.505}), "Y": Spec(0.6, BASE)}
+    )
     nodes = by_claim(engine(models).run(request(FED, SPACE, [R])).nodes)
     assert nodes["X"].cond_probability == pytest.approx(0.8 / 1.4)
     assert nodes["Y"].cond_probability == pytest.approx(0.6 / 1.4)
@@ -381,6 +383,27 @@ def test_invalid_distributions_and_critic_rejections_are_reported_and_not_repeat
     ]
     later = [p for p, _ in models.tasks(RoleTask.GENERATE)][1]
     assert isinstance(later, GenerateInput) and later.rejected == reported
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [{"hold": 0.6}, {"hold": 0.6, "cut_25": 0.37}, {"hold": 2.0, "cut_25": 2.0}],
+    ids=["partial", "sums-to-0.97", "sums-to-4"],
+)
+def test_option_probabilities_far_from_summing_to_one_are_an_invalid_distribution(dist):
+    """A stated 0.6 for hold is not rescaled into a certainty; it is refused."""
+    models = one_level_world({"X": Spec(0.9, BASE), "Y": Spec(0.1, dist)})
+    nodes = by_claim(engine(models).run(request(FED, SPACE, [R])).nodes)
+    assert (nodes["Y"].status, nodes["Y"].reason) == (NodeStatus.REJECTED, "invalid distribution")
+    assert nodes["X"].status is not NodeStatus.REJECTED
+
+
+def test_option_probabilities_off_by_rounding_are_normalised():
+    rounded = {"hike_gt25": 0.33, "hold": 0.33, "cut_25": 0.33}  # sums to 0.99
+    models = one_level_world({"X": Spec(0.9, rounded), "Y": Spec(0.1, BASE)})
+    nodes = by_claim(engine(models).run(request(FED, SPACE, [R])).nodes)
+    assert nodes["X"].status is not NodeStatus.REJECTED
+    assert nodes["X"].outcome_probabilities["hold"] == pytest.approx(1 / 3)
 
 
 def test_a_missing_distribution_is_rejected():

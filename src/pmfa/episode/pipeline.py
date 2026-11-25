@@ -32,6 +32,7 @@ from pmfa.decision import (
     size_fn,
 )
 from pmfa.errors import (
+    AsOfViolation,
     BudgetExhausted,
     CassetteMiss,
     ExchangeError,
@@ -150,6 +151,9 @@ class EpisodeState(TypedDict, total=False):
     """The run's dollar cap was reached: the controller re-raises after recording."""
     usage: dict[str, Any] | None
     """Model usage when the episode paused, so a resume in a fresh process keeps it."""
+    continued: bool
+    """The controller is continuing a thread that stopped at ``execute`` (the process
+    died, or an exception escaped, after the approval): ``execute`` only reconciles."""
 
 
 Node = Callable[[EpisodeState], dict[str, Any]]
@@ -262,10 +266,12 @@ class Pipeline:
 
         Every episode ends in exactly one named exit, so any ``PmfaError`` raised by a
         node (a model or budget error, an outcome space that cannot be built, an unknown
-        fee type, an exchange failure) ends it in ``error`` with nothing sent. Three are
+        fee type, an exchange failure) ends it in ``error`` with nothing sent. Four are
         not caught: a replay that no longer matches its recording (``CassetteMiss``,
-        ``RecordedKnowledgeMiss``) stops the replay, and an error in ``record`` itself
-        has no later node to record it. Other exceptions, LangGraph's review pause among
+        ``RecordedKnowledgeMiss``) stops the replay; a read past the as-of time
+        (``AsOfViolation``, the backtest's leakage tripwire among them) must abort the
+        run loudly, not become one episode's exit; and an error in ``record`` itself has
+        no later node to record it. Other exceptions, LangGraph's review pause among
         them, pass through.
         """
         from pmfa.world.recorded import RecordedKnowledgeMiss
@@ -285,7 +291,7 @@ class Pipeline:
                 return {**update, "run_budget_exhausted": True}
             except BudgetExhausted as exc:
                 return self._exit(state, trace_node, Exit.ERROR, f"budget exhausted: {exc}")
-            except (CassetteMiss, RecordedKnowledgeMiss):
+            except (CassetteMiss, RecordedKnowledgeMiss, AsOfViolation):
                 raise
             except PmfaError as exc:
                 if name == "record":
@@ -380,15 +386,15 @@ class Pipeline:
         )
 
     def _risk(self, now: datetime) -> RiskState:
-        """The risk state at ``now``, with the daily loss stop a fraction of day-start equity.
+        """The risk state at ``now``, on two bases.
 
-        Every caller (the gate, routing, the self-halt check, and the stage manager's
-        loss-stop days) uses that one base. Only an empty equity series, which has no
-        day start, falls back to the current equity.
+        ``bankroll`` is the executor's current equity, the number sizing caps on, so the
+        gate's dollar caps agree with the sizer's. The daily loss stop is a fraction of
+        the day-start equity, the base the self-halt check and the stage manager's
+        loss-stop days use too. An empty equity series has no day start: both bases are
+        then the current equity.
         """
         series = self.world.store.equity_series()
-        if series:
-            return risk_state(series, now, self.config)
         return risk_state(series, now, self.config, bankroll=self.world.executor.balance().equity)
 
     @staticmethod
@@ -1092,14 +1098,18 @@ class Pipeline:
     def execute(self, state: EpisodeState) -> dict[str, Any]:
         """Send the approved proposal as one immediate-or-cancel limit order, at most once.
 
-        The order is looked up by its client order id first (in the store, then on the
-        exchange when the executor can look one up), so a thread continued after a crash
-        records the order it already sent instead of sending another. The halt flag is
-        read before the book and again immediately before sending. An exchange error
-        while sending ends the episode: with the order looked up when it can be found,
-        else in ``error``, the outcome unknown. An order the exchange rejected ends in
-        ``error`` with the exchange's reason; any order it accepted (filled, partly
-        filled or unfilled) ends ``executed``.
+        The order is looked up by its client order id first (in the store, then through
+        ``Executor.find_order``). A thread the controller continued after it stopped here
+        (``continued``) only reconciles and never sends: it records the order it finds,
+        else ends in ``error`` with nothing placed. The approval it ran on may be minutes
+        old, its gate ran at an older price, and the human may since have rejected or
+        expired the proposal, so sending then would act on a decision nobody stands
+        behind. On a first run, the halt flag is read before the book and again
+        immediately before sending. An exchange error while sending ends the episode:
+        with the order looked up when it can be found, else in ``error``, the outcome
+        unknown. An order the exchange rejected ends in ``error`` with the exchange's
+        reason; any order it accepted (filled, partly filled or unfilled) ends
+        ``executed``.
         """
         world = self.world
         eid = state["episode_id"]
@@ -1113,7 +1123,9 @@ class Pipeline:
             contracts=p.contracts,
             limit_price=p.limit_price,
         )
-        found = self._find_order(eid, intent)
+        if state.get("continued"):
+            return self._reconcile(state, p, intent)
+        found = self._lookup(eid, intent)
         if found is not None:
             order: OrderResult = found
             world.store.save_order(order)
@@ -1124,7 +1136,7 @@ class Pipeline:
         if halted is not None:
             return halted
         if world.clock.now() > p.expires_at:
-            # Only a thread continued long after its approval gets here: the gate just ran.
+            # Defensive: the gate that just ran checks the expiry too.
             world.store.save_proposal(p, ProposalStatus.EXPIRED)
             return self._exit(
                 state,
@@ -1178,7 +1190,7 @@ class Pipeline:
         try:
             order = world.executor.place(intent)
         except ExchangeError as exc:
-            found = self._find_order(eid, intent)
+            found = self._lookup(eid, intent)
             if found is None:
                 return self._exit(
                     state,
@@ -1209,25 +1221,68 @@ class Pipeline:
             state, "execute", Exit.HALTED, f"the halt flag is set: {halt_state.reason}"
         )
 
-    def _find_order(self, eid: str, intent: OrderIntent) -> OrderResult | None:
-        """The order already sent for ``intent``, by its client order id, if one can be found.
+    def _reconcile(self, state: EpisodeState, p: Proposal, intent: OrderIntent) -> dict[str, Any]:
+        """Finish a continued thread from what was already sent. Nothing is placed here.
 
-        The store is asked first. An executor that can look an order up on the exchange
-        (an optional ``find_order(intent)`` method returning an ``OrderResult`` or None)
-        is asked next, since a crash or an exchange error can come between the exchange
-        accepting an order and the store recording it.
+        An order found by its client order id is recorded and ends the episode by what
+        the exchange did with it. When none is found, the process stopped before the
+        order was sent: the proposal is cancelled and the episode ends ``error``. When
+        the exchange cannot be asked, the outcome is unknown and the episode says so.
+        """
+        world = self.world
+        eid = state["episode_id"]
+        self.tracer.action(
+            eid,
+            "execute",
+            f"continue a thread that stopped here: look up client order id "
+            f"{intent.client_order_id} and send nothing",
+        )
+        try:
+            found = self._find_order(eid, intent)
+        except ExchangeError as exc:
+            world.store.save_proposal(p, ProposalStatus.CANCELLED)
+            return self._exit(
+                state,
+                "execute",
+                Exit.ERROR,
+                f"the process stopped at execute and the order lookup failed ({exc}); "
+                f"nothing was sent now, and whether client order id {intent.client_order_id} "
+                "was placed is unknown: check the exchange",
+            )
+        if found is not None:
+            world.store.save_order(found)
+            self.tracer.observation(eid, "execute", f"order {found.order_id} was already placed")
+            return self._order_outcome(state, p, found)
+        world.store.save_proposal(p, ProposalStatus.CANCELLED)
+        return self._exit(
+            state,
+            "execute",
+            Exit.ERROR,
+            "the process stopped before the order was sent: no order with client order id "
+            f"{intent.client_order_id} exists, and nothing was placed",
+        )
+
+    def _lookup(self, eid: str, intent: OrderIntent) -> OrderResult | None:
+        """``_find_order``, with a failed exchange lookup read as no order found."""
+        try:
+            return self._find_order(eid, intent)
+        except ExchangeError:
+            return None
+
+    def _find_order(self, eid: str, intent: OrderIntent) -> OrderResult | None:
+        """The order already sent for ``intent``, by its client order id, if one exists.
+
+        The store is asked first, then the executor (``Executor.find_order``), since a
+        crash or an exchange error can come between the exchange accepting an order and
+        the store recording it. Raises ``ExchangeError`` when the exchange cannot be asked.
         """
         for o in self.world.store.list_orders(episode_id=eid):
             if o.client_order_id == intent.client_order_id:
                 return o
-        find = getattr(self.world.executor, "find_order", None)
-        if not callable(find):
-            return None
         try:
-            found = find(intent)
-        except (ExchangeError, NotFound):
+            return self.world.executor.find_order(intent)
+        except NotFound:
             return None
-        return found if isinstance(found, OrderResult) else None
 
     def _order_outcome(
         self, state: EpisodeState, p: Proposal, order: OrderResult

@@ -46,6 +46,24 @@ def test_a_first_look_indexes_and_a_second_runs_one_episode_for_the_new_minutes(
     assert world.store.equity_series()[-1][1] == second.equity
 
 
+def test_a_pass_ends_with_a_marked_equity_point_not_one_at_cost(file):
+    # The episode buys NO at the ask; the NO bid is lower, so the holding is worth less
+    # than it cost. The stops read the equity series, so the pass's point must be marked.
+    from pmfa.execution import portfolio
+
+    world = live_world(file)
+    with EpisodeController(world) as controller:
+        run_once(world, controller, resolver=no_resolver)
+        world.clock.set(AS_OF)
+        second = run_once(world, controller, resolver=no_resolver)
+    executor = world.executor
+    marked = portfolio.marked_equity(executor.account(), executor._bid)
+    at_cost = executor.balance().equity
+    assert marked < at_cost
+    assert second.equity == marked
+    assert world.store.equity_series()[-1] == (second.finished_at, marked)
+
+
 def test_the_same_pass_run_twice_starts_no_second_episode(file):
     world = live_world(file)
     with EpisodeController(world) as controller:
@@ -92,6 +110,26 @@ def test_a_price_move_starts_an_episode_that_never_trades_without_new_evidence(t
     assert trigger.kind is TriggerKind.PRICE_MOVE and trigger.event_ticker == FED
     [outcome] = summary.episodes
     assert outcome.exit is not Exit.EXECUTED and world.store.list_orders() == []
+
+
+def test_the_last_price_move_trigger_is_kept_and_a_second_move_starts_a_second_episode(tmp_path):
+    from pmfa.live.loop import read_price_anchors
+
+    hold = f"{FED}-H0"
+    first, second = AS_OF - timedelta(minutes=5), AS_OF + timedelta(minutes=10)
+    points = [(AS_OF - timedelta(minutes=50), "0.62"), (first, "0.66"), (second, "0.70")]
+    file = live_file(tmp_path / "data", candles={hold: mid_candles(hold, points)}, documents=[])
+    world = live_world(file, start=AS_OF)
+    with EpisodeController(world) as controller:
+        one = run_once(world, controller, resolver=no_resolver)
+        assert read_price_anchors(cursor_path(world)) == {FED: first}
+        world.clock.set(second + timedelta(minutes=1))
+        two = run_once(world, controller, resolver=no_resolver)
+    assert [t.at for t in one.triggers] == [first]
+    # The 0.66 of the first move is still inside the window of the second: it fires anyway.
+    assert [t.at for t in two.triggers] == [second]
+    assert read_price_anchors(cursor_path(world)) == {FED: second}
+    assert len({o.episode_id for o in [*one.episodes, *two.episodes]}) == 2
 
 
 def test_a_paused_proposal_waits_and_then_expires_in_a_later_pass(file):

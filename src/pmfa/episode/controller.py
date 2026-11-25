@@ -9,10 +9,14 @@ process) over the same store and checkpoint files.
 
 A thread that stopped at the ``execute`` node (the process died, or an
 exception escaped, between the approval and the order being recorded) is
-continued at that node by ``run``, ``resume`` and ``expire`` alike. ``execute``
-looks the order up by its deterministic client order id before sending
-anything, so the continuation records an order that was already sent instead
-of sending a second one.
+continued at that node by ``run``, ``resume`` and ``expire`` alike, and a
+continuation never places an order: whatever the new call asks for, it only
+reconciles. ``execute`` looks the order up by its deterministic client order id
+(the store, then ``Executor.find_order``); an order that was sent is recorded
+and the episode ends by what the exchange did with it, and when none was sent
+the proposal is cancelled and the episode ends ``error``, nothing placed. The
+approval behind the stopped thread is stale (its gate ran at an older price, and
+the human may since have rejected it), so it is never acted on again.
 """
 
 from __future__ import annotations
@@ -86,7 +90,8 @@ class EpisodeController:
 
         The episode id is deterministic, so running a trigger that already has an
         episode in the store returns that episode without running anything again,
-        unless its thread stopped at ``execute``: that is continued there. Raises
+        unless its thread stopped at ``execute``: that is reconciled there, and no
+        order is sent (see the module docstring). Raises
         ``RunBudgetExhausted`` after recording the episode (exit ``error``) when the
         run's dollar cap was reached: the caller must stop the run.
         """
@@ -94,7 +99,7 @@ class EpisodeController:
         existing = self.world.store.get_episode(episode_id)
         if existing is not None:
             if existing.status is not EpisodeStatus.DONE and self._stopped_at_execute(episode_id):
-                return self._invoke(episode_id, None)
+                return self._continue(episode_id)
             return existing
         initial = {
             "episode_id": episode_id,
@@ -115,15 +120,17 @@ class EpisodeController:
         expired, by time or because the price passed its edge bound, ends the
         episode ``expired`` whatever the review says. Resuming an episode that is
         no longer paused returns its record and does nothing. An episode whose
-        review was applied but whose thread stopped at ``execute`` is continued
-        there; the review given now is not applied again. Raises
-        ``RunBudgetExhausted`` after recording, as ``run`` does.
+        review was applied but whose thread stopped at ``execute`` is reconciled
+        there and sends nothing, whatever ``review`` says: an order that was already
+        sent is recorded (a reject cannot unsend it), and otherwise the proposal is
+        cancelled and the episode ends ``error``. Raises ``RunBudgetExhausted`` after
+        recording, as ``run`` does.
         """
         from pmfa.execution.review import ReviewQueue
 
         stored = self._stored(episode_id)
         if stored.status is EpisodeStatus.PENDING_REVIEW and self._stopped_at_execute(episode_id):
-            return self._invoke(episode_id, None)
+            return self._continue(episode_id)
         stored, proposal = self._paused(episode_id)
         if stored.status is not EpisodeStatus.PENDING_REVIEW:
             return stored
@@ -166,14 +173,15 @@ class EpisodeController:
         """Expire a paused episode's proposal: it ends ``expired`` and never executes.
 
         An approved episode whose thread stopped at ``execute`` may already have sent its
-        order, so it is continued there instead (``execute`` itself expires a proposal
-        whose order was never sent once ``expires_at`` has passed).
+        order, so it is reconciled there instead and sends nothing: an order that was
+        sent is recorded, and otherwise the proposal is cancelled and the episode ends
+        ``error``.
         """
         from pmfa.execution.review import ReviewQueue
 
         stored = self._stored(episode_id)
         if stored.status is EpisodeStatus.PENDING_REVIEW and self._stopped_at_execute(episode_id):
-            return self._invoke(episode_id, None)
+            return self._continue(episode_id)
         stored, proposal = self._paused(episode_id)
         if stored.status is not EpisodeStatus.PENDING_REVIEW:
             return stored
@@ -211,6 +219,18 @@ class EpisodeController:
             # The episode is recorded (exit error); the run must stop, so the caller hears it.
             raise RunBudgetExhausted(record.exit_detail)
         return record
+
+    def _continue(self, episode_id: str) -> EpisodeRecord:
+        """Continue a thread stopped at ``execute``, marked so that it only reconciles.
+
+        The mark goes into the checkpoint, so a continuation that itself dies is
+        continued the same way.
+        """
+        config = self._config(episode_id)
+        self.graph.update_state(config, {"continued": True})
+        if tuple(self.graph.get_state(config).next) != ("execute",):  # pragma: no cover
+            raise NotPaused(f"episode {episode_id} no longer stops at execute")
+        return self._invoke(episode_id, None)
 
     def _resume(self, episode_id: str, answer: dict[str, Any]) -> EpisodeRecord:
         from langgraph.types import Command

@@ -451,3 +451,48 @@ def test_repeated_demo_rejections_trip_the_fill_failure_halt() -> None:
     assert len(store.list_orders()) == 10
     found = stop_reasons(store, config(), clock(), RecordedEvidence(world_file()))
     assert [r.split(":")[0] for r in found] == ["fill failures"]
+
+
+# -- lookup and marks
+
+
+def test_find_order_looks_an_order_up_by_its_client_order_id_without_placing() -> None:
+    fake = trading_fake()
+    fake.add("GET", "/portfolio/orders", "constructed_orders_lookup", ticker=TICKER)
+    ex = executor(fake)
+    assert isinstance(ex, Executor)
+    found = ex.find_order(intent())
+    assert found is not None
+    assert (found.order_id, found.client_order_id) == (ORDER_ID, CLIENT_ID)
+    assert found.status is OrderStatus.PARTIALLY_FILLED
+    assert found.filled_contracts == Decimal("4")
+    assert not fake.sent("POST", ORDERS)
+    other = intent().model_copy(update={"client_order_id": "ord-not-sent"})
+    assert ex.find_order(other) is None
+
+
+def test_mark_values_positions_at_their_own_sides_bid_and_records_the_point() -> None:
+    fake = FakeKalshi()
+    fake.add("GET", "/portfolio/balance", "constructed_balance", subaccount=1)
+    fake.add(
+        "GET",
+        "/portfolio/positions",
+        "constructed_positions",
+        subaccount=1,
+        count_filter="position",
+    )
+    fake.add("GET", f"/markets/{TICKER}/orderbook", "demo_orderbook_26DEC_H0")
+    fake.add(
+        "GET",
+        "/markets/KXFEDDECISION-26DEC-C25/orderbook",
+        (404, {"error": {"code": "not_found", "message": "market not found"}}),
+    )
+    points: list[tuple[object, Decimal]] = []
+    ex = executor(fake)
+    ex.equity_sink = lambda at, equity: points.append((at, equity))
+    # Cash 995.25; 4 NO on H0 at its best NO bid 0.95 (cost 3.81); 2 YES on C25 with no
+    # book, so at cost 0.46. At cost the equity would be 999.52.
+    equity = ex.mark()
+    assert equity == Decimal("995.25") + 4 * Decimal("0.95") + Decimal("0.46")
+    assert ex.balance().equity == Decimal("999.5200")
+    assert points == [(clock().now(), equity)]

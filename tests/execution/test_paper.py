@@ -107,6 +107,21 @@ def test_a_retry_with_the_same_client_order_id_returns_the_first_order() -> None
     assert len(store.list_orders()) == 2
 
 
+def test_find_order_returns_the_stored_order_by_client_order_id_and_places_nothing() -> None:
+    executor, store, _ = paper()
+    assert executor.find_order(intent(10, "0.64")) is None
+    assert store.list_orders() == []
+    placed = executor.place(intent(10, "0.64"))
+    assert executor.find_order(intent(10, "0.64")) == placed
+    assert executor.find_order(intent(10, "0.64", client_order_id="coid-2")) is None
+    assert len(store.list_orders()) == 1
+    # A halted refusal is not stored, so there is nothing to find for it.
+    store.set_halt("manual", AS_OF)
+    refused = intent(5, "0.64", client_order_id="coid-3")
+    assert executor.place(refused).status is OrderStatus.REJECTED
+    assert executor.find_order(refused) is None
+
+
 def test_the_execution_book_can_differ_from_the_trigger_book() -> None:
     moved = world_file(execution_books={HOLD: book(no_bids=(("0.35", "100"),))})
     executor, _, _ = paper(moved)

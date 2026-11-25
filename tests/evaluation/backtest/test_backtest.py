@@ -191,6 +191,74 @@ def test_canary_in_a_retrieval_result_aborts_the_run(
     assert read_manifest(run_dir).status == "aborted"
 
 
+def _plant_the_canary(data_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every evidence search return the canary as well, as a broken as-of filter would."""
+    from pmfa.knowledge.retriever import ChromaKnowledge
+    from pmfa.world.backtest import BacktestData
+
+    canary = BacktestData(data_config).canary
+    real = ChromaKnowledge.search_evidence
+
+    def leaky(self, queries, **kwargs):  # type: ignore[no-untyped-def]
+        planted = Passage(
+            passage_id=f"{canary.doc_id}#0",
+            doc_id=canary.doc_id,
+            origin_id=canary.doc_id,
+            source=canary.source,
+            url=canary.url,
+            title=canary.title,
+            published_at=canary.published_at,
+            index=0,
+            text=canary.text,
+        )
+        hit = RetrievedPassage(passage=planted, similarity=0.9, recency=1.0, score=0.9)
+        return [*real(self, queries, **kwargs), hit]
+
+    monkeypatch.setattr(ChromaKnowledge, "search_evidence", leaky)
+
+
+def test_leakage_is_an_as_of_violation() -> None:
+    from pmfa.errors import AsOfViolation
+
+    assert issubclass(LeakageDetected, AsOfViolation)
+
+
+def test_canary_in_a_pipeline_retrieval_aborts_the_run(
+    data_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The pipeline turns most project errors into an episode's exit `error`; a leak must
+    # not become one. The scan of finished episodes is switched off, so only the tripwire
+    # inside retrieval, raised in the pipeline's own node, can abort the run.
+    _plant_the_canary(data_config, monkeypatch)
+    scanned: list[str] = []
+
+    def no_scan(episode, **kwargs):  # type: ignore[no-untyped-def]
+        scanned.append(episode.episode_id)
+
+    monkeypatch.setattr("pmfa.evaluation.backtest.assert_episode_clean", no_scan)
+    run_dir = tmp_path / "runs" / "leak-pipeline"
+    with pytest.raises(LeakageDetected):
+        run_backtest(
+            data_config, run_dir=run_dir, systems=["pipeline"], models=scripted(data_config)
+        )
+    assert read_manifest(run_dir).status == "aborted"
+    assert scanned == []  # no episode finished: the first leaking retrieval stopped the run
+
+
+def test_the_index_key_names_the_stored_row_format(
+    data_config: Config, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pmfa.world import backtest as backtest_world
+
+    before = backtest_world.BacktestData(data_config)
+    monkeypatch.setattr(backtest_world, "INDEX_FORMAT", backtest_world.INDEX_FORMAT + 1)
+    after = backtest_world.BacktestData(data_config)
+    assert after.index_key != before.index_key
+    assert after.index_path != before.index_path
+    before.close()
+    after.close()
+
+
 def test_a_model_cutoff_inside_the_window_refuses_to_start(
     data_config: Config, tmp_path: Path
 ) -> None:

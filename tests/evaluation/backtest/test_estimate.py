@@ -1,4 +1,4 @@
-"""The dry-run estimate: its maximum is an upper bound on what an episode can spend."""
+"""The dry-run estimate: its maximum bounds what an episode can spend, repair retries aside."""
 
 from __future__ import annotations
 
@@ -78,3 +78,19 @@ def test_baseline_calls_are_not_priced_from_a_blend_of_recorded_answers() -> Non
     assert Decimal("9") not in {
         price(RoleTask.BASELINE, ModelSlot.BASELINE, with_passages=flag) for flag in (True, False)
     }
+
+
+def test_the_pipeline_plan_says_its_maximum_counts_no_repair_retries(
+    data_config: Config, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    """Each unusable answer gets one metered retry, which the maximum does not count: the
+    plan says so next to it, and names the run's dollar cap as the real ceiling."""
+    from pmfa.evaluation.backtest import run_backtest
+
+    manifest = run_backtest(
+        data_config, run_dir=tmp_path / "dry", systems=["market", "pipeline"], dry_run=True
+    )
+    [pipeline] = [p for p in manifest.plan.systems if p.system == "pipeline"]
+    [note] = [n for n in pipeline.notes if "repair retr" in n]
+    assert "no repair retries" in note and "dollar cap" in note
+    assert f"${data_config.budget.max_usd_per_run}" in note

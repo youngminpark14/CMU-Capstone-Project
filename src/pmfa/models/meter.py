@@ -3,16 +3,22 @@
 The meter is checked before every call, so a capped call is never sent:
 
 - the episode's call cap: the next call would exceed ``max_calls_per_episode``;
-- the episode's dollar cap: ``max_usd_per_episode`` is already spent;
+- the episode's dollar cap: ``max_usd_per_episode`` is already spent, or would be
+  passed if the next call cost its worst case;
 - the episode's seconds cap: ``max_seconds_per_episode`` is already spent, only
   when ``enforce_seconds`` is on (the live modes turn it on; backtests use the
   call budget alone);
-- the run's dollar cap: ``max_usd_per_run`` is reached.
+- the run's dollar cap: ``max_usd_per_run`` is reached, or would be passed if the
+  next call cost its worst case.
 
-A call's cost is known only after it returns, so the dollar caps can be overrun
-by the last call let through, by at most that call's cost. The seconds cap is
-held tighter: when it is enforced, the gateway gives each call a timeout no
-longer than :meth:`Meter.seconds_left`. Seconds are model-call seconds only.
+A call's cost is known only after it returns, so the caller passes the call's
+worst case (``worst_case_usd``): the gateway prices an upper estimate of the
+prompt's input tokens plus the full ``max_tokens`` of output on the assigned
+model. The dollar caps are then ceilings, as far as the input-token estimate is
+an upper bound. An answer that costs nothing new (cached, cassette, scripted) is
+checked with no worst case, exactly as before. The seconds cap is held the same
+way: when it is enforced, the gateway gives each call a timeout no longer than
+:meth:`Meter.seconds_left`. Seconds are model-call seconds only.
 """
 
 from __future__ import annotations
@@ -46,25 +52,34 @@ class Meter:
         self._run = Usage()
         self._lock = threading.Lock()
 
-    def check(self, episode_id: str) -> None:
-        """Raise instead of letting the next call go out when a cap is reached."""
+    def check(self, episode_id: str, worst_case_usd: Decimal = Decimal("0")) -> None:
+        """Raise instead of letting the next call go out when a cap is reached.
+
+        ``worst_case_usd`` is the most the next call can cost; a call that could take
+        either dollar cap past its limit is refused before it is sent.
+        """
         with self._lock:
             run = self._run
             episode = self._episodes.get(episode_id, Usage())
         b = self.budget
-        if run.cost_usd >= b.max_usd_per_run:
+        worst = max(Decimal("0"), worst_case_usd)
+        could = f"; the next call could cost up to ${worst}" if worst else ""
+        if run.cost_usd >= b.max_usd_per_run or run.cost_usd + worst > b.max_usd_per_run:
             raise RunBudgetExhausted(
-                f"run dollar cap reached: ${run.cost_usd} spent of ${b.max_usd_per_run}"
+                f"run dollar cap reached: ${run.cost_usd} spent of ${b.max_usd_per_run}{could}"
             )
         if episode.calls + 1 > b.max_calls_per_episode:
             raise BudgetExhausted(
                 f"episode {episode_id}: call cap reached ({episode.calls} of "
                 f"{b.max_calls_per_episode})"
             )
-        if episode.cost_usd >= b.max_usd_per_episode:
+        if (
+            episode.cost_usd >= b.max_usd_per_episode
+            or episode.cost_usd + worst > b.max_usd_per_episode
+        ):
             raise BudgetExhausted(
                 f"episode {episode_id}: dollar cap reached (${episode.cost_usd} of "
-                f"${b.max_usd_per_episode})"
+                f"${b.max_usd_per_episode}{could})"
             )
         if self.enforce_seconds and episode.seconds >= b.max_seconds_per_episode:
             raise BudgetExhausted(

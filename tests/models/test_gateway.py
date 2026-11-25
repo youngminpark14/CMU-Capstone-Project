@@ -130,15 +130,82 @@ def test_a_repair_retry_also_needs_budget():
     assert len(backend.requests) == 4
 
 
-def test_the_episode_dollar_cap_stops_once_spent():
-    config = make_config(budget={"max_usd_per_episode": "0.10", "max_usd_per_run": "25"})
+SCORE_IN = INPUTS[RoleTask.SCORE]
+
+
+def score_worst_case(config) -> Decimal:
+    """The most one SCORE call can cost: its input-token bound plus max_tokens of output."""
+    from pmfa.models.gateway import input_token_bound
+    from pmfa.models.pricing import cost
+    from pmfa.models.roles.prompts import render
+    from pmfa.records.roles import TASKS
+
+    assignment = config.models.slots[TASKS[RoleTask.SCORE].default_slot]
+    tokens = input_token_bound(render(RoleTask.SCORE, SCORE_IN), TASKS[RoleTask.SCORE].output_type)
+    return cost(assignment.model, tokens, assignment.max_tokens, catalog=config.models.catalog)
+
+
+def test_the_episode_dollar_cap_is_a_ceiling():
+    config = make_config(budget={"max_usd_per_episode": "0.30", "max_usd_per_run": "25"})
+    worst = score_worst_case(config)
+    assert Decimal("0.10") < worst < Decimal("0.20")  # 16,000 output tokens alone are $0.16
     # Each Sonnet call: 40k in x $2/M + 2k out x $10/M = $0.10.
     answer = ok(OUTPUTS[RoleTask.SCORE], tokens=(40_000, 2_000))
-    gw, backend = gateway([answer, answer], config=config)
-    gw.call(RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e")
+    gw, backend = gateway([answer] * 3, config=config)
+    gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")  # $0.10 spent: $0.10 + worst fits
+    # $0.20 spent, $0.10 left: the third call could cost more than that, so it is not sent.
     with pytest.raises(BudgetExhausted, match="dollar"):
-        gw.call(RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e")
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert len(backend.requests) == 2
+    assert gw.usage("e").cost_usd == Decimal("0.20") <= config.budget.max_usd_per_episode
+
+
+@pytest.mark.parametrize(
+    ("spent", "error"),
+    [("episode", BudgetExhausted), ("run", RunBudgetExhausted)],
+)
+def test_one_cent_below_a_dollar_cap_no_call_is_sent(spent, error):
+    """At $1.99 of $2.00 (or $24.99 of $25.00) the next call could cost more than the cent
+    left: it is refused, so the cap holds instead of ending near a call's cost above it."""
+    from pmfa.records.episode import Usage
+
+    config = make_config(budget={"max_usd_per_episode": "2.00", "max_usd_per_run": "25.00"})
+    gw, backend = gateway([ok(OUTPUTS[RoleTask.SCORE], tokens=(400_000, 20_000))], config=config)
+    if spent == "episode":
+        gw.meter.add("e", Usage(calls=1, cost_usd=Decimal("1.99")))
+    else:
+        gw.meter.add("old", Usage(calls=1, cost_usd=Decimal("24.99")))
+    with pytest.raises(error, match="could cost up to"):
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert backend.requests == []
+    assert gw.run_usage().cost_usd <= config.budget.max_usd_per_run
+
+
+def test_a_repair_retry_also_needs_dollar_budget_for_its_worst_case():
+    worst = score_worst_case(make_config())
+    # Room for the first call's worst case, but not for a second one after it is paid.
+    cap = str(worst + Decimal("0.05"))
+    config = make_config(budget={"max_usd_per_episode": cap, "max_usd_per_run": "25"})
+    gw, backend = gateway([raw("bad", tokens=(40_000, 2_000)), raw("bad")], config=config)
+    with pytest.raises(BudgetExhausted, match="dollar"):
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
     assert len(backend.requests) == 1
+
+
+def test_a_cached_answer_is_served_whatever_its_worst_case(tmp_path):
+    """A cached answer costs the run nothing new, so only what was spent can refuse it."""
+    from pmfa.records.episode import Usage
+
+    answer = ok(OUTPUTS[RoleTask.SCORE], tokens=(40_000, 2_000))
+    first, _ = gateway([answer], cache_dir=tmp_path)
+    first.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+
+    config = make_config(budget={"max_usd_per_episode": "2.00", "max_usd_per_run": "25.00"})
+    second, backend = gateway([], config=config, cache_dir=tmp_path)
+    second.meter.add("old", Usage(calls=1, cost_usd=Decimal("24.99")))
+    cached = second.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert cached.meta.source == "cache" and backend.requests == []
 
 
 def test_the_seconds_cap_applies_only_when_enforced():
@@ -184,14 +251,15 @@ def test_a_short_seconds_cap_never_lengthens_the_request_timeout():
 
 
 def test_the_run_dollar_cap_raises_run_budget_exhausted():
-    config = make_config(budget={"max_usd_per_episode": "0.10", "max_usd_per_run": "0.10"})
+    config = make_config(budget={"max_usd_per_episode": "0.30", "max_usd_per_run": "0.30"})
     answer = ok(OUTPUTS[RoleTask.SCORE], tokens=(40_000, 2_000))  # $0.10
-    gw, backend = gateway([answer, answer], config=config)
-    gw.call(RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e1")
-    with pytest.raises(RunBudgetExhausted):
-        gw.call(RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e2")
-    assert len(backend.requests) == 1
-    assert gw.run_usage().cost_usd == Decimal("0.10")
+    gw, backend = gateway([answer] * 3, config=config)
+    gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e1")
+    gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e2")
+    with pytest.raises(RunBudgetExhausted):  # $0.20 spent; the worst case would pass $0.30
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e3")
+    assert len(backend.requests) == 2
+    assert gw.run_usage().cost_usd == Decimal("0.20")
 
 
 def test_cache_hit_skips_the_model_and_keeps_the_recorded_cost(tmp_path):

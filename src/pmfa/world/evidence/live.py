@@ -109,9 +109,8 @@ class LiveEvidence:
             )
             found += bls.documents
             failures += bls.failures
-        primary = self._primary_sources()
         for url in sources.feeds:
-            if feed_host(url) in primary:
+            if self._is_primary_host(feed_host(url)):
                 failures.append(
                     f"feed {url}: {feed_host(url)} is a primary source; feeds are secondary only"
                 )
@@ -126,7 +125,17 @@ class LiveEvidence:
         return self._store.add(found, now=now)
 
     def _primary_sources(self) -> frozenset[str]:
-        return frozenset(src for s in self._config.follow.series for src in s.primary_sources)
+        return frozenset(
+            src.lower() for s in self._config.follow.series for src in s.primary_sources
+        )
+
+    def _is_primary_host(self, host: str) -> bool:
+        """``host`` is a primary source or a subdomain of one (``press.federalreserve.gov``).
+
+        A feed on a subdomain would credit its items to a source of their own,
+        which origin resolution could count as independent of the primary one.
+        """
+        return any(host == p or host.endswith("." + p) for p in self._primary_sources())
 
     # -- re-checking a source ------------------------------------------------------------
 
@@ -155,11 +164,7 @@ class LiveEvidence:
                 return FedSource(self._fetcher).refetch(stored)
             if stored.source == BLS_SOURCE:
                 return self._refetch_bls(stored)
-            feed = next(
-                (u for u in self._config.sources.feeds if feed_host(u) == stored.source), None
-            )
-            if feed is not None:
-                return FeedSource(self._fetcher).refetch(feed, stored) or stored
+            return self._refetch_feed_item(stored)
         except FetchRefused as exc:
             self.last_failures.append(f"re-check of {stored.doc_id} refused: {exc}")
             return stored
@@ -173,7 +178,31 @@ class LiveEvidence:
             return stored
         except ValueError as exc:
             return NotFound(f"{stored.doc_id} at {stored.url} no longer parses as a page: {exc}")
-        return stored  # a source this class does not know how to ask again
+
+    def _refetch_feed_item(self, stored: Document) -> Document:
+        """The item as a listed feed on its host serves it now, else the stored copy.
+
+        Every listed feed whose host the item is credited to is asked in turn
+        (one host can list several feeds), until one still lists the item. When
+        none does and one of them failed, the first failure is raised for
+        ``_refetch`` to classify; when none does and none failed, the feeds have
+        dropped the item, which is not a withdrawal. A source this class does not
+        know how to ask again also gets the stored copy.
+        """
+        failure: Exception | None = None
+        for url in self._config.sources.feeds:
+            if feed_host(url) != stored.source:
+                continue
+            try:
+                found = FeedSource(self._fetcher).refetch(url, stored)
+            except (FetchError, FeedError) as exc:
+                failure = failure or exc
+                continue
+            if found is not None:
+                return found
+        if failure is not None:
+            raise failure
+        return stored
 
     def _refetch_bls(self, stored: Document) -> Document:
         """A BLS release from the manual file a person saved, else the stored copy.

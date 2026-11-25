@@ -159,3 +159,57 @@ def test_the_demo_world_trades_only_on_the_demo_host_and_always_pauses(config, m
         assert world.checkpoint_db != config.paths.checkpoint_db()
     finally:
         world.close()
+
+
+def test_a_key_id_without_a_key_keeps_its_detail(config, monkeypatch):
+    for name in KALSHI_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("KALSHI_DEMO_KEY_ID", "key-id")
+    with pytest.raises(ConfigError) as caught:
+        build_demo_world(config, models=ScriptedModels({}, config=config))
+    message = str(caught.value)
+    assert "KALSHI_DEMO_KEY_ID is set but neither" in message
+    assert "key-id" not in message
+
+
+def test_the_demo_world_wires_the_halt_flag_and_the_equity_points_to_its_store(config, monkeypatch):
+    from decimal import Decimal
+
+    from pmfa.records.decision import OrderIntent, OrderStatus
+    from pmfa.records.market import Side
+
+    monkeypatch.setenv("KALSHI_DEMO_KEY_ID", "key-id")
+    monkeypatch.setenv("KALSHI_DEMO_PRIVATE_KEY", _pem())
+    world = build_demo_world(config, models=ScriptedModels({}, config=config))
+    try:
+        executor = world.executor
+        assert isinstance(executor, DemoExecutor)
+        assert executor.halt_check == world.store.get_halt
+        assert executor.equity_sink == world.store.record_equity
+
+        # `pmfa halt` lands after the pipeline's own check, while the order group is
+        # looked up: the executor reads the flag again and sends nothing.
+        def group_lookup(ticker: str) -> str:
+            world.store.set_halt("manual halt from another terminal", world.clock.now())
+            return "group-1"
+
+        def no_post(*args, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("the order was sent while halted")
+
+        monkeypatch.setattr(executor, "_order_group", group_lookup)
+        monkeypatch.setattr(executor.client, "post", no_post)
+        intent = OrderIntent(
+            client_order_id="ord-1",
+            episode_id="ep-1",
+            proposal_id="prop-1",
+            market_ticker="KXFEDDECISION-26DEC-H0",
+            side=Side.NO,
+            contracts=5,
+            limit_price=Decimal("0.40"),
+        )
+        assert not world.store.get_halt().halted
+        result = executor.place(intent)
+        assert result.status is OrderStatus.REJECTED
+        assert result.error.startswith("halted: manual halt")
+    finally:
+        world.close()

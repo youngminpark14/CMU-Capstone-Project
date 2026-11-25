@@ -133,3 +133,36 @@ def test_a_feed_item_rechecks_against_the_feed_as_it_is_now(tmp_path):
     pages[RSS_URL] = pages[RSS_URL].replace("example-note-0001", "example-note-9999")
     evidence = live(tmp_path, fetcher, [RSS_URL])
     assert evidence.recheck(hold.doc_id, as_of=NOW) == hold
+
+
+def test_a_feed_on_a_subdomain_of_a_primary_source_host_is_refused(tmp_path):
+    # press.federalreserve.gov would otherwise be credited as a source of its own.
+    sub_feed = "https://press.federalreserve.gov/feeds/press_monetary.xml"
+    lookalike = "https://notfederalreserve.gov/feeds/notes.xml"
+    fetcher = FakeFetcher(
+        {
+            sub_feed: fixture_text("synthetic_feed.rss.xml"),
+            lookalike: fixture_text("synthetic_feed.rss.xml"),
+        }
+    )
+    evidence = live(tmp_path, fetcher, [sub_feed, lookalike])
+    added = evidence.poll(force=True)
+    assert (sub_feed, True) not in fetcher.calls  # not even fetched
+    assert any("press.federalreserve.gov is a primary source" in f for f in evidence.last_failures)
+    # A host that only ends in the same letters is not a subdomain.
+    assert {d.source for d in added} == {"notfederalreserve.gov"}
+
+
+def test_a_feed_item_rechecks_against_every_listed_feed_on_its_host(tmp_path):
+    # Two feeds on one host: the item came from the second, so the first does not list it.
+    second = "https://www.example.org/feeds/second.xml"
+    # The first is an Atom feed on the same host with other items.
+    pages = {RSS_URL: fixture_text("synthetic_feed.atom.xml"), second: feeds()[RSS_URL]}
+    evidence = live(tmp_path, FakeFetcher(pages), [second])
+    [hold, _] = evidence.poll(force=True)
+
+    pages[second] = pages[second].replace("A minority expect a cut.", "Nobody expects a cut.")
+    evidence = live(tmp_path, FakeFetcher(pages), [RSS_URL, second])
+    rechecked = evidence.recheck(hold.doc_id, as_of=NOW)
+    assert rechecked.content_hash != hold.content_hash  # the second feed's current copy
+    assert "Nobody expects a cut." in rechecked.text

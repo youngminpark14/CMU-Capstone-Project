@@ -13,7 +13,10 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import Literal
 
+from pmfa.execution.portfolio import account
 from pmfa.records.base import ONE, ZERO, Dollars, Record, UtcTime
+from pmfa.records.decision import Fill
+from pmfa.records.market import Side
 
 from .rows import TradeRow
 
@@ -39,10 +42,13 @@ class PnlSummary(Record):
 class EquityPoint(Record):
     """The account at one moment, after every fill and settlement at that moment.
 
-    ``cash`` is the bankroll less what was paid for fills plus what settlements
-    paid out. ``equity`` carries open positions at what their contracts cost
-    (``contracts x price``), so a fill lowers equity only by its fee and a
-    settlement moves it by the trade's result. There are no price marks here.
+    ``cash`` and ``equity`` are the paper account's (``pmfa.execution.portfolio``):
+    cash is the bankroll less what was paid for fills, plus the dollar returned
+    by each YES/NO pair netted in one market, plus what settlements paid out.
+    ``equity`` carries open holdings at what their contracts cost, so a fill
+    lowers equity only by its fee (and a netting fill by the pairs' gain or
+    loss) and a settlement moves it by the holding's result. There are no
+    price marks here.
 
     When several changes share a moment (the markets of one event settling
     together, say), there is one point for all of them; ``kind``,
@@ -123,42 +129,66 @@ def total_pnl(trades: Sequence[TradeRow]) -> Decimal:
 def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPoint]:
     """The account at every distinct fill or settlement time, in time order, from ``bankroll``.
 
-    Cash falls by a trade's cost at its fill and rises by its payout at
-    settlement. Equity carries open contracts at their price, so it falls by the
-    fee at the fill and moves by ``payout - contracts x price`` at settlement;
-    once everything settles, equity equals cash. All the changes at one time
-    are applied (fills first, then in input order) before that time's single
-    point is taken, as ``pmfa.execution.portfolio.account(..., as_of=t)`` sees
-    the account: a winning and a losing leg settling together, or a hedged
-    pair, never shows a trough that did not exist.
+    Each point is the paper account's own accounting
+    (``pmfa.execution.portfolio.account(..., as_of=t)``) over the trades as
+    fills and their markets' settlements, so the curve and the account cannot
+    disagree. Cash falls by a trade's cost at its fill and rises by the payout
+    at settlement; equity carries open holdings at cost, so it falls by the fee
+    at a fill and moves by the result at settlement. YES and NO in one market
+    net as they do on the account: buying the other side closes contracts one
+    for one and realizes a dollar per closed pair at that fill, so a hedge
+    whose prices do not sum to one shows its gain or loss when the second leg
+    fills, not at settlement. Every change at one time is applied before that
+    time's single point is taken: a winning and a losing leg settling together
+    never shows a trough that did not exist. Once everything settles, equity
+    equals cash.
     """
+    fills = [
+        Fill(
+            fill_id=f"trade-{i}",
+            order_id=f"trade-{i}",
+            market_ticker=t.market_ticker,
+            side=t.side,
+            contracts=t.contracts,
+            price=t.price,
+            fee=t.fee,
+            filled_at=t.filled_at,
+            simulated=True,
+        )
+        for i, t in enumerate(trades)
+    ]
+    settled: dict[str, tuple[str, Side, UtcTime]] = {}
+    for t in trades:
+        if t.result is None or t.settled_at is None:
+            continue
+        known = settled.get(t.market_ticker)
+        if known is None or t.settled_at < known[2]:
+            settled[t.market_ticker] = (t.market_ticker, t.result, t.settled_at)
+    settlements = list(settled.values())
+
+    # The last change applied at each moment names the point: fills first, then
+    # settlements, each in input order.
     changes: list[tuple[UtcTime, int, int, TradeRow]] = []
     for i, t in enumerate(trades):
         changes.append((t.filled_at, 0, i, t))
         if t.settled_at is not None:
             changes.append((t.settled_at, 1, i, t))
     changes.sort(key=lambda c: (c[0], c[1], c[2]))
-    cash = equity = bankroll
+    last: dict[UtcTime, tuple[int, TradeRow]] = {}
+    for at, order, _, t in changes:
+        last[at] = (order, t)
+
     points: list[EquityPoint] = []
-    for n, (at, order, _, t) in enumerate(changes):
-        basis = t.contracts * t.price
-        if order == 0:
-            cash -= trade_cost(t)
-            equity -= t.fee
-        else:
-            payout = trade_payout(t) or ZERO
-            cash += payout
-            equity += payout - basis
-        if n + 1 < len(changes) and changes[n + 1][0] == at:
-            continue  # more changes at this moment: one point after all of them
+    for at, (order, t) in last.items():
+        acct = account(fills, settlements, bankroll=bankroll, as_of=at)
         points.append(
             EquityPoint(
                 at=at,
                 kind="fill" if order == 0 else "settlement",
                 episode_id=t.episode_id,
                 market_ticker=t.market_ticker,
-                cash=cash,
-                equity=equity,
+                cash=acct.cash,
+                equity=acct.equity,
             )
         )
     return points

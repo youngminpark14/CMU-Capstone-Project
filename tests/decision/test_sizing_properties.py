@@ -241,3 +241,37 @@ def test_a_market_needs_a_book_and_a_forecast():
         created_at=NOW,
     )
     assert size_event(lone, CONFIG).proposal is None
+
+
+@PROPERTY
+@given(
+    sizing_inputs(),
+    st.lists(st.integers(min_value=-2000, max_value=2000), min_size=1, max_size=8),
+)
+def test_the_gate_never_rejects_on_a_dollar_cap_what_sizing_sized_on_any_equity_path(inputs, moves):
+    """Whatever equity did since the day began, the risk state's caps base is the current
+    equity, the number sizing capped on, so a dollar cap never rejects sizing's proposal."""
+    from datetime import timedelta
+
+    from pmfa.decision import risk_state, trading_day_start
+
+    start = inputs.bankroll
+    day_start = trading_day_start(NOW, CONFIG.oversight.timezone)
+    series_points = [(day_start - timedelta(hours=1), start)]
+    for i, bp in enumerate(moves):  # basis points of the day-start equity, once a minute
+        series_points.append((day_start + timedelta(minutes=i + 1), start * (1 + D(bp) / 10000)))
+    current = series_points[-1][1]
+    sized = inputs.model_copy(update={"bankroll": current})
+    p = size_event(sized, CONFIG).proposal
+    if p is None:
+        return
+    risk = risk_state(series_points, NOW, CONFIG)
+    assert risk.bankroll == current and risk.day_start_equity == start
+    context = gate_context(
+        sized,
+        market_ticker=p.market_ticker,
+        liquidity_dollars=sized.liquidity[p.market_ticker][p.side],
+        risk=risk,
+    )
+    reasons = gate(p, context).reasons
+    assert "dollars_per_market" not in reasons and "dollars_per_event" not in reasons, reasons

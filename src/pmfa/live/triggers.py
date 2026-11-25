@@ -7,31 +7,35 @@ Three kinds, per the spec's episode flow (step 1):
   id from the document id, ``at`` its publish time.
 - **Price move.** On a market of a followed, open event, the YES mid moved by
   ``config.triggers.price_move_cents`` or more within ``price_move_window_minutes``,
-  read from one-minute candles. The window slides: at each candle end ``t`` the
-  mid is compared with every mid in the window before it (the candles ending in
-  ``(t - window, t)``, and the price at ``t - window``, which is the last candle
-  at or before it). A move crosses at ``t`` when that comparison reaches the
-  threshold and did not at the market's previous priced candle, so one move
-  fires once even while its starting price stays inside the window. Fixed
-  buckets of the window's length, aligned to the Unix epoch, only de-duplicate:
-  one trigger per event per bucket, not per market, where ``at`` is the first
-  crossing in the bucket among the event's markets and the id comes from the
-  event and the bucket. The current and the previous bucket are scanned, so a
-  move in the last minutes of a bucket is not lost between two passes.
+  read from one-minute candles. Each move is measured from an anchor: at each
+  candle end ``t`` the mid is compared with every mid in the window before it
+  (the candles ending in ``(t - window, t)``, and the price at ``t - window``,
+  which is the last candle at or before it) that is not older than the event's
+  last price-move trigger. A crossing triggers, and the event's anchor moves to
+  its time, so one step fires once even while its starting price stays inside
+  the window (or across the edge of a clock bucket), while a second step, a
+  reversal, or a sustained trend fires again each time it adds up to the
+  threshold. One trigger per event per crossing, not per market: when markets
+  of one event cross at the same candle end, the first ticker names it. Id from
+  the event and the crossing time. Moves are reported from the start of the
+  previous epoch-aligned window-length bucket, so a move in the last minutes of
+  a bucket is not lost between two passes; ``anchors`` (the last trigger per
+  event, which the live loop keeps in its cursor file) make the chain of
+  crossings the same from pass to pass.
 - **Schedule tick.** With ``config.triggers.daily_recheck_open_positions``, one
   re-check a day of each followed event the agent holds a position in: id from
   the event and the trading day, ``at`` the start of the trading day in
   ``config.oversight.timezone``.
 
 Every id and every ``at`` is a function of data that does not change once
-seen (a document, closed candles, a calendar day), so scanning twice yields the
-same triggers, and the controller, whose episode id is a function of the
+seen (a document, closed candles and the event's last price-move trigger, a
+calendar day), so scanning twice yields the same triggers, and the controller, whose episode id is a function of the
 trigger id and ``at``, returns the stored episode instead of running it again.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -101,50 +105,89 @@ def _priced(candles: Sequence[Candle]) -> list[tuple[datetime, Decimal]]:
     return points
 
 
-def _move_at(points: Sequence[tuple[datetime, Decimal]], i: int, window: timedelta) -> Decimal:
+def _move_at(
+    points: Sequence[tuple[datetime, Decimal]],
+    i: int,
+    window: timedelta,
+    anchor: datetime | None = None,
+) -> Decimal:
     """The largest distance from the mid at ``points[i]`` to a mid in the window before it.
 
     The window is the points ending in ``(t - window, t)`` plus the price at
-    ``t - window`` (the last point at or before it).
+    ``t - window`` (the last point at or before it). With an ``anchor``, only
+    points at or after it count: a move is measured from the prices seen since
+    the last trigger.
     """
     t, mid = points[i]
     move = Decimal(0)
     for at, earlier in reversed(points[:i]):
+        if anchor is not None and at < anchor:
+            break
         move = max(move, abs(mid - earlier))
         if at <= t - window:
             break  # the price at the window's start: nothing older counts
     return move
 
 
+PriceMove = tuple[datetime, str, Decimal]
+"""``(crossing time, market ticker, size of the move then)``."""
+
+
+def price_moves(
+    candles: Mapping[str, Sequence[Candle]],
+    *,
+    window: timedelta,
+    threshold: Decimal,
+    anchor: datetime | None = None,
+) -> list[PriceMove]:
+    """Every crossing of ``threshold`` among one event's markets, oldest first.
+
+    ``candles`` maps each market of the event to its one-minute candles. At each
+    candle end, in time order, a market whose mid differs by ``threshold`` or
+    more from a mid in its window (see ``_move_at``) not older than ``anchor``
+    crosses; the crossing moves ``anchor`` to that time, for every market of the
+    event. Markets crossing at the same time give one crossing, named by the
+    first ticker. ``anchor`` starts at the event's last trigger, if known.
+    """
+    series = {ticker: _priced(c) for ticker, c in sorted(candles.items())}
+    index = {ticker: {at: i for i, (at, _) in enumerate(pts)} for ticker, pts in series.items()}
+    times = sorted({at for pts in series.values() for at, _ in pts})
+    found: list[PriceMove] = []
+    for t in times:
+        for ticker, pts in series.items():
+            i = index[ticker].get(t)
+            if i is None:
+                continue
+            move = _move_at(pts, i, window, anchor)
+            if move >= threshold:
+                found.append((t, ticker, move))
+                anchor = t
+                break
+    return found
+
+
 def first_crossing(
     candles: Sequence[Candle], *, start: datetime, window: timedelta, threshold: Decimal
 ) -> tuple[datetime, Decimal] | None:
-    """The first candle end in ``(start, start + window]`` at which a move of ``threshold`` began.
+    """The first crossing of one market in ``(start, start + window]``, and its size.
 
-    A move is the mid differing by ``threshold`` or more from a mid in the
-    sliding window before it (see ``_move_at``); it begins at a candle where that
-    holds and did not hold at the previous priced candle. ``candles`` must reach
-    back far enough to price the window before the previous candle. Returns the
-    crossing time and the size of the move then.
+    The chain of crossings (``price_moves``) is run over all of ``candles``,
+    which must reach back far enough to price the window before the first
+    candle of interest.
     """
-    end = start + window
-    points = _priced(candles)
-    crossed_before = False
-    for i, (at, _) in enumerate(points):
-        move = _move_at(points, i, window)
-        crossed = move >= threshold
-        if crossed and not crossed_before and start < at <= end:
+    for at, _, move in price_moves({"": candles}, window=window, threshold=threshold):
+        if start < at <= start + window:
             return at, move
-        if at > end:
+        if at > start + window:
             break
-        crossed_before = crossed
     return None
 
 
-def price_move_trigger(event_ticker: str, bucket: datetime, at: datetime, detail: str) -> Trigger:
+def price_move_trigger(event_ticker: str, at: datetime, detail: str) -> Trigger:
+    """The trigger for a crossing at ``at``; its id comes from the event and that time."""
     return Trigger(
         trigger_id=stable_id(
-            "trigger", TriggerKind.PRICE_MOVE.value, event_ticker, bucket.isoformat()
+            "trigger", TriggerKind.PRICE_MOVE.value, event_ticker, at.astimezone(UTC).isoformat()
         ),
         kind=TriggerKind.PRICE_MOVE,
         at=at,
@@ -160,50 +203,48 @@ def price_move_triggers(
     now: datetime,
     *,
     notes: list[str] | None = None,
+    anchors: Mapping[str, datetime] | None = None,
 ) -> list[Trigger]:
-    """Price-move triggers for the followed, open ``events``, one per event per bucket.
+    """Price-move triggers for the followed, open ``events``, one per event per crossing.
 
-    Reads one-minute candles for each open market over the previous bucket, the
-    current one, and two windows before them (the window behind the earliest
-    candle scanned, and behind the candle before it). A market whose candles
+    Reads one-minute candles for each open market from two windows before the
+    previous bucket up to ``now``, and reports the crossings from the start of
+    the previous bucket. ``anchors`` maps an event to the time of its last
+    price-move trigger (see the module docstring). A market whose candles
     cannot be read is skipped and noted.
     """
     window = timedelta(minutes=config.triggers.price_move_window_minutes)
     threshold = Decimal(config.triggers.price_move_cents) / 100
-    current = bucket_start(now, window)
-    buckets = [current - window, current]
-    fetch_from = buckets[0] - 2 * window
+    report_from = bucket_start(now, window) - window
+    fetch_from = report_from - 2 * window
     followed = {s.ticker for s in config.follow.enabled_series()}
+    known = anchors or {}
     triggers: list[Trigger] = []
     for event in events:
         if event.series_ticker not in followed:
             continue
-        crossings: dict[datetime, tuple[datetime, str, Decimal]] = {}
+        candles: dict[str, list[Candle]] = {}
         for market in event.markets:
             if market.status is not MarketStatus.OPEN:
                 continue
             try:
-                candles = exchange.get_candles(
+                candles[market.ticker] = exchange.get_candles(
                     market.ticker, start=fetch_from, end=now, interval_minutes=CANDLE_MINUTES
                 )
             except (ExchangeError, NotFound) as exc:
                 if notes is not None:
                     notes.append(f"candles for {market.ticker} not read: {exc}")
+        moves = price_moves(
+            candles, window=window, threshold=threshold, anchor=known.get(event.event_ticker)
+        )
+        for at, ticker, move in moves:
+            if not report_from < at <= now:
                 continue
-            for bucket in buckets:
-                found = first_crossing(candles, start=bucket, window=window, threshold=threshold)
-                if found is None:
-                    continue
-                at, move = found
-                best = crossings.get(bucket)
-                if best is None or (at, market.ticker) < (best[0], best[1]):
-                    crossings[bucket] = (at, market.ticker, move)
-        for bucket, (at, ticker, move) in sorted(crossings.items()):
             detail = (
                 f"{ticker} YES mid moved {move * 100:.1f}c within "
-                f"{config.triggers.price_move_window_minutes} min (bucket from {bucket:%H:%M} UTC)"
+                f"{config.triggers.price_move_window_minutes} min (at {at:%H:%M} UTC)"
             )
-            triggers.append(price_move_trigger(event.event_ticker, bucket, at, detail))
+            triggers.append(price_move_trigger(event.event_ticker, at, detail))
     return triggers
 
 
@@ -272,6 +313,7 @@ __all__ = [
     "followed_sources",
     "price_move_trigger",
     "price_move_triggers",
+    "price_moves",
     "schedule_trigger",
     "schedule_triggers",
 ]

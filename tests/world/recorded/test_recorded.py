@@ -105,6 +105,22 @@ def test_exchange_reads_the_recorded_markets_and_books() -> None:
         exchange.get_market("NOPE")
 
 
+def test_liquidity_is_not_found_for_a_strike_that_has_not_opened() -> None:
+    later = AS_OF + timedelta(days=5)
+    recorded = event()
+    added = market(f"{EVENT}-C50", "Cut 50bp", "0.02", "0.04", open_time=later)
+    file = world_file(
+        events=[recorded.model_copy(update={"markets": [*recorded.markets, added]})],
+        liquidity={added.ticker: {Side.YES: Decimal("500")}},
+    )
+    clock = SimClock(AS_OF)
+    exchange = RecordedExchange(file, clock)
+    with pytest.raises(NotFound):
+        exchange.liquidity_dollars(added.ticker, Side.YES)
+    clock.set(later)
+    assert exchange.liquidity_dollars(added.ticker, Side.YES) == Decimal("500")
+
+
 def test_liquidity_uses_the_override_else_the_book_within_the_band() -> None:
     exchange = RecordedExchange(full_file(), SimClock(AS_OF))
     assert exchange.liquidity_dollars(CUT, Side.YES) == Decimal("750")
@@ -170,6 +186,36 @@ def test_books_use_the_execution_book_when_recorded() -> None:
     assert books.book(CUT).best_ask(Side.YES).price == Decimal("0.38")
 
 
+def test_fill_books_use_the_recorded_fill_book_else_the_execution_book() -> None:
+    thin = book(ticker=CUT, no_bids=(("0.60", "4"),))
+    books = RecordedBooks(full_file().model_copy(update={"fill_books": {CUT: thin}}))
+    assert books.fill_book(CUT) == thin
+    assert books.book(CUT).best_ask(Side.YES).price == Decimal("0.38")  # decisions still see this
+    assert books.fill_book(HOLD) == books.book(HOLD)
+
+
+def test_an_order_in_a_built_world_fills_against_the_recorded_fill_book() -> None:
+    from pmfa.records.decision import OrderIntent, OrderStatus
+
+    thin = book(ticker=HOLD, no_bids=(("0.35", "4"),))
+    file = full_file().model_copy(update={"halted": False, "fill_books": {HOLD: thin}})
+    world = build_recorded_world(file, models=NoModels(), review_policy=ReviewPolicy.PAUSE)
+    assert world.executor.execution_book(HOLD).best_ask(Side.YES).price == Decimal("0.65")
+    intent = OrderIntent(
+        client_order_id="order-1",
+        episode_id="ep-1",
+        proposal_id="proposal-1",
+        market_ticker=HOLD,
+        side=Side.YES,
+        contracts=10,
+        limit_price=Decimal("0.70"),
+    )
+    order = world.executor.place(intent)
+    assert order.status is OrderStatus.PARTIALLY_FILLED
+    assert [(f.price, f.contracts) for f in order.fills] == [(Decimal("0.65"), Decimal("4"))]
+    assert world.executor.find_order(intent) == order
+
+
 # -- evidence
 
 
@@ -220,11 +266,14 @@ def test_built_world_seeds_the_store() -> None:
     assert [e.entry_id for e in store.ledger()] == ["ledger-oct-hold"]
     assert [f.fill_id for f in store.list_fills()] == ["prior-fill-1"]
     assert world.config.caps.max_contracts_per_order == 10
-    # Bankroll 2000, minus 5 x 0.60 + 0.09 for the prior NO fill; equity keeps the cost.
+    # Bankroll 2000, minus 5 x 0.60 + 0.09 for the prior NO fill. The sizing bankroll
+    # (balance().equity) keeps the holding at cost: 1996.91 + 5 x 0.60 = 1999.91.
     balance = world.executor.balance()
     assert balance.cash == Decimal("2000") - Decimal("3.09")
     assert balance.equity == Decimal("2000") - Decimal("0.09")
-    assert store.equity_series() == [(AS_OF, balance.equity)]
+    # The seeded equity point is marked: CUT has no recorded book, so its NO bid is
+    # 1 - 0.38 (the YES ask) = 0.62, and 1996.91 + 5 x 0.62 = 2000.01.
+    assert store.equity_series() == [(AS_OF, Decimal("2000.01"))]
     [position] = world.executor.positions(EVENT)
     assert (position.market_ticker, position.side, position.contracts) == (CUT, Side.NO, 5)
 

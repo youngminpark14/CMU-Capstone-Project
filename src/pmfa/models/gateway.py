@@ -9,11 +9,16 @@ Role and input record in, validated output record out. The gateway owns:
   truncated answer gets the same single retry; a second failure raises
   ``ModelOutputError``;
 - the meters and hard caps (``pmfa.models.meter``), checked before every call.
-  A call's cost is known only once it returns, so the episode and run dollar
-  caps can be exceeded by the last call let through, by at most that call's
-  cost. When the seconds cap is enforced (live modes), each call's timeout is
-  the configured ``request_timeout_seconds`` or the episode's seconds left,
-  whichever is shorter;
+  A call's cost is known only once it returns, so each live call (the repair
+  retry included) is checked at its worst case: ``input_token_bound`` of the
+  rendered prompt times the assigned model's input price, plus ``max_tokens``
+  times its output price. A call that could take the episode or run dollar cap
+  past its limit is refused, so the caps are ceilings as far as the input-token
+  bound holds (and the model served is the one assigned). A cached answer costs
+  the run nothing new and is checked as any answer was before: against what was
+  already spent. When the seconds cap is enforced (live modes), each call's
+  timeout is the configured ``request_timeout_seconds`` or the episode's seconds
+  left, whichever is shorter;
 - the content-addressed response cache (``pmfa.models.cache``);
 - cassette recording (``pmfa.models.cassette``).
 
@@ -39,13 +44,30 @@ from pmfa.models.cache import CachedAnswer, ResponseCache, cache_key
 from pmfa.models.cassette import CassetteRecorder, EntryUsage
 from pmfa.models.meter import Meter, usage_of
 from pmfa.models.pricing import cost
-from pmfa.models.roles.prompts import Repair, render
+from pmfa.models.roles.prompts import Prompt, Repair, render
 from pmfa.models.roles.runner import RoleRunner, make_runner
 from pmfa.records.base import Record
 from pmfa.records.episode import CallMeta, ModelResult, Usage
 from pmfa.records.roles import TASKS, ModelSlot, RoleTask
 
 _MAX_PROBLEM_CHARS = 2000
+
+INPUT_OVERHEAD_TOKENS = 1000
+"""Allowance for request framing beyond the system text, user text, and output schema."""
+
+
+def input_token_bound(prompt: Prompt, output_type: type[Record]) -> int:
+    """An upper estimate of a call's input tokens, for its worst-case cost.
+
+    A token covers at least one byte of text, so the UTF-8 bytes of the system text,
+    the user text, and the output record's JSON schema bound the tokens they make;
+    ``INPUT_OVERHEAD_TOKENS`` covers the request's own framing.
+    """
+    import json
+
+    schema = json.dumps(output_type.model_json_schema())
+    text = prompt.system + prompt.user + schema
+    return len(text.encode("utf-8")) + INPUT_OVERHEAD_TOKENS
 
 
 def _problem(completion: Completion, output_type: type[Record]) -> tuple[Record | None, str]:
@@ -116,8 +138,6 @@ class Gateway:
             "effort": assignment.effort,
             "input": payload.model_dump(mode="json"),
         }
-        self._check(episode_id, entry)
-
         prompt = render(task, payload)
         key = cache_key(
             model=assignment.model,
@@ -127,17 +147,24 @@ class Gateway:
             user=prompt.user,
             output_type=spec.output_type,
         )
-        if self.cache is not None:
-            hit = self.cache.get(key)
-            if hit is not None:
-                return self._from_cache(hit, episode_id, entry)
+        hit = self.cache.get(key) if self.cache is not None else None
+        if hit is not None:
+            self._check(episode_id, entry)  # nothing new to pay: what is spent decides
+            return self._from_cache(hit, episode_id, entry)
 
+        self._check(episode_id, entry, worst=self._worst_case(spec.output_type, assignment, prompt))
         attempts = [self._attempt(task, payload, assignment, episode_id, None)]
         output, problem = _problem(attempts[0][0], spec.output_type)
         if output is None:
             first_problem = problem
-            self._check(episode_id, entry, attempts)
             repair = Repair(previous_answer=attempts[0][0].raw_text, problem=problem)
+            retry = render(task, payload, repair)
+            self._check(
+                episode_id,
+                entry,
+                attempts,
+                worst=self._worst_case(spec.output_type, assignment, retry),
+            )
             attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
             output, problem = _problem(attempts[1][0], spec.output_type)
             if output is None:
@@ -184,9 +211,11 @@ class Gateway:
         episode_id: str,
         entry: dict[str, Any],
         attempts: list[tuple[Completion, float]] | None = None,
+        *,
+        worst: Decimal = Decimal("0"),
     ) -> None:
         try:
-            self.meter.check(episode_id)
+            self.meter.check(episode_id, worst)
         except (BudgetExhausted, RunBudgetExhausted) as exc:
             outcome = (
                 "budget_exhausted" if isinstance(exc, BudgetExhausted) else "run_budget_exhausted"
@@ -229,6 +258,17 @@ class Gateway:
             ),
         )
         return completion, seconds
+
+    def _worst_case(
+        self, output_type: type[Record], assignment: ModelAssignment, prompt: Prompt
+    ) -> Decimal:
+        """The most one call with ``prompt`` can cost on the assigned model."""
+        return cost(
+            assignment.model,
+            input_token_bound(prompt, output_type),
+            assignment.max_tokens,
+            catalog=self.config.models.catalog,
+        )
 
     def _price(self, requested: str, completion: Completion) -> Decimal:
         catalog = self.config.models.catalog
@@ -333,4 +373,4 @@ class Gateway:
         )
 
 
-__all__ = ["Gateway"]
+__all__ = ["INPUT_OVERHEAD_TOKENS", "Gateway", "input_token_bound"]
