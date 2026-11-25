@@ -227,7 +227,14 @@ class DemoExecutor:
             response = self.client.post(ORDERS_PATH, json=payload)
         except KalshiExchangeError as exc:
             if exc.code == "order_already_exists" or exc.outcome_unknown:
-                found = self._find_order(intent)
+                try:
+                    found = self._find_order(intent)
+                except ExchangeError as lookup:
+                    return self._rejected(
+                        intent,
+                        placed_at,
+                        f"outcome unknown and the order lookup failed ({lookup}): {exc}",
+                    )
                 if found is not None:
                     return self._from_order(intent, found, placed_at)
                 if exc.outcome_unknown:
@@ -257,8 +264,11 @@ class DemoExecutor:
         """The order already placed with ``intent``'s client order id, if the exchange has one.
 
         Places nothing. Its fills are reconciled as :meth:`place` reconciles them.
-        ``None`` also when the order list cannot be read: the caller then treats
-        the outcome as unknown.
+        ``None`` means the exchange answered and lists no such order. When the order
+        list cannot be read this raises :class:`~pmfa.errors.ExchangeError` instead,
+        because "not found" and "could not ask" call for different actions: a caller
+        continuing an episode cancels the proposal on the first and reports the
+        outcome as unknown on the second.
         """
         found = self._find_order(intent)
         if found is None:
@@ -340,6 +350,12 @@ class DemoExecutor:
         return group_id
 
     def _find_order(self, intent: OrderIntent) -> Mapping[str, Any] | None:
+        """The exchange's order with ``intent``'s client order id, or ``None`` if it lists none.
+
+        Raises ``ExchangeError`` when the order list cannot be read (any failed
+        request, a 404 on the list included), so a failed lookup is never
+        mistaken for an order that was never placed.
+        """
         params = {
             "ticker": intent.market_ticker,
             "subaccount": self.subaccount,
@@ -349,8 +365,8 @@ class DemoExecutor:
             for order in self.client.paginate("/portfolio/orders", params, "orders"):
                 if order.get("client_order_id") == intent.client_order_id:
                     return order
-        except (KalshiExchangeError, KalshiNotFound):
-            return None
+        except KalshiNotFound as exc:
+            raise ExchangeError(f"the order list could not be read: {exc}") from exc
         return None
 
     def _from_order(
