@@ -2,7 +2,8 @@
 
 An order walks the offers on its side from the cheapest level up to the limit
 price, takes whole contracts only, records one fill per level, and pays the
-taker fee on each fill. Whatever is left when the walk stops is dropped, as an
+taker fee, rounded up to the cent once for the whole order. Whatever is left
+when the walk stops is dropped, as an
 immediate-or-cancel order's remainder would be. Nothing ever rests, so there is
 nothing to cancel.
 
@@ -17,10 +18,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from pmfa.config import Config
-from pmfa.decision import series_fee
+from pmfa.decision import exact_fee, round_up_cent
 from pmfa.execution import portfolio
 from pmfa.execution.portfolio import Account
 from pmfa.ports import Clock, Exchange, StateStore
@@ -149,28 +150,30 @@ class PaperExecutor:
         book = self.books(intent.market_ticker)
         series = self._series(intent.market_ticker)
         remaining = intent.contracts
-        fills: list[Fill] = []
+        taken: list[tuple[Decimal, int]] = []
         for level in sorted(book.asks(intent.side), key=lambda lvl: lvl.price):
             if remaining <= 0 or level.price > intent.limit_price:
                 break
             take = min(remaining, int(level.contracts))
             if take <= 0:
                 continue
-            fills.append(
-                Fill(
-                    fill_id=stable_id("paper-fill", order_id, len(fills)),
-                    order_id=order_id,
-                    market_ticker=intent.market_ticker,
-                    side=intent.side,
-                    contracts=Decimal(take),
-                    price=level.price,
-                    fee=series_fee(take, level.price, series, taker=True),
-                    filled_at=now,
-                    simulated=True,
-                )
-            )
+            taken.append((level.price, take))
             remaining -= take
-        return fills
+        fees = _order_fees(taken, series)
+        return [
+            Fill(
+                fill_id=stable_id("paper-fill", order_id, i),
+                order_id=order_id,
+                market_ticker=intent.market_ticker,
+                side=intent.side,
+                contracts=Decimal(take),
+                price=price,
+                fee=fee,
+                filled_at=now,
+                simulated=True,
+            )
+            for i, ((price, take), fee) in enumerate(zip(taken, fees, strict=True))
+        ]
 
     def _series(self, market_ticker: str) -> Series:
         if market_ticker not in self._series_of_market:
@@ -184,6 +187,25 @@ class PaperExecutor:
                 market_ticker
             ).event_ticker
         return self._event_of_market[market_ticker]
+
+
+def _order_fees(taken: list[tuple[Decimal, int]], series: Series) -> list[Decimal]:
+    """Taker fees for the fills of one order.
+
+    The order's total fee is rounded up to the cent once, as sizing assumes, and
+    not once per price level. Each fill carries its own share; the last fill
+    takes the rounding remainder so the fills sum to the order's fee.
+    """
+    if not taken:
+        return []
+    exact = [
+        exact_fee(take, price, series.fee_type, series.fee_multiplier, taker=True)
+        for price, take in taken
+    ]
+    total = round_up_cent(sum(exact, Decimal("0")))
+    fees = [fee.quantize(Decimal("0.0001"), rounding=ROUND_DOWN) for fee in exact]
+    fees[-1] += total - sum(fees, Decimal("0"))
+    return fees
 
 
 __all__ = ["BookSource", "PaperExecutor"]

@@ -900,8 +900,9 @@ def test_real_orders_outside_demo_mode_need_the_stored_approval_stage():
     assert orders(world) == []
 
 
-def test_demo_mode_still_honours_auto_only_at_the_autonomous_stage():
-    file = autonomous_file(stage=Stage.BACKTEST)
+@pytest.mark.parametrize("stored", [Stage.BACKTEST, Stage.AUTONOMOUS])
+def test_every_demo_order_waits_for_a_human_whatever_the_stored_stage(stored):
+    file = autonomous_file(stage=stored)
     world = real_orders_world(file, RunMode.DEMO)
     with EpisodeController(world) as controller:
         record = controller.run(file.trigger)

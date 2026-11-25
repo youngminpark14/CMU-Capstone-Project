@@ -13,7 +13,7 @@ dependencies = [
   "langgraph-checkpoint-sqlite>=3.1,<4",
   "langchain-anthropic>=1.7,<2",
   "chromadb>=1.5,<2",
-  # The state server runs on either MCP SDK line; see docs/decisions/0003.
+  # The state server runs on either MCP SDK line; see docs/decisions/0013.
   "mcp>=1.30,<3",
   "httpx>=0.28,<1",
   "cryptography>=44",

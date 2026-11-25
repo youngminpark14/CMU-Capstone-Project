@@ -44,7 +44,8 @@ uv run pmfa --help
    inside the retrieval call, never in the caller.
 3. **Record-only roles.** A role receives one input record and returns one output record. Code
    executes every retrieval, check, and order. Evidence text is untrusted and goes into prompts
-   inside delimited blocks. No role sees a market price.
+   inside delimited blocks. No role sees the live price of a market it is forecasting; the
+   critic's calibration examples carry only the historical price of forecasts that already resolved.
 4. **Money.** Decimals for prices, fees, and dollars; never floats. Whole contracts. Prices snap to
    the market's valid ticks. No model arithmetic touches money.
 5. **Time.** Timezone-aware UTC everywhere. Read the time from the `Clock` port, never from

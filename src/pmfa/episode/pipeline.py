@@ -263,14 +263,14 @@ class Pipeline:
     def _stage(self) -> Stage:
         """The stage the gate and routing use.
 
-        The demo exchange may run at the approval stage regardless, because its funds
-        are mock: in demo mode the stored stage is raised to approval when it is below.
-        Every other mode uses the stored stage. Auto still needs the autonomous stage.
+        The demo exchange runs at the approval stage whatever the stored stage is.
+        Its funds are mock, so the stage does not have to be earned there, and a
+        human approves every demo order, so it never runs autonomously either.
+        Every other mode uses the stored stage, and auto needs the autonomous stage.
         """
-        stored = self.world.store.get_stage().stage
-        if self.world.mode is RunMode.DEMO and stored.rank < Stage.APPROVAL.rank:
+        if self.world.mode is RunMode.DEMO:
             return Stage.APPROVAL
-        return stored
+        return self.world.store.get_stage().stage
 
     def _followed(self, event: Event) -> SeriesConfig | None:
         sc = self.config.follow.for_ticker(event.series_ticker)

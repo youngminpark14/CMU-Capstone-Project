@@ -47,18 +47,18 @@ def test_full_fill_at_the_best_level() -> None:
     assert store.equity_series() == [(AS_OF, Decimal("999.83"))]
 
 
-def test_walks_two_levels_with_one_fill_and_one_fee_per_level() -> None:
+def test_walks_two_levels_and_rounds_the_fee_up_once_for_the_order() -> None:
     executor, _, _ = paper()
     result = executor.place(intent(50, "0.64"))
     assert result.status is OrderStatus.FILLED
-    assert [(f.contracts, f.price, f.fee) for f in result.fills] == [
-        (30, Decimal("0.62"), fee(30, "0.62")),
-        (20, Decimal("0.64"), fee(20, "0.64")),
+    assert [(f.contracts, f.price) for f in result.fills] == [
+        (30, Decimal("0.62")),
+        (20, Decimal("0.64")),
     ]
-    assert result.fees == Decimal("0.50") + Decimal("0.33")
-    [position] = executor.positions(EVENT)
-    assert position.contracts == 50
-    assert position.avg_price == Decimal("0.6280")
+    # 30 x 0.07 x 0.62 x 0.38 = 0.49476 and 20 x 0.07 x 0.64 x 0.36 = 0.32256, so 0.81732 in
+    # all: charged as 0.82 for the order. Rounding each level up would have charged 0.83.
+    assert result.fees == Decimal("0.82")
+    assert [f.fee for f in result.fills] == [Decimal("0.4947"), Decimal("0.3253")]
 
 
 def test_partial_fill_records_the_filled_part_and_drops_the_rest() -> None:

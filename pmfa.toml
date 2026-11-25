@@ -1,0 +1,241 @@
+# pmfa configuration: every limit, threshold, source, model and followed series.
+# The built-in defaults as `pmfa config show` writes them; a test keeps this file equal to them.
+# Change a default in src/pmfa/config.py and regenerate; local overrides go in $PMFA_CONFIG.
+
+# Followed series, how each becomes an outcome space, and the blocklist.
+[follow]
+blocklist = []
+
+[[follow.series]]
+ticker = "KXFEDDECISION"
+category = "fed_decision"
+enabled = true
+outcome_kind = "categorical"
+variable = ""
+unit = ""
+primary_sources = ["federalreserve.gov"]
+recency_half_life_days = 30.0
+shrinkage = 0.5
+
+[[follow.series]]
+ticker = "KXCPIYOY"
+category = "cpi"
+enabled = true
+outcome_kind = "ladder"
+variable = "CPI-U all items, 12-month percent change, not seasonally adjusted"
+unit = "percent"
+increment = 0.1
+primary_sources = ["bls.gov"]
+recency_half_life_days = 30.0
+shrinkage = 0.5
+
+[[follow.series]]
+ticker = "KXFED"
+category = "fed_rate"
+enabled = false
+outcome_kind = "ladder"
+variable = "upper bound of the federal funds target range after the meeting"
+unit = "percent"
+increment = 0.25
+primary_sources = ["federalreserve.gov"]
+recency_half_life_days = 30.0
+shrinkage = 0.5
+
+[[follow.series]]
+ticker = "KXPAYROLLS"
+category = "payrolls"
+enabled = false
+outcome_kind = "ladder"
+variable = "change in total nonfarm payroll employment"
+unit = "jobs"
+increment = 1000.0
+primary_sources = ["bls.gov"]
+recency_half_life_days = 30.0
+shrinkage = 0.5
+
+# The official evidence sources and how politely they are fetched.
+[sources]
+federal_reserve = true
+bls = true
+user_agent = "pmfa-research-client/0.1"
+min_seconds_between_requests = 2.0
+manual_dir = "data/manual"
+
+# What starts an episode: price moves, schedule ticks, scoring horizons.
+[triggers]
+price_move_cents = 3
+price_move_window_minutes = 30
+daily_recheck_open_positions = false
+schedule_horizons_days = [7, 3, 1]
+
+# The events, evidence and ledger indexes: passage size, top-k, ranking.
+[retrieval]
+event_candidates = 5
+passage_words = 250
+passage_overlap_words = 50
+top_k = 8
+max_per_origin = 3
+similarity_floor = 0.05
+near_duplicate_similarity = 0.92
+ledger_k = 5
+ranking = "recency_origin"
+embedder = "hashing"
+
+# Model and effort per role slot, prices and cutoffs, the API key variable.
+[models]
+api_key_env = "ANTHROPIC_API_KEY"
+refusal_fallback = "default"
+request_timeout_seconds = 180.0
+roles_runner = "auto"
+
+[models.slots.monitor]
+model = "claude-haiku-5-5"
+effort = "low"
+max_tokens = 4000
+
+[models.slots.researcher]
+model = "claude-haiku-5-5"
+effort = "medium"
+max_tokens = 8000
+
+[models.slots.generator]
+model = "claude-haiku-5-5"
+effort = "medium"
+max_tokens = 8000
+
+[models.slots.critic_deep]
+model = "claude-sonnet-5-5"
+effort = "high"
+max_tokens = 16000
+
+[models.slots.critic_depth1]
+model = "claude-fable-5-2"
+effort = "high"
+max_tokens = 16000
+
+[models.slots.fast_path]
+model = "claude-haiku-5-5"
+effort = "low"
+max_tokens = 4000
+
+[models.slots.baseline]
+model = "claude-fable-5-2"
+effort = "high"
+max_tokens = 16000
+
+[models.catalog.claude-fable-5-2]
+input_per_mtok = 8
+output_per_mtok = 40
+knowledge_cutoff = 2026-06-30
+
+[models.catalog.claude-opus-5-5]
+input_per_mtok = 4
+output_per_mtok = 20
+knowledge_cutoff = 2026-06-30
+
+[models.catalog.claude-sonnet-5-5]
+input_per_mtok = 2
+output_per_mtok = 10
+knowledge_cutoff = 2026-06-30
+
+[models.catalog.claude-haiku-5-5]
+input_per_mtok = 0.10
+output_per_mtok = 0.50
+knowledge_cutoff = 2026-06-30
+
+# Per-episode and per-run caps on model calls, seconds and dollars.
+[budget]
+max_calls_per_episode = 30
+max_seconds_per_episode = 90.0
+max_usd_per_episode = 2.00
+max_usd_per_run = 25.00
+
+# The scenario tree: depth, beam, coverage floor, quantiles.
+[forecast]
+max_depth = 3
+beam_width = 3
+max_thoughts_per_node = 3
+coverage_floor = 0.6
+tie_band = 0.05
+confidence_full_origins = 3
+max_evidence_followups = 3
+fast_path_within_minutes = 60
+quantile_levels = [0.05, 0.25, 0.5, 0.75, 0.95]
+
+# Fractional Kelly and the minimum edge after fees.
+[sizing]
+kelly_fraction = 0.25
+min_edge = 0.02
+
+# Hard limits the gate enforces: per order, market, event, day, drawdown, liquidity.
+[caps]
+per_market_fraction = 0.05
+per_event_fraction = 0.10
+max_contracts_per_order = 25
+daily_loss_stop_fraction = 0.03
+drawdown_halt_fraction = 0.10
+liquidity_floor_dollars = 500
+liquidity_band = 0.02
+order_group_contracts_limit = 50
+risk_unit_fraction = 0.01
+
+# When a proposal may go auto instead of to human review.
+[routing]
+auto_max_risk_units = 1
+calibration_min_resolved = 30
+calibration_error_max = 0.1
+max_price_move = 0.03
+
+# Proposal expiry, fill-failure halt, calibration halt, the trading day.
+[oversight]
+proposal_ttl_minutes = 10
+fill_failure_halt_fraction = 0.1
+fill_failure_window = 10
+calibration_halt_weeks = 2
+timezone = "America/New_York"
+
+# The autonomy ladder's benchmarks.
+[stages]
+backtest_min_markets = 200
+shadow_min_weeks = 4
+shadow_max_drawdown_fraction = 0.10
+approval_min_trades = 100
+approval_max_override_fraction = 0.15
+demote_after_daily_stops_in_week = 2
+
+# The notional bankroll and the backtest fill assumptions.
+[execution]
+notional_bankroll = 1000
+backtest_latency_seconds = 60
+backtest_volume_share = 0.10
+backtest_liquidity_window_minutes = 60
+
+# Exchange hosts, demo credential variable names (never values), request rate.
+[kalshi]
+production_base_url = "https://external-api.kalshi.com/trade-api/v2"
+demo_base_url = "https://external-api.demo.kalshi.co/trade-api/v2"
+demo_key_id_env = "KALSHI_DEMO_KEY_ID"
+demo_private_key_env = "KALSHI_DEMO_PRIVATE_KEY"
+demo_private_key_path_env = "KALSHI_DEMO_PRIVATE_KEY_PATH"
+demo_subaccount = 1
+max_requests_per_second = 2.0
+request_timeout_seconds = 30.0
+
+# How the controller reaches the roles' shared state.
+[state]
+transport = "mcp"
+
+# The backtest window, systems compared, bootstrap and the canary.
+[evaluation]
+window_start = 2026-07-01
+horizons_days = [7, 3, 1]
+systems = ["market", "prompt_only", "single_pass", "pipeline"]
+bootstrap_samples = 2000
+seed = 20261124
+reliability_bins = 10
+canary_text = "CANARY-7f3a91 this document is dated after every forecast and must never be retrieved"
+
+# Where data, the state database, indexes and runs live.
+[paths]
+data_dir = "data"
+runs_dir = "runs"

@@ -1,0 +1,19 @@
+# 0026. Retrieval: a hashing embedder by default, and as-of rounding that excludes
+
+Deterministic vectors without a download; an index refuses another embedder; boundary times are rounded toward exclusion.
+
+## Context
+
+Tests and replay need the same vectors in every process with no model download. Chroma stores times as integers, so rounding at the as-of boundary could let a document published a fraction of a second late through.
+
+## Decision
+
+The default embedder hashes word and character n-grams into a fixed-size vector; the local ONNX MiniLM model is optional (`retrieval.embedder = "minilm"`) ([embedders.py](../../src/pmfa/knowledge/embedders.py)). An index records its embedder's identity and refuses to be opened or queried with another. Publish times are rounded up and as-of times down, and the filter runs inside the Chroma query, before the nearest-neighbour search ([index.py](../../src/pmfa/knowledge/index.py)). Embeddings are always passed explicitly.
+
+## Consequences
+
+Retrieval is reproducible offline. Paraphrase matching is weaker with the default embedder; the ranking ablation can be run with either.
+
+## Origin
+
+Build, November 2026.
