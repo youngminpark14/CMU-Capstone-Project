@@ -268,6 +268,12 @@ class KalshiConfig(Section):
     request_timeout_seconds: float = 30.0
 
 
+class StateConfig(Section):
+    transport: Literal["mcp", "direct"] = "mcp"
+    """How the controller reaches the roles' shared state (tree nodes, beams, rejections):
+    through the MCP state server in process, or by calling the state service directly."""
+
+
 class EvaluationConfig(Section):
     window_start: date = date(2026, 7, 1)
     horizons_days: list[int] = [7, 3, 1]
@@ -318,6 +324,7 @@ class Config(Section):
     stages: StageConfig = StageConfig()
     execution: ExecutionConfig = ExecutionConfig()
     kalshi: KalshiConfig = KalshiConfig()
+    state: StateConfig = StateConfig()
     evaluation: EvaluationConfig = EvaluationConfig()
     paths: PathsConfig = PathsConfig()
 
