@@ -1,31 +1,30 @@
 # Backtest report: 2026-11-25-market-baseline
 
-Run status: **complete**. Created 2026-11-25T10:03:46.226217+00:00, finished 2026-11-25T10:03:47.738438+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
+Run status: **complete**. Created 2026-11-25T20:11:00.705270+00:00, finished 2026-11-25T20:11:02.752513+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
 
 ## What was run and what was not
 
 | System | Status |
 |---|---|
-| Market (YES mid) | run |
-| Prompt only | not run: no API key |
-| Single pass (recency and origin ranking) | not run: no API key |
-| Single pass (similarity ranking) | not run: no API key |
-| Full pipeline | not run: no API key |
-
-The systems marked "not run: no API key" need a model, and no Anthropic API key was available when this run was made. They produced no forecasts, and this report contains no number from them. Only the market's own price was scored.
+| Market (YES mid, else last trade within the quote) | run |
+| Prompt only | not requested |
+| Single pass (recency and origin ranking) | not requested |
+| Single pass (similarity ranking) | not requested |
+| Full pipeline | not requested |
 
 ## Configuration
 
 The full configuration, model assignments, snapshot and corpus manifests, plan and progress are in `manifest.json` in this directory.
 
-- Window: forecasts from 2026-07-01 to 2026-11-25T09:12:38.877766+00:00. The latest listed knowledge cutoff of any assigned model is 2026-06-30.
+- Window: forecasts from 2026-07-01 to 2026-11-25T20:10:48.937084+00:00. The latest listed knowledge cutoff of any assigned model is 2026-06-30.
 - Horizons: 7, 3, 1 day(s) before each event's close.
 - Bootstrap: 2000 resamples of whole events, seed 20261124, 95% percentile intervals.
-- Commit: `9aae03c3e214f1ce89d7940313001109fbe937aa` (working tree had uncommitted changes).
-- Snapshot: 7 events, 104 markets, built 2026-11-25T09:32:48.338651Z from external-api.kalshi.com.
+- Commit: `a9bd72d1fe36d33086dbeadaf40a997332487c8a`.
+- Data: snapshot file SHA-256 `a9c3334dc0536a4eedecd0fc2b0e75bcee310db34e7031ea2c7ec16901d4ebf4`, corpus texts digest `22e5b3662f30374118637a09def8b0fc9a5bd70ed60bd6a85bee7975e6f46d75`.
+- Snapshot: 7 events, 104 markets, built 2026-11-25T20:10:52.303544Z from external-api.kalshi.com.
 - Corpus: 10 from bls.gov, 45 from federalreserve.gov.
 - Scoring points: 21; trading triggers: 55.
-- Dollar cap for the run: $25.0. Spent on new model calls: $0.0000 (0 new answers, 0 from the cache).
+- Dollar cap for the run: $25. Spent on new model calls: $0.0000 (0 new answers, 0 from the cache).
 
 
 | Slot | Model | Effort | Listed knowledge cutoff |
@@ -38,16 +37,39 @@ The full configuration, model assignments, snapshot and corpus manifests, plan a
 | monitor | claude-haiku-5-5 | low | 2026-06-30 |
 | researcher | claude-haiku-5-5 | medium | 2026-06-30 |
 
+## Left out of scoring
+
+The release calendar has 1 release(s) in the window with no event of the followed series in the snapshot, so nothing was scored for them. The exchange does not list an event for every release.
+
+- cpi_release:2026-10 (Consumer Price Index for October 2026, 2026-11-10T13:30:00+00:00): no KXCPIYOY event in the snapshot
+
+The snapshot's builder dropped events of these series (listed below); one of them may belong to one of these releases.
+
+Events the exchange listed that the snapshot builder did not store (12):
+
+- KXCPIYOY-26DEC: closes 2027-01-13T13:29:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXCPIYOY-26NOV: closes 2026-12-10T13:29:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-26DEC: closes 2026-12-09T18:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27APR: closes 2027-04-28T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27DEC: closes 2027-12-08T18:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27JAN: closes 2027-01-27T18:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27JUL: closes 2027-07-28T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27JUN: closes 2027-06-09T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27MAR: closes 2027-03-17T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27OCT: closes 2027-10-27T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-27SEP: closes 2027-09-15T17:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+- KXFEDDECISION-28JAN: closes 2028-01-26T18:59:00+00:00, after the end of the window 2026-07-01T00:00:00+00:00 to 2026-11-25T20:10:48.937084+00:00
+
 ## Sample sizes
 
 Markets within one event are correlated (they resolve on the same number), so the event count is the honest sample size and the market count is what a naive reading would claim. Both are shown side by side.
 
 | System | Horizon | Forecasts | Markets answered | Events answered | Abstained |
 |---|---|---|---|---|---|
-| Market (YES mid) | all | 312 | 104 | 7 | 0 |
-| Market (YES mid) | 7d | 104 | 104 | 7 | 0 |
-| Market (YES mid) | 3d | 104 | 104 | 7 | 0 |
-| Market (YES mid) | 1d | 104 | 104 | 7 | 0 |
+| Market (YES mid, else last trade within the quote) | all | 312 | 104 | 7 | 0 |
+| Market (YES mid, else last trade within the quote) | 7d | 104 | 104 | 7 | 0 |
+| Market (YES mid, else last trade within the quote) | 3d | 104 | 104 | 7 | 0 |
+| Market (YES mid, else last trade within the quote) | 1d | 104 | 104 | 7 | 0 |
 | Prompt only | all | not run | not run | not run | not run |
 | Single pass (recency and origin ranking) | all | not run | not run | not run | not run |
 | Single pass (similarity ranking) | all | not run | not run | not run | not run |
@@ -61,37 +83,40 @@ The Brier score is the mean of (probability - outcome)^2; lower is better. Brier
 
 | System | Horizon | Brier (answered) | Market Brier (same rows) | Skill (answered) | Brier (abstentions as market) | Skill (abstentions as market) |
 |---|---|---|---|---|---|---|
-| Market (YES mid) | all | 0.0345 [0.0108, 0.0773] | 0.0345 | 0.0000 [0.0000, 0.0000] | 0.0345 [0.0108, 0.0773] | 0.0000 [0.0000, 0.0000] |
-| Market (YES mid) | 7d | 0.0377 [0.0117, 0.0800] | 0.0377 | 0.0000 [0.0000, 0.0000] | 0.0377 [0.0117, 0.0800] | 0.0000 [0.0000, 0.0000] |
-| Market (YES mid) | 3d | 0.0330 [0.0092, 0.0759] | 0.0330 | 0.0000 [0.0000, 0.0000] | 0.0330 [0.0092, 0.0759] | 0.0000 [0.0000, 0.0000] |
-| Market (YES mid) | 1d | 0.0328 [0.0095, 0.0755] | 0.0328 | 0.0000 [0.0000, 0.0000] | 0.0328 [0.0095, 0.0755] | 0.0000 [0.0000, 0.0000] |
+| Market (YES mid, else last trade within the quote) | all | 0.0345 [0.0107, 0.0775] | 0.0345 | 0.0000 [0.0000, 0.0000] | 0.0345 [0.0107, 0.0775] | 0.0000 [0.0000, 0.0000] |
+| Market (YES mid, else last trade within the quote) | 7d | 0.0376 [0.0116, 0.0799] | 0.0376 | 0.0000 [0.0000, 0.0000] | 0.0376 [0.0116, 0.0799] | 0.0000 [0.0000, 0.0000] |
+| Market (YES mid, else last trade within the quote) | 3d | 0.0330 [0.0091, 0.0759] | 0.0330 | 0.0000 [0.0000, 0.0000] | 0.0330 [0.0091, 0.0759] | 0.0000 [0.0000, 0.0000] |
+| Market (YES mid, else last trade within the quote) | 1d | 0.0329 [0.0095, 0.0760] | 0.0329 | 0.0000 [0.0000, 0.0000] | 0.0329 [0.0095, 0.0760] | 0.0000 [0.0000, 0.0000] |
 | Prompt only | all | not run | not run | not run | not run | not run |
 | Single pass (recency and origin ranking) | all | not run | not run | not run | not run | not run |
 | Single pass (similarity ranking) | all | not run | not run | not run | not run | not run |
 | Full pipeline | all | not run | not run | not run | not run | not run |
 
-## How fresh the market price was
+## Where the market price came from
 
-The market price at an as-of time is the YES mid of the latest candle at or before that time, or the last trade when one side of the quote is empty (a far strike with no bid). A price's age is measured from the candle it came from: the latest quote for a mid, the latest trade for a last-trade price. One-minute candles exist only for minutes in which a quote or trade changed, so a price can be hours or days old.
+The market price at an as-of time is the YES mid when both sides are quoted, else the last trade clamped into the standing quote, read from the latest candle at or before that time. One-minute candles exist only for minutes in which the quote or a trade changed, so the quote's age below is the time since it last changed, not a sign that it had lapsed: a quote that stands unchanged is still the market's quote. The last trade's age is shown apart, for the prices that used it; an old trade outside the standing quote is clamped to the quote.
 
 | Measure | Value |
 |---|---|
 | Market prices scored | 312 |
-| From the bid-ask mid | 86 |
-| From the last trade (one side empty) | 226 |
-| Median price age (hours) | 35.5 |
-| Share older than 24 hours | 0.542 |
-| Oldest price (hours) | 822.5 |
+| From the bid-ask mid (both sides quoted) | 86 |
+| From the last trade (one side of the quote empty) | 226 |
+| of which clamped into the standing quote | 18 |
+| Quote age, median (hours since it last changed) | 0.5 |
+| Quote age, largest (hours) | 197.5 |
+| Last-trade age, median (hours, last-trade prices) | 60.5 |
+| Last-trade age, largest (hours) | 822.5 |
+| Last trades older than 24 hours (share of last-trade prices) | 0.748 |
 
 ## Reliability
 
 ![Reliability diagram](figures/reliability.png)
 
-Market (YES mid), answered forecasts, all horizons (expected calibration error 0.0566):
+Market (YES mid, else last trade within the quote), answered forecasts, all horizons (expected calibration error 0.0559):
 
 | Bin | Forecasts | Mean forecast | Share YES |
 |---|---|---|---|
-| [0.0, 0.1) | 185 | 0.015 | 0.000 |
+| [0.0, 0.1) | 185 | 0.013 | 0.000 |
 | [0.1, 0.2) | 7 | 0.134 | 0.000 |
 | [0.2, 0.3) | 11 | 0.227 | 0.000 |
 | [0.3, 0.4) | 1 | 0.380 | 1.000 |
@@ -100,7 +125,7 @@ Market (YES mid), answered forecasts, all horizons (expected calibration error 0
 | [0.6, 0.7) | 3 | 0.617 | 1.000 |
 | [0.7, 0.8) | 6 | 0.748 | 0.500 |
 | [0.8, 0.9) | 10 | 0.858 | 1.000 |
-| [0.9, 1.0) | 82 | 0.981 | 0.927 |
+| [0.9, 1.0) | 82 | 0.982 | 0.927 |
 
 Prompt only: not run.
 
@@ -114,7 +139,7 @@ Full pipeline: not run.
 
 ![Equity curve](figures/equity_curve.png)
 
-The trading simulation runs the full pipeline on every news trigger. The pipeline was not run: no API key, so there was no trading and no P&L to report.
+The trading simulation runs the full pipeline on every news trigger. It did not run in this run (the pipeline was not requested), so there is no trading and no P&L to report.
 
 ## Routing tiers
 
@@ -132,13 +157,15 @@ No order was placed (the pipeline did not run). Episodes that ended stale_price 
 
 ## How look-ahead was prevented
 
+The controls the harness puts in place whenever the systems that read evidence run:
+
 - The as-of rule is inside the ports: the snapshot exchange shows quotes, listings and results only up to the simulated clock, the frozen evidence port returns only documents published at or before the as-of time, and every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search.
 - A canary document dated one day after the end of the window, containing the configured canary text and the words every query uses, sits in the evidence index (not in the corpus). Every retrieval result and every finished episode is checked for it; one hit aborts the run.
 - No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, and no port in the backtest world holds an HTTP client.
 - The response cache key includes the as-of time, which is part of every role input.
 - The run refuses to start if any assigned model's listed knowledge cutoff falls on or after the window start.
 
-In this run the window starts 2026-07-01 and every assigned model lists a knowledge cutoff before it (table above). No retrieval or episode returned the canary; a single hit would have aborted the run.
+In this run the window starts 2026-07-01 and every assigned model lists a knowledge cutoff before it (table above). No system in this run reads evidence, so no evidence index was built and no retrieval was made: the canary was not exercised, and the retrieval controls above did not come into play. The market's price is read from the snapshot as of each as-of time.
 
 ## Fill assumptions
 
@@ -149,12 +176,12 @@ In this run the window starts 2026-07-01 and every assigned model lists a knowle
 
 ## Limitations
 
-- **This is a pilot.** The window holds only 7 settled events, a handful per series, and each carries several correlated markets (five per Fed meeting, twenty or more per CPI release). The events, not the markets, are the independent observations, so the intervals are wide and no difference here separates skill from luck.
-- The market price is a candle-based mid, sometimes the last trade, and for far strikes it can be stale; markets priced at 0.01 or 0.99 dominate the row count and pull every Brier score toward zero.
+- **This is a pilot.** Scoring covered only 7 settled event(s) (4 KXCPIYOY, 3 KXFEDDECISION); 1 release(s) in the window had no event in the snapshot (see Left out of scoring). That is a handful per series, and each carries several correlated markets (five per Fed meeting, twenty or more per CPI release). The events, not the markets, are the independent observations, so the intervals are wide and no difference here separates skill from luck.
+- The market price is the YES mid when both sides are quoted, else the last trade clamped into the standing quote, read from candles. Far strikes often have one side of the quote empty, so their price is a last trade (kept inside the standing quote); markets priced at 0.01 or 0.99 dominate the row count and pull every Brier score toward zero.
 - Fills are simulated from candles without depth data; many would use the hourly fallback or meet an empty book. Simulated P&L is not evidence of tradable edge.
 - Forecasts at 7, 3 and 1 days before close of the same event are not independent of each other either; the bootstrap keeps an event's rows together across horizons only in the pooled row.
 
-- Not run in this run: Prompt only (not run: no API key); Single pass (recency and origin ranking) (not run: no API key); Single pass (similarity ranking) (not run: no API key); Full pipeline (not run: no API key). Nothing in this report describes how those systems would do.
+- Not run in this run: Prompt only (not requested); Single pass (recency and origin ranking) (not requested); Single pass (similarity ranking) (not requested); Full pipeline (not requested). Nothing in this report describes how those systems would do.
 
 ## Files
 

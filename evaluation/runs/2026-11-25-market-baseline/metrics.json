@@ -12,16 +12,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.034506009615384615,
-              "lower": 0.010801612903225807,
-              "upper": 0.07728525641025641,
+              "estimate": 0.034506650641025635,
+              "lower": 0.010730254629629631,
+              "upper": 0.07745320512820512,
               "n_clusters": 7,
               "n_rows": 312,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.034506009615384615,
+            "market_brier": 0.034506650641025635,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -41,16 +41,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.034506009615384615,
-              "lower": 0.010801612903225807,
-              "upper": 0.07728525641025641,
+              "estimate": 0.034506650641025635,
+              "lower": 0.010730254629629631,
+              "upper": 0.07745320512820512,
               "n_clusters": 7,
               "n_rows": 312,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.034506009615384615,
+            "market_brier": 0.034506650641025635,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -75,16 +75,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.03767980769230769,
-              "lower": 0.011693697006118883,
-              "upper": 0.07995735294117647,
+              "estimate": 0.03761730769230769,
+              "lower": 0.011634811516608395,
+              "upper": 0.07992990196078432,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.03767980769230769,
+            "market_brier": 0.03761730769230769,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -104,16 +104,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.03767980769230769,
-              "lower": 0.011693697006118883,
-              "upper": 0.07995735294117647,
+              "estimate": 0.03761730769230769,
+              "lower": 0.011634811516608395,
+              "upper": 0.07992990196078432,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.03767980769230769,
+            "market_brier": 0.03761730769230769,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -138,16 +138,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.033036538461538464,
-              "lower": 0.009150011648745519,
-              "upper": 0.07587355769230769,
+              "estimate": 0.032971153846153844,
+              "lower": 0.009089284427347098,
+              "upper": 0.07585721153846153,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.033036538461538464,
+            "market_brier": 0.032971153846153844,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -167,16 +167,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.033036538461538464,
-              "lower": 0.009150011648745519,
-              "upper": 0.07587355769230769,
+              "estimate": 0.032971153846153844,
+              "lower": 0.009089284427347098,
+              "upper": 0.07585721153846153,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.033036538461538464,
+            "market_brier": 0.032971153846153844,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -201,16 +201,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.03280168269230769,
-              "lower": 0.009502450980392157,
-              "upper": 0.07546538461538457,
+              "estimate": 0.03293149038461538,
+              "lower": 0.009469639046717174,
+              "upper": 0.07602884615384611,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.03280168269230769,
+            "market_brier": 0.03293149038461538,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -230,16 +230,16 @@
               "n_abstained": 0
             },
             "brier": {
-              "estimate": 0.03280168269230769,
-              "lower": 0.009502450980392157,
-              "upper": 0.07546538461538457,
+              "estimate": 0.03293149038461538,
+              "lower": 0.009469639046717174,
+              "upper": 0.07602884615384611,
               "n_clusters": 7,
               "n_rows": 104,
               "level": 0.95,
               "samples": 2000,
               "seed": 20261124
             },
-            "market_brier": 0.03280168269230769,
+            "market_brier": 0.03293149038461538,
             "skill": {
               "estimate": 0.0,
               "lower": 0.0,
@@ -258,19 +258,19 @@
       }
     },
     "prompt_only": {
-      "status": "not run: no API key",
+      "status": "not requested",
       "by_horizon": {}
     },
     "single_pass": {
-      "status": "not run: no API key",
+      "status": "not requested",
       "by_horizon": {}
     },
     "single_pass_similarity": {
-      "status": "not run: no API key",
+      "status": "not requested",
       "by_horizon": {}
     },
     "pipeline": {
-      "status": "not run: no API key",
+      "status": "not requested",
       "by_horizon": {}
     }
   },
@@ -283,7 +283,7 @@
             "lower": 0.0,
             "upper": 0.1,
             "count": 185,
-            "mean_forecast": 0.014702702702702703,
+            "mean_forecast": 0.013243243243243245,
             "observed_frequency": 0.0
           },
           {
@@ -346,12 +346,12 @@
             "lower": 0.9,
             "upper": 1.0,
             "count": 82,
-            "mean_forecast": 0.9810975609756097,
+            "mean_forecast": 0.9819512195121951,
             "observed_frequency": 0.926829268292683
           }
         ],
         "n_rows": 312,
-        "ece": 0.05655448717948717
+        "ece": 0.055913461538461516
       },
       "abstain_as_market": {
         "bins": [
@@ -359,7 +359,7 @@
             "lower": 0.0,
             "upper": 0.1,
             "count": 185,
-            "mean_forecast": 0.014702702702702703,
+            "mean_forecast": 0.013243243243243245,
             "observed_frequency": 0.0
           },
           {
@@ -422,12 +422,12 @@
             "lower": 0.9,
             "upper": 1.0,
             "count": 82,
-            "mean_forecast": 0.9810975609756097,
+            "mean_forecast": 0.9819512195121951,
             "observed_frequency": 0.926829268292683
           }
         ],
         "n_rows": 312,
-        "ece": 0.05655448717948717
+        "ece": 0.055913461538461516
       }
     }
   },
@@ -571,12 +571,31 @@
     "stale_price_exits": 0
   },
   "skipped_markets": [],
+  "unresolved_rows": [],
+  "scored_events": [
+    "KXCPIYOY-26AUG",
+    "KXCPIYOY-26JUL",
+    "KXCPIYOY-26JUN",
+    "KXCPIYOY-26SEP",
+    "KXFEDDECISION-26JUL",
+    "KXFEDDECISION-26OCT",
+    "KXFEDDECISION-26SEP"
+  ],
   "quotes": {
     "n": 312,
+    "rule": "the YES mid when both sides are quoted, else the last trade clamped into the standing quote",
     "from_mid": 86,
     "from_last_trade": 226,
-    "median_age_hours": 35.483333333333334,
-    "max_age_hours": 822.4833333333333,
-    "share_older_than_24h": 0.5416666666666666
+    "last_trade_clamped": 18,
+    "quote_age_hours": {
+      "median": 0.45,
+      "max": 197.48333333333332,
+      "share_older_than_24h": 0.1891025641025641
+    },
+    "last_trade_age_hours": {
+      "median": 60.483333333333334,
+      "max": 822.4833333333333,
+      "share_older_than_24h": 0.7477876106194691
+    }
   }
 }
