@@ -124,7 +124,12 @@ def doc_id_of_passage(passage_id: str) -> str:
 
 
 def _source_reasons(
-    store: StateStore, evidence: Evidence, now: datetime, *, bankroll: Decimal | None, config: Config
+    store: StateStore,
+    evidence: Evidence,
+    now: datetime,
+    *,
+    bankroll: Decimal | None,
+    config: Config,
 ) -> list[str]:
     acct = account(
         store.list_fills(),

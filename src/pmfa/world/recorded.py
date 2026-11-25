@@ -215,7 +215,9 @@ class RecordedExchange:
     def list_events(self, series_ticker: str, *, include_closed: bool = False) -> list[Event]:
         now = self.clock.now()
         events = [
-            self._as_of(e) for e in self.file.events if e.series_ticker == series_ticker and e.markets
+            self._as_of(e)
+            for e in self.file.events
+            if e.series_ticker == series_ticker and e.markets
         ]
         events = [e for e in events if e.open_time <= now]
         if not include_closed:
@@ -292,7 +294,8 @@ class RecordedEvidence:
         docs = [
             d
             for d in self.file.documents
-            if d.published_at <= as_of and (published_after is None or d.published_at > published_after)
+            if d.published_at <= as_of
+            and (published_after is None or d.published_at > published_after)
         ]
         return sorted(docs, key=lambda d: (d.published_at, d.doc_id))
 

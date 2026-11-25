@@ -96,9 +96,7 @@ class PaperExecutor:
         }
         halt = self.store.get_halt()
         if halt.halted:
-            return OrderResult(
-                **base, status=OrderStatus.REJECTED, error=f"halted: {halt.reason}"
-            )
+            return OrderResult(**base, status=OrderStatus.REJECTED, error=f"halted: {halt.reason}")
         if intent.contracts <= 0:
             result = OrderResult(
                 **base, status=OrderStatus.REJECTED, error="an order needs at least one contract"
