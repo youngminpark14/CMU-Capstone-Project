@@ -120,16 +120,26 @@ class Executor(Protocol):
     def positions(self, event_ticker: str | None = None) -> list[Position]: ...
 
     def execution_book(self, ticker: str) -> OrderBook:
-        """The book an order sent now would meet.
+        """The book the pipeline decides with at execution time.
 
-        Live: the current book. Backtest: the first one-minute candle after the
-        as-of time plus the configured latency, at the ask, with size capped at
-        the configured share of that candle's volume.
+        Live modes: the current book. Replay: the recorded execution-time book.
+        Backtest: the as-of book, so that no decision reads a price from after the
+        as-of time. What an order then fills against is the executor's own business:
+        in a backtest it is the first one-minute candle after the as-of time plus the
+        configured latency, on the conservative side, capped at a share of its volume.
         """
         ...
 
     def place(self, intent: OrderIntent) -> OrderResult:
         """Send one immediate-or-cancel limit order. The unfilled remainder is gone."""
+        ...
+
+    def find_order(self, intent: OrderIntent) -> OrderResult | None:
+        """The order already placed for this intent's client order id, if there is one.
+
+        A continued episode uses it to reconcile after a crash or an exchange error.
+        It never places anything.
+        """
         ...
 
     def cancel_all(self) -> int:
