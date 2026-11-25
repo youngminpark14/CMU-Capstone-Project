@@ -6,10 +6,10 @@ Three retrieval collections:
 - ``evidence``: one row per passage; returned only when ``published_at <= as_of``.
 - ``ledger``: one row per resolved forecast; returned only when ``resolved_at < as_of``.
 
-A fourth, internal collection, ``documents``, holds one vector per evidence
-document. It is what origin resolution compares documents with, and it lets a
-reopened persistent index keep resolving origins for new documents. It is never
-searched by a retrieval call.
+A fourth, internal collection, ``documents``, holds one row per evidence
+document: its body text, metadata and mean passage vector. Origin resolution
+compares the bodies, and the collection lets a reopened persistent index keep
+resolving origins for new documents. It is never searched by a retrieval call.
 
 Times are stored as integer epoch seconds. Rounding is always toward exclusion:
 a publish time is rounded up and an as-of time down, so a document published a
@@ -177,8 +177,8 @@ class ChromaIndex:
             self._collections[name].delete(ids=ids)
 
     def all_documents(self) -> list[Row]:
-        """Every stored document vector, for origin resolution at ingestion time."""
-        result = self._collections[DOCUMENTS].get(include=["metadatas", "embeddings"])
+        """Every stored document row with its body, for origin resolution at ingestion time."""
+        result = self._collections[DOCUMENTS].get(include=["metadatas", "documents"])
         return _rows(result)
 
     def documents_by_id(self, doc_ids: list[str]) -> dict[str, Row]:

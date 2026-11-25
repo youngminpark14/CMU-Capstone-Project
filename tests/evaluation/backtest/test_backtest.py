@@ -118,6 +118,24 @@ def test_outputs_and_traces(full_run: FullRun) -> None:
     assert set(manifest.traces) == {f"traces/{n}" for n in traces}
 
 
+def test_every_saved_trace_replays_offline_to_its_expected_record(full_run: FullRun) -> None:
+    from pmfa.examples import check, replay
+
+    manifest = read_manifest(full_run.run_dir)
+    assert len(manifest.traces) == 3
+    for relative, status in manifest.traces.items():
+        result = replay(full_run.run_dir / relative)
+        assert check(result) == [], relative
+        assert status == "replays and matches", relative
+        # The expected record is the episode at its exit: the resolver's later
+        # observation is not part of what a replay can reproduce.
+        expected = EpisodeRecord.model_validate_json(
+            (full_run.run_dir / relative / "expected" / "episode.json").read_text()
+        )
+        assert all(step.node != RESOLUTION_NODE for step in expected.trace), relative
+        assert result.episode.exit == expected.exit, relative
+
+
 def test_manifest_records_what_produced_the_numbers(full_run: FullRun) -> None:
     m = full_run.manifest
     assert m.models["baseline"].model == "claude-fable-5-2"

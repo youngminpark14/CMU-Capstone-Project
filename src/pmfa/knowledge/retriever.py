@@ -32,9 +32,11 @@ from pmfa.knowledge.index import (
 )
 from pmfa.knowledge.origins import (
     DocumentSignature,
+    Shingles,
     half_life_days,
     primary_sources,
     resolve_origins,
+    shingles,
     text_hash,
 )
 from pmfa.knowledge.ranking import Candidate, rank
@@ -115,6 +117,8 @@ class ChromaKnowledge:
         self.config = config
         self.embedder = embedder or make_embedder(config.retrieval.embedder)
         self.index = ChromaIndex(self.embedder, path)
+        self._shingles: dict[tuple[str, str], Shingles] = {}
+        """Body shingles by ``(doc_id, text_hash)``: computed once per document per process."""
 
     def close(self) -> None:
         self.index.close()
@@ -190,11 +194,14 @@ class ChromaKnowledge:
                 }
                 for d in new_docs
             ],
+            # The body is kept so origin resolution can compare texts when a
+            # reopened index takes new documents.
+            documents=[d.text for d in new_docs],
         )
 
         stored = self.index.all_documents()
         origin = resolve_origins(
-            (_signature(row) for row in stored), threshold=retrieval.near_duplicate_similarity
+            (self._signature(row) for row in stored), threshold=retrieval.origin_copy_overlap
         )
 
         written = 0
@@ -226,6 +233,23 @@ class ChromaKnowledge:
                 ids = [passage_id(row.id, n) for n in range(count)]
                 self.index.update_metadata(EVIDENCE, ids, [{"origin_id": resolved}] * count)
         return written
+
+    def _signature(self, row: Row) -> DocumentSignature:
+        """What origin resolution compares: the stored body's shingles and its text hash.
+
+        A row written before bodies were stored has no body; it still matches
+        identical texts by hash, and nothing by overlap.
+        """
+        digest = str(row.metadata["text_hash"])
+        key = (row.id, digest)
+        if key not in self._shingles:
+            self._shingles[key] = shingles(row.document or "")
+        return DocumentSignature(
+            doc_id=row.id,
+            published_at=datetime.fromisoformat(str(row.metadata["published_at"])),
+            text_hash=digest,
+            shingles=self._shingles[key],
+        )
 
     def index_evidence(
         self, evidence: Evidence, *, as_of: datetime, published_after: datetime | None = None
@@ -405,16 +429,6 @@ def _ledger_metadata(e: LedgerEntry) -> dict[str, Any] | None:
         "event_ticker": e.event_ticker,
         "market_ticker": e.market_ticker,
     }
-
-
-def _signature(row: Row) -> DocumentSignature:
-    assert row.vector is not None
-    return DocumentSignature(
-        doc_id=row.id,
-        published_at=datetime.fromisoformat(str(row.metadata["published_at"])),
-        text_hash=str(row.metadata["text_hash"]),
-        vector=row.vector,
-    )
 
 
 __all__ = ["ChromaKnowledge", "event_text", "ledger_text"]

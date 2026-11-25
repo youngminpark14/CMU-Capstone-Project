@@ -327,6 +327,12 @@ class _Run:
         self.rows: list[tuple[ForecastRow, RowNote]] = []
         self.recordings: dict[str, tuple[Any, Trigger, str]] = {}
         """Episode id -> (recording, trigger, description) for every pipeline episode."""
+        self.exits: dict[str, EpisodeRecord] = {}
+        """Episode id -> the episode as it stood at its exit, before the resolver added to it.
+
+        A saved trace expects this record: a replay runs the episode to its exit
+        and cannot reproduce the resolution observation appended afterwards.
+        """
         self.audits: list[EpisodeAudit] = []
         self.progress = Progress()
         self.stopped = ""
@@ -355,6 +361,7 @@ class _Run:
             self.recordings.setdefault(
                 _episode_id(world, trigger), (recording, trigger, description)
             )
+        self.exits.setdefault(episode.episode_id, episode)
         self.canary_check(episode)
         return episode
 
@@ -751,7 +758,7 @@ def _save_traces(
     shutil.rmtree(folder, ignore_errors=True)
     if n <= 0 or run.tap is None:
         return {}
-    recorded = [e for e in episodes if e.episode_id in run.recordings]
+    recorded = [e for e in episodes if e.episode_id in run.recordings and e.episode_id in run.exits]
     saved: dict[str, str] = {}
     for i, episode in enumerate(_choose_examples(recorded, n), 1):
         recording, trigger, description = run.recordings[episode.episode_id]
@@ -766,18 +773,13 @@ def _save_traces(
                     break
         exit_name = episode.exit.value if episode.exit else episode.status.value
         name = f"{i:02d}-{exit_name}-{episode.episode_id}"
-        # Replay runs the trigger in replay mode, whose episode id differs from the backtest's.
-        from pmfa.episode import episode_id_for
-        from pmfa.records.base import RunMode
-
-        cassette = run.tap.cassette(episode.episode_id).model_copy(
-            update={"episode_id": episode_id_for(RunMode.REPLAY, trigger)}
-        )
+        # The episode id does not depend on the run mode and the recorded world
+        # carries the backtest's mode, so the cassette replays under its own key.
         save_example(
             folder / name,
             recording.file(trigger, description=description),
-            cassette,
-            episode,
+            run.tap.cassette(episode.episode_id),
+            run.exits[episode.episode_id],
             card,
         )
         saved[f"{TRACES_DIR}/{name}"] = replay_check(folder / name)

@@ -356,7 +356,7 @@
           "passage": {
             "passage_id": "bls:cpi_release:2026-08#1",
             "doc_id": "bls:cpi_release:2026-08",
-            "origin_id": "bls:cpi_release:2026-06",
+            "origin_id": "bls:cpi_release:2026-08",
             "source": "bls.gov",
             "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
             "title": "Consumer Price Index for August 2026",
@@ -373,7 +373,7 @@
           "passage": {
             "passage_id": "bls:cpi_release:2026-08#2",
             "doc_id": "bls:cpi_release:2026-08",
-            "origin_id": "bls:cpi_release:2026-06",
+            "origin_id": "bls:cpi_release:2026-08",
             "source": "bls.gov",
             "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
             "title": "Consumer Price Index for August 2026",
@@ -390,7 +390,7 @@
           "passage": {
             "passage_id": "bls:cpi_release:2026-08#0",
             "doc_id": "bls:cpi_release:2026-08",
-            "origin_id": "bls:cpi_release:2026-06",
+            "origin_id": "bls:cpi_release:2026-08",
             "source": "bls.gov",
             "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
             "title": "Consumer Price Index for August 2026",
@@ -401,6 +401,57 @@
           "similarity": 0.4847450256347656,
           "recency": 0.9999197778498484,
           "score": 0.4847061383465339,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-07#0",
+            "doc_id": "bls:cpi_release:2026-07",
+            "origin_id": "bls:cpi_release:2026-07",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "title": "Consumer Price Index for July 2026",
+            "published_at": "2026-08-12T12:30:00Z",
+            "index": 0,
+            "text": "Consumer Price Index for July 2026\n\nTransmission of material in this release is embargoed until 8:30 a.m. (ET) Wednesday, August 12, 2026 USDL-26-1378 Technical information: (202) 691-7000 * cpi_info@bls.gov * www.bls.gov/cpi Media contact: (202) 691-5902 * PressOffice@bls.gov CONSUMER PRICE INDEX - JULY 2026 The Consumer Price Index for All Urban Consumers (CPI-U) increased 0.1 percent on a seasonally adjusted basis in July after falling 0.4 percent in June, the U.S. Bureau of Labor Statistics reported today. Over the last 12 months, the all items index increased 3.4 percent before seasonal adjustment. The index for shelter rose 0.1 percent in July, accounting for roughly two-thirds of the monthly all items increase. The index for food also increased 0.1 percent over the month, as the index for food away from home increased 0.3 percent. In contrast, the energy index declined 1.5 percent in July. The index for all items less food and energy rose 0.2 percent after being unchanged in June. Indexes that increased over the month include medical care, airline fares, communication, education, and recreation. Conversely, the index for motor vehicle insurance was among the major indexes that decreased in July. The all items index rose 3.4 percent for the 12 months ending July after rising 3.5 percent for the 12 months ending June. The all items less food and energy index rose 2.5 percent over the year, following a 2.6-percent increase over the 12 months ending June. The energy index increased 14.7 percent for the 12 months ending July. The food index increased 3.0 percent over"
+          },
+          "similarity": 0.49811768531799316,
+          "recency": 0.49995988892492427,
+          "score": 0.24903886262312425,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-07#2",
+            "doc_id": "bls:cpi_release:2026-07",
+            "origin_id": "bls:cpi_release:2026-07",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "title": "Consumer Price Index for July 2026",
+            "published_at": "2026-08-12T12:30:00Z",
+            "index": 2,
+            "text": "service meals rose 0.4 percent, and the index for full service meals rose 0.2 percent over the month. The index for food at home rose 2.7 percent over the 12 months ending in July. The fruits and vegetables index rose 5.1 percent over the last 12 months. The index for other food at home increased 2.5 percent, and the index for nonalcoholic beverages rose 4.1 percent over the year. The meats, poultry, fish, and eggs index increased 1.9 percent over the 12 months ending in July, and the cereals and bakery products index rose 2.7 percent over the same period. In contrast, the index for dairy and related products fell 0.5 percent over the year. The food away from home index rose 3.4 percent over the last year. The index for full service meals rose 3.4 percent, and the index for limited service meals rose 3.3 percent over the 12 months ending in July. Energy The index for energy decreased 1.5 percent in July, after falling 5.7 percent in June. The gasoline index decreased 2.9 percent over the month. (Before seasonal adjustment, gasoline prices decreased 2.1 percent in July.) Conversely, the index for natural gas increased 0.7 percent in July, and the index for electricity rose 0.1 percent. The index for energy increased 14.7 percent over the past 12 months due in large part to the index for gasoline rising 24.6 percent over the same period. The natural gas index increased 4.3 percent over the 12 months ending in July,"
+          },
+          "similarity": 0.4974250793457031,
+          "recency": 0.49995988892492427,
+          "score": 0.24869258741814937,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-07#1",
+            "doc_id": "bls:cpi_release:2026-07",
+            "origin_id": "bls:cpi_release:2026-07",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "title": "Consumer Price Index for July 2026",
+            "published_at": "2026-08-12T12:30:00Z",
+            "index": 1,
+            "text": "percent for the 12 months ending June. The all items less food and energy index rose 2.5 percent over the year, following a 2.6-percent increase over the 12 months ending June. The energy index increased 14.7 percent for the 12 months ending July. The food index increased 3.0 percent over the last year. Food The food index rose 0.1 percent in July, after rising 0.2 percent in June. The index for food at home decreased 0.1 percent over the month. Three of the six major grocery store food group indexes decreased in July. The meats, poultry, fish, and eggs index decreased 0.7 percent over the month as the pork index declined 1.5 percent. The index for fruits and vegetables decreased 0.1 percent in July as the index for lettuce fell 16.4 percent. The dairy and related products index decreased 0.1 percent over the month. The index for other food at home was unchanged in July. In contrast, the nonalcoholic beverages index rose 0.9 percent in July after falling 1.5 percent in June. The index for cereals and bakery products increased 0.2 percent over the month. The food away from home index rose 0.3 percent in July. The index for limited service meals rose 0.4 percent, and the index for full service meals rose 0.2 percent over the month. The index for food at home rose 2.7 percent over the 12 months ending in July. The fruits and vegetables index rose 5.1 percent over the last 12 months. The index for"
+          },
+          "similarity": 0.44153469800949097,
+          "recency": 0.49995988892492427,
+          "score": 0.22074963857332508,
           "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
         },
         {
@@ -436,57 +487,6 @@
           "recency": 0.8311712124514717,
           "score": 0.14556946287484515,
           "query": "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
-        },
-        {
-          "passage": {
-            "passage_id": "bls:employment_situation:2026-08#2",
-            "doc_id": "bls:employment_situation:2026-08",
-            "origin_id": "bls:employment_situation:2026-06",
-            "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
-            "title": "Employment Situation for August 2026",
-            "published_at": "2026-09-04T12:30:00Z",
-            "index": 2,
-            "text": "were not actively looking for work during the 4 weeks preceding the survey or were unavailable to take a job. (See table A-1.) Among those not in the labor force who wanted a job, the number of people marginally attached to the labor force changed little at 1.7 million in August. These individuals wanted and were available for work and had looked for a job sometime in the prior 12 months but had not looked for work in the 4 weeks preceding the survey. The number of discouraged workers, a subset of the marginally attached who believed that no jobs were available for them, changed little in August at 441,000. (See Summary table A.) Establishment Survey Data Total nonfarm payroll employment rose by 162,000 in August, higher than the average monthly gain of 31,000 over the prior 12 months. In August, employment increased in food services and drinking places and in local government education. The information industry lost jobs. (See table B-1.) Employment in food services and drinking places increased by 59,000 in August, well above the average monthly gain of 12,000 over the prior 12 months. Local government education added 42,000 jobs in August, largely offsetting a decrease in the prior month. Local government education has shown little net change since January 2025. In August, employment in manufacturing continued its upward trend (+16,000) and is up by 58,000 since a recent low in December 2025. Employment in machinery manufacturing (+6,000) and in fabricated metal product manufacturing (+6,000) continued trending"
-          },
-          "similarity": 0.160683274269104,
-          "recency": 0.8505989186021409,
-          "score": 0.13667701933075108,
-          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
-        },
-        {
-          "passage": {
-            "passage_id": "bls:employment_situation:2026-08#18",
-            "doc_id": "bls:employment_situation:2026-08",
-            "origin_id": "bls:employment_situation:2026-06",
-            "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
-            "title": "Employment Situation for August 2026",
-            "published_at": "2026-09-04T12:30:00Z",
-            "index": 18,
-            "text": "employment had, in fact, increased that month. If, however, the reported nonfarm employment rise was 250,000, then all of the values within the 90-percent confidence interval would be greater than zero. In this case, it is likely (at least a 90-percent chance) that nonfarm employment had, in fact, risen that month. At an unemployment rate of around 6.0 percent, the 90-percent confidence interval for the monthly change in unemployment as measured by the household survey is about +/- 425,000, and for the monthly change in the unemployment rate it is about +/- 0.3 percentage point. In general, estimates involving many individuals or establishments have lower standard errors (relative to the size of the estimate) than estimates which are based on a small number of observations. The precision of estimates also is improved when the data are cumulated over time, such as for quarterly and annual averages. The household and establishment surveys are also affected by nonsampling error, which can occur for many reasons, including the failure to sample a segment of the population, inability to obtain information for all respondents in the sample, inability or unwillingness of respondents to provide correct information on a timely basis, mistakes made by respondents, and errors made in the collection or processing of the data. For example, in the establishment survey, estimates for the most recent 2 months are based on incomplete returns; for this reason, these estimates are labeled preliminary in the tables. It is only after two successive revisions to a monthly"
-          },
-          "similarity": 0.15371358394622803,
-          "recency": 0.8505989186021409,
-          "score": 0.13074860827912096,
-          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
-        },
-        {
-          "passage": {
-            "passage_id": "fed:fomcminutes20260729#3",
-            "doc_id": "fed:fomcminutes20260729",
-            "origin_id": "fed:fomcminutes20260617",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
-            "title": "Minutes of the Federal Open Market Committee, July 28–29, 2026",
-            "published_at": "2026-08-19T18:00:00Z",
-            "index": 3,
-            "text": "ample supply. With reserve management purchases continuing, the Desk forecast was for reserves to remain within that range in coming months. By unanimous vote, the Committee ratified the Desk's domestic transactions over the intermeeting period. There were no intervention operations in foreign currencies for the System's account during the intermeeting period. Staff Review of the Economic Situation The information available at the time of the meeting indicated that inflation remained elevated. Labor market conditions remained stable, and real gross domestic product (GDP) continued to expand. Total consumer price inflation—as measured by the 12-month change in the price index for personal consumption expenditures (PCE)—was 4.1 percent in May. Core PCE price inflation, which excludes changes in consumer energy prices and many consumer food prices, was 3.4 percent. Both total and core inflation were higher than their levels from a year earlier, a development that the staff attributed to factors such as the effects of past tariff increases, higher energy and input costs stemming from the conflict in the Middle East, and the surge in demand related to the AI buildout. Core goods price inflation had moved up relative to a year earlier; the staff viewed this increase as being largely attributable to the effects of tariffs and AI-related price pressures. Core services price inflation had edged up over the past year, as an acceleration in core nonhousing services prices had offset a deceleration in prices for housing services. Based on data from the consumer and producer price indexes, the staff estimated"
-          },
-          "similarity": 0.16894090175628662,
-          "recency": 0.5908469934057664,
-          "score": 0.09981822386596091,
-          "query": "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
         }
       ]
     },
@@ -501,10 +501,10 @@
       },
       "results": [
         {
-          "origin_id": "bls:cpi_release:2026-06",
+          "origin_id": "bls:cpi_release:2026-08",
           "source": "bls.gov",
-          "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
-          "published_at": "2026-07-14T12:30:00Z",
+          "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+          "published_at": "2026-09-11T12:30:00Z",
           "is_primary": true
         }
       ]

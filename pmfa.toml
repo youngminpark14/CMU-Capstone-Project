@@ -77,6 +77,7 @@ top_k = 8
 max_per_origin = 3
 similarity_floor = 0.05
 near_duplicate_similarity = 0.92
+origin_copy_overlap = 0.92
 ledger_k = 5
 ranking = "recency_origin"
 embedder = "hashing"

@@ -68,7 +68,10 @@ Retrieval in a recorded world is replayed from the recorded calls, because `worl
 the documents the episode touched (plus, for `single-origin-syndicated`, the whole small source
 world, which replay indexes again).
 
-Known issue: origin resolution currently traces some passages to an earlier document that shares
-boilerplate (for example, August CPI passages to the June release). It does not change these
-examples' exits, but the origin URLs shown in their traces are affected; the examples will be
-rebuilt when it is fixed.
+Known issue: `phantom-edge-no-trade` was recorded before origin resolution was fixed, and it still
+traces its August CPI passages to the June release and the July minutes to the June minutes. Its
+exit is unaffected and it replays exactly, but the origin URLs in its trace are wrong. It cannot be
+rebuilt as it stands: with each release now its own origin, the July CPI release fills retrieval
+slots that its hand-written research records expect the July statement and a Governor's speech to
+hold, so those records need rewriting first. The other four examples are rebuilt and their origins
+are the documents their passages come from.

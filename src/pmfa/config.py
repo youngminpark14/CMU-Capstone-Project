@@ -121,6 +121,11 @@ class RetrievalConfig(Section):
     max_per_origin: int = 3
     similarity_floor: float = 0.05
     near_duplicate_similarity: float = 0.92
+    """Cosine similarity at which two passages of the same origin are one candidate in ranking."""
+    origin_copy_overlap: float = 0.92
+    """Share of the smaller body's 5-word shingles found in the larger at which two documents are
+    one origin (one is a copy of the other). Measured on the real corpus: distinct releases built
+    on one template reach 0.89, a copy with one word in a hundred edited keeps 0.95."""
     ledger_k: int = 5
     ranking: Literal["recency_origin", "similarity"] = "recency_origin"
     embedder: Literal["hashing", "minilm"] = "hashing"

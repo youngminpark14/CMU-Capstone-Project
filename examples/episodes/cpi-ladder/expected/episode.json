@@ -20,10 +20,10 @@
   ],
   "origins": [
     {
-      "origin_id": "bls:cpi_release:2026-06",
+      "origin_id": "bls:cpi_release:2026-08",
       "source": "bls.gov",
-      "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
-      "published_at": "2026-07-14T12:30:00Z",
+      "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+      "published_at": "2026-09-11T12:30:00Z",
       "is_primary": true
     }
   ],
@@ -274,6 +274,27 @@
             "score": 0.4847061383465339
           },
           {
+            "passage_id": "bls:cpi_release:2026-07#0",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.24903886262312425
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#2",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.24869258741814937
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#1",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.22074963857332508
+          },
+          {
             "passage_id": "fed:waller20260903a#4",
             "source": "federalreserve.gov",
             "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
@@ -286,27 +307,6 @@
             "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
             "published_at": "2026-09-03T12:30:00+00:00",
             "score": 0.14556946287484515
-          },
-          {
-            "passage_id": "bls:employment_situation:2026-08#2",
-            "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
-            "published_at": "2026-09-04T12:30:00+00:00",
-            "score": 0.13667701933075108
-          },
-          {
-            "passage_id": "bls:employment_situation:2026-08#18",
-            "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
-            "published_at": "2026-09-04T12:30:00+00:00",
-            "score": 0.13074860827912096
-          },
-          {
-            "passage_id": "fed:fomcminutes20260729#3",
-            "source": "federalreserve.gov",
-            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
-            "published_at": "2026-08-19T18:00:00+00:00",
-            "score": 0.09981822386596091
           }
         ]
       },
@@ -404,10 +404,10 @@
       "data": {
         "origins": [
           {
-            "origin_id": "bls:cpi_release:2026-06",
+            "origin_id": "bls:cpi_release:2026-08",
             "source": "bls.gov",
-            "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
-            "published_at": "2026-07-14T12:30:00Z",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00Z",
             "is_primary": true
           }
         ]
