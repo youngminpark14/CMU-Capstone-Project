@@ -1,0 +1,61 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand from the GetOrdersResponse schema in Kalshi's OpenAPI document (version 3.37.0, fetched 2026-11-24), because no demo credentials exist.",
+ "request": "GET /portfolio/orders?status=resting&subaccount=1&limit=1000",
+ "status": 200,
+ "body": {
+  "orders": [
+   {
+    "order_id": "r-1",
+    "user_id": "u-demo",
+    "client_order_id": "ord-r1",
+    "ticker": "KXFEDDECISION-26DEC-H0",
+    "outcome_side": "no",
+    "book_side": "ask",
+    "type": "limit",
+    "status": "resting",
+    "yes_price_dollars": "0.0400",
+    "no_price_dollars": "0.9600",
+    "fill_count_fp": "4.00",
+    "remaining_count_fp": "0.00",
+    "initial_count_fp": "10.00",
+    "taker_fees_dollars": "0.0200",
+    "maker_fees_dollars": "0.0000",
+    "taker_fill_cost_dollars": "3.8100",
+    "maker_fill_cost_dollars": "0.0000",
+    "created_time": "2026-11-25T15:00:00.118Z",
+    "last_update_time": "2026-11-25T15:00:00.121Z",
+    "self_trade_prevention_type": "taker_at_cross",
+    "order_group_id": "og-7a1d",
+    "subaccount_number": 1,
+    "exchange_index": 0,
+    "time_in_force": "good_till_canceled"
+   },
+   {
+    "order_id": "r-2",
+    "user_id": "u-demo",
+    "client_order_id": "ord-r2",
+    "ticker": "KXFEDDECISION-26DEC-H0",
+    "outcome_side": "no",
+    "book_side": "ask",
+    "type": "limit",
+    "status": "resting",
+    "yes_price_dollars": "0.0400",
+    "no_price_dollars": "0.9600",
+    "fill_count_fp": "4.00",
+    "remaining_count_fp": "0.00",
+    "initial_count_fp": "10.00",
+    "taker_fees_dollars": "0.0200",
+    "maker_fees_dollars": "0.0000",
+    "taker_fill_cost_dollars": "3.8100",
+    "maker_fill_cost_dollars": "0.0000",
+    "created_time": "2026-11-25T15:00:00.118Z",
+    "last_update_time": "2026-11-25T15:00:00.121Z",
+    "self_trade_prevention_type": "taker_at_cross",
+    "order_group_id": "og-7a1d",
+    "subaccount_number": 1,
+    "exchange_index": 0
+   }
+  ],
+  "cursor": ""
+ }
+}

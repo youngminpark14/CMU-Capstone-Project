@@ -1,0 +1,31 @@
+{
+ "_source": "Recorded from the public Kalshi API (external-api.kalshi.com) on 2026-11-25, unauthenticated; trimmed to a few items.",
+ "request": "GET /events/KXFEDDECISION-26SEP?with_nested_markets=true",
+ "status": 200,
+ "body": {
+  "event": {
+   "category": "Economics",
+   "collateral_return_type": "MECNET",
+   "event_ticker": "KXFEDDECISION-26SEP",
+   "exchange_index": 0,
+   "last_updated_ts": "2026-08-12T20:14:41.483428Z",
+   "mutually_exclusive": true,
+   "product_metadata": {
+    "competition": "US FED",
+    "competition_scope": "Fed Decision"
+   },
+   "series_ticker": "KXFEDDECISION",
+   "settlement_sources": [
+    {
+     "name": "Federal Reserve",
+     "url": "https://www.federalreserve.gov"
+    }
+   ],
+   "strike_date": "2026-09-16T18:00:00Z",
+   "strike_period": "",
+   "sub_title": "On Sep 16, 2026",
+   "title": "Fed decision in Sep 2026?"
+  },
+  "markets": []
+ }
+}

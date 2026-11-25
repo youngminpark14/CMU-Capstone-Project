@@ -1,0 +1,11 @@
+{
+ "_source": "Recorded from the public Kalshi API (external-api.kalshi.com) on 2026-11-25, unauthenticated; trimmed to a few items.",
+ "request": "GET /historical/cutoff",
+ "status": 200,
+ "body": {
+  "market_positions_last_updated_ts": "2026-09-26T00:00:00Z",
+  "market_settled_ts": "2026-09-26T00:00:00Z",
+  "orders_updated_ts": "2026-11-11T00:00:00Z",
+  "trades_created_ts": "2026-09-26T00:00:00Z"
+ }
+}

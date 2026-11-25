@@ -1,0 +1,11 @@
+{
+ "_source": "Recorded from the public Kalshi API on 2026-11-24 (an unprovoked 429 on a shared egress address); headers: {\"x-ratelimit-cost\": \"50\", \"x-ratelimit-limit\": \"600\", \"x-ratelimit-remaining\": \"43\", \"x-ratelimit-reset\": \"2.785\"}",
+ "request": "GET /events?series_ticker=KXCPIYOY&limit=200&with_nested_markets=true",
+ "status": 429,
+ "body": {
+  "error": {
+   "code": "too_many_requests",
+   "message": "too many requests"
+  }
+ }
+}

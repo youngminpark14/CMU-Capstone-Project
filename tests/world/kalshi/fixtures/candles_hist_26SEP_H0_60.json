@@ -1,0 +1,185 @@
+{
+ "_source": "Recorded from the public Kalshi API (external-api.kalshi.com) on 2026-11-25, unauthenticated; trimmed to a few items.",
+ "request": "GET /historical/markets/KXFEDDECISION-26SEP-H0/candlesticks?start_ts=1789560000&end_ts=1789588800&period_interval=60",
+ "status": 200,
+ "body": {
+  "candlesticks": [
+   {
+    "end_period_ts": 1789560000,
+    "open_interest": "29387176.21",
+    "price": {
+     "close": "0.1200",
+     "high": "0.1200",
+     "low": "0.1100",
+     "mean": "0.1178",
+     "open": "0.1200",
+     "previous": "0.1200"
+    },
+    "volume": "238699.00",
+    "yes_ask": {
+     "close": "0.1200",
+     "high": "0.1200",
+     "low": "0.1200",
+     "open": "0.1200"
+    },
+    "yes_bid": {
+     "close": "0.1100",
+     "high": "0.1100",
+     "low": "0.1100",
+     "open": "0.1100"
+    }
+   },
+   {
+    "end_period_ts": 1789563600,
+    "open_interest": "29606197.06",
+    "price": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1100",
+     "mean": "0.1239",
+     "open": "0.1200",
+     "previous": "0.1200"
+    },
+    "volume": "282471.68",
+    "yes_ask": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1200",
+     "open": "0.1200"
+    },
+    "yes_bid": {
+     "close": "0.1200",
+     "high": "0.1200",
+     "low": "0.1100",
+     "open": "0.1100"
+    }
+   },
+   {
+    "end_period_ts": 1789567200,
+    "open_interest": "29963225.66",
+    "price": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1100",
+     "mean": "0.1248",
+     "open": "0.1200",
+     "previous": "0.1300"
+    },
+    "volume": "578989.17",
+    "yes_ask": {
+     "close": "0.1200",
+     "high": "0.1300",
+     "low": "0.1200",
+     "open": "0.1300"
+    },
+    "yes_bid": {
+     "close": "0.1100",
+     "high": "0.1200",
+     "low": "0.1100",
+     "open": "0.1200"
+    }
+   },
+   {
+    "end_period_ts": 1789570800,
+    "open_interest": "30458946.70",
+    "price": {
+     "close": "0.1200",
+     "high": "0.1300",
+     "low": "0.1100",
+     "mean": "0.1250",
+     "open": "0.1200",
+     "previous": "0.1300"
+    },
+    "volume": "686981.59",
+    "yes_ask": {
+     "close": "0.1200",
+     "high": "0.1300",
+     "low": "0.1200",
+     "open": "0.1200"
+    },
+    "yes_bid": {
+     "close": "0.1100",
+     "high": "0.1200",
+     "low": "0.1100",
+     "open": "0.1100"
+    }
+   },
+   {
+    "end_period_ts": 1789574400,
+    "open_interest": "30866489.92",
+    "price": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1100",
+     "mean": "0.1219",
+     "open": "0.1100",
+     "previous": "0.1200"
+    },
+    "volume": "670836.75",
+    "yes_ask": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1200",
+     "open": "0.1200"
+    },
+    "yes_bid": {
+     "close": "0.1200",
+     "high": "0.1200",
+     "low": "0.1100",
+     "open": "0.1100"
+    }
+   },
+   {
+    "end_period_ts": 1789578000,
+    "open_interest": "31456395.79",
+    "price": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1100",
+     "mean": "0.1270",
+     "open": "0.1300",
+     "previous": "0.1300"
+    },
+    "volume": "734458.67",
+    "yes_ask": {
+     "close": "0.1300",
+     "high": "0.1300",
+     "low": "0.1200",
+     "open": "0.1300"
+    },
+    "yes_bid": {
+     "close": "0.1100",
+     "high": "0.1200",
+     "low": "0.1100",
+     "open": "0.1200"
+    }
+   },
+   {
+    "end_period_ts": 1789581600,
+    "open_interest": "32194171.93",
+    "price": {
+     "close": "0.1200",
+     "high": "0.1500",
+     "low": "0.1100",
+     "mean": "0.1377",
+     "open": "0.1100",
+     "previous": "0.1300"
+    },
+    "volume": "1345671.99",
+    "yes_ask": {
+     "close": "1.0000",
+     "high": "1.0000",
+     "low": "0.1200",
+     "open": "0.1300"
+    },
+    "yes_bid": {
+     "close": "0.0000",
+     "high": "0.1400",
+     "low": "0.0000",
+     "open": "0.1100"
+    }
+   }
+  ],
+  "ticker": "KXFEDDECISION-26SEP-H0"
+ }
+}

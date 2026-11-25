@@ -1,0 +1,14 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand from the CreateOrderV2Response schema in Kalshi's OpenAPI document (version 3.37.0, fetched 2026-11-24), because no demo credentials exist.",
+ "request": "POST /portfolio/events/orders (buy 10 NO at 0.96 = ask 10 at 0.0400 on the YES leg, IOC)",
+ "status": 201,
+ "body": {
+  "order_id": "3b23c1c7-f4ef-4f0d-8b9a-9e53c61f1a0d",
+  "client_order_id": "ord-5f1c2a9e0b7d3c41",
+  "fill_count": "4.00",
+  "remaining_count": "0.00",
+  "average_fill_price": "0.0475",
+  "average_fee_paid": "0.0050",
+  "ts_ms": 1795705200123
+ }
+}

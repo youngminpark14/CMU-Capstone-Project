@@ -1,0 +1,8 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand from the GetOrderGroupsResponse schema in Kalshi's OpenAPI document (version 3.37.0, fetched 2026-11-24), because no demo credentials exist.",
+ "request": "GET /portfolio/order_groups?subaccount=1",
+ "status": 200,
+ "body": {
+  "order_groups": []
+ }
+}

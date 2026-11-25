@@ -1,0 +1,168 @@
+"""Profit and loss after fees, the equity curve, and maximum drawdown.
+
+All money is decimal. A trade costs ``contracts x price + fee`` when it fills and
+pays one dollar per contract when its side wins at settlement, nothing when it
+loses. P&L is realized: only settled trades count toward it. Open trades are
+reported separately by what they cost.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Sequence
+from decimal import Decimal
+from typing import Literal
+
+from pmfa.records.base import ONE, ZERO, Dollars, Record, UtcTime
+
+from .rows import TradeRow
+
+
+class PnlSummary(Record):
+    """Realized P&L after fees, per market, per event, and in total.
+
+    ``total`` is also the P&L against not trading: not trading earns exactly
+    zero, so the difference between trading and abstaining is the total itself.
+    """
+
+    total: Dollars
+    by_market: dict[str, Dollars]
+    by_event: dict[str, Dollars]
+    fees: Dollars
+    """Fees paid on the settled trades (already inside ``total``)."""
+    n_trades: int
+    n_settled: int
+    open_cost: Dollars
+    """What the still-open trades cost, fees included. Not in ``total``."""
+
+
+class EquityPoint(Record):
+    """The account after one fill or one settlement.
+
+    ``cash`` is the bankroll less what was paid for fills plus what settlements
+    paid out. ``equity`` carries open positions at what their contracts cost
+    (``contracts x price``), so a fill lowers equity only by its fee and a
+    settlement moves it by the trade's result. There are no price marks here.
+    """
+
+    at: UtcTime
+    kind: Literal["fill", "settlement"]
+    episode_id: str
+    market_ticker: str
+    cash: Dollars
+    equity: Dollars
+
+
+class Drawdown(Record):
+    """The largest fall of equity from a running peak, as a fraction of that peak and in dollars.
+
+    The two are maximized separately, so they can come from different troughs.
+    """
+
+    fraction: Decimal
+    dollars: Dollars
+
+
+def trade_cost(trade: TradeRow) -> Decimal:
+    """Cash paid at the fill: ``contracts x price + fee``."""
+    return trade.contracts * trade.price + trade.fee
+
+
+def trade_payout(trade: TradeRow) -> Decimal | None:
+    """One dollar per contract when the trade's side won, zero when it lost, ``None`` while open."""
+    if trade.result is None:
+        return None
+    return trade.contracts * ONE if trade.result == trade.side else ZERO
+
+
+def trade_pnl(trade: TradeRow) -> Decimal | None:
+    """Realized P&L after fees of one trade; ``None`` while it is open."""
+    payout = trade_payout(trade)
+    return None if payout is None else payout - trade_cost(trade)
+
+
+def pnl_summary(trades: Sequence[TradeRow]) -> PnlSummary:
+    """Realized P&L after fees per market, per event, and in total.
+
+    The total is the P&L against not trading, since not trading earns zero.
+    """
+    by_market: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    by_event: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    total = fees = open_cost = ZERO
+    n_settled = 0
+    for t in trades:
+        pnl = trade_pnl(t)
+        if pnl is None:
+            open_cost += trade_cost(t)
+            continue
+        n_settled += 1
+        by_market[t.market_ticker] += pnl
+        by_event[t.event_ticker] += pnl
+        total += pnl
+        fees += t.fee
+    return PnlSummary(
+        total=total,
+        by_market=dict(by_market),
+        by_event=dict(by_event),
+        fees=fees,
+        n_trades=len(trades),
+        n_settled=n_settled,
+        open_cost=open_cost,
+    )
+
+
+def total_pnl(trades: Sequence[TradeRow]) -> Decimal:
+    """Total realized P&L after fees: also the P&L against not trading, which earns zero."""
+    return pnl_summary(trades).total
+
+
+def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPoint]:
+    """The account after every fill and every settlement, in time order, from ``bankroll``.
+
+    Cash falls by a trade's cost at its fill and rises by its payout at
+    settlement. Equity carries open contracts at their price, so it falls by the
+    fee at the fill and moves by ``payout - contracts x price`` at settlement;
+    once everything settles, equity equals cash. Simultaneous changes are
+    applied fills first, then in input order.
+    """
+    changes: list[tuple[UtcTime, int, int, TradeRow]] = []
+    for i, t in enumerate(trades):
+        changes.append((t.filled_at, 0, i, t))
+        if t.settled_at is not None:
+            changes.append((t.settled_at, 1, i, t))
+    changes.sort(key=lambda c: (c[0], c[1], c[2]))
+    cash = equity = bankroll
+    points: list[EquityPoint] = []
+    for at, order, _, t in changes:
+        basis = t.contracts * t.price
+        if order == 0:
+            cash -= trade_cost(t)
+            equity -= t.fee
+        else:
+            payout = trade_payout(t) or ZERO
+            cash += payout
+            equity += payout - basis
+        points.append(
+            EquityPoint(
+                at=at,
+                kind="fill" if order == 0 else "settlement",
+                episode_id=t.episode_id,
+                market_ticker=t.market_ticker,
+                cash=cash,
+                equity=equity,
+            )
+        )
+    return points
+
+
+def max_drawdown(curve: Sequence[EquityPoint], bankroll: Decimal) -> Drawdown:
+    """Maximum drawdown of equity, starting from a peak at ``bankroll``."""
+    peak = bankroll
+    worst_fraction = worst_dollars = ZERO
+    for p in curve:
+        peak = max(peak, p.equity)
+        fall = peak - p.equity
+        worst_dollars = max(worst_dollars, fall)
+        if peak > 0:
+            worst_fraction = max(worst_fraction, fall / peak)
+    return Drawdown(fraction=worst_fraction, dollars=worst_dollars)
