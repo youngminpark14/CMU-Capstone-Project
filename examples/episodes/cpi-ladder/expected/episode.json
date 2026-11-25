@@ -1,0 +1,780 @@
+{
+  "episode_id": "episode-185a4f24404f5cbd",
+  "mode": "replay",
+  "trigger": {
+    "trigger_id": "new-document:bls:cpi_release:2026-08",
+    "kind": "new_document",
+    "at": "2026-09-11T12:35:00Z",
+    "doc_id": "bls:cpi_release:2026-08",
+    "event_ticker": null,
+    "detail": "The August CPI report was published at 12:30 UTC; the feed noticed it five minutes later."
+  },
+  "as_of": "2026-09-11T12:35:00Z",
+  "event_ticker": "KXCPIYOY-26SEP",
+  "status": "done",
+  "exit": "no_edge",
+  "exit_detail": "no market meets the liquidity floor",
+  "passage_ids": [
+    "bls:cpi_release:2026-08#1",
+    "bls:cpi_release:2026-08#0"
+  ],
+  "origins": [
+    {
+      "origin_id": "bls:cpi_release:2026-06",
+      "source": "bls.gov",
+      "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
+      "published_at": "2026-07-14T12:30:00Z",
+      "is_primary": true
+    }
+  ],
+  "forecast": {
+    "forecast_id": "fc-5d272fdcb598451b",
+    "episode_id": "episode-185a4f24404f5cbd",
+    "event_ticker": "KXCPIYOY-26SEP",
+    "as_of": "2026-09-11T12:35:00Z",
+    "system": "pipeline",
+    "outcome_probabilities": {
+      "le_3.2": 0.2000371812528374,
+      "gt_3.2_le_3.3": 0.15949284795516624,
+      "gt_3.3_le_3.4": 0.1966166179122524,
+      "gt_3.4_le_3.5": 0.1813285653102826,
+      "gt_3.5_le_3.6": 0.14664095144154812,
+      "gt_3.6_le_3.7": 0.05582185896050914,
+      "gt_3.7_le_3.8": 0.030060841969159962,
+      "gt_3.8": 0.03000113519824415
+    },
+    "market_probabilities": {
+      "KXCPIYOY-26SEP-T3.2": 0.7999628187471626,
+      "KXCPIYOY-26SEP-T3.3": 0.6404699707919964,
+      "KXCPIYOY-26SEP-T3.4": 0.443853352879744,
+      "KXCPIYOY-26SEP-T3.5": 0.26252478756946135,
+      "KXCPIYOY-26SEP-T3.6": 0.11588383612791325,
+      "KXCPIYOY-26SEP-T3.7": 0.06006197716740411,
+      "KXCPIYOY-26SEP-T3.8": 0.03000113519824415
+    },
+    "coverage": 1.0,
+    "confidence": 0.3333333333333333,
+    "n_independent_origins": 1,
+    "budget_exhausted": false,
+    "depth_reached": 1,
+    "fast_path": false,
+    "protected_node_id": null,
+    "protected_drove_size": false,
+    "paths": [
+      {
+        "node_ids": [
+          "node-c7d62da6ecaf4a5e"
+        ],
+        "claims": [
+          "September 12-month CPI inflation stays close to August's 3.4 percent"
+        ],
+        "mass": 0.5,
+        "status": "leaf"
+      },
+      {
+        "node_ids": [
+          "node-aae188da09a4de5e"
+        ],
+        "claims": [
+          "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent"
+        ],
+        "mass": 0.3,
+        "status": "leaf"
+      },
+      {
+        "node_ids": [
+          "node-bc4be82d9df99e48"
+        ],
+        "claims": [
+          "12-month CPI inflation eases to 3.3 percent or below"
+        ],
+        "mass": 0.2,
+        "status": "leaf"
+      }
+    ],
+    "passage_ids": [
+      "bls:cpi_release:2026-08#1",
+      "bls:cpi_release:2026-08#0"
+    ]
+  },
+  "proposal": null,
+  "gate": null,
+  "routing": null,
+  "review": null,
+  "orders": [],
+  "fill_tagged": false,
+  "usage": {
+    "calls": 5,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cost_usd": "0",
+    "seconds": 0.0
+  },
+  "trace": [
+    {
+      "seq": 1,
+      "node": "trigger",
+      "kind": "observation",
+      "summary": "new_document trigger new-document:bls:cpi_release:2026-08 at 2026-09-11T12:35:00+00:00 (document bls:cpi_release:2026-08)",
+      "role": null,
+      "data": {
+        "trigger": {
+          "trigger_id": "new-document:bls:cpi_release:2026-08",
+          "kind": "new_document",
+          "at": "2026-09-11T12:35:00Z",
+          "doc_id": "bls:cpi_release:2026-08",
+          "event_ticker": null,
+          "detail": "The August CPI report was published at 12:30 UTC; the feed noticed it five minutes later."
+        }
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 2,
+      "node": "match",
+      "kind": "action",
+      "summary": "search the events index for the top 5 events as of 2026-09-11T12:35:00+00:00",
+      "role": null,
+      "data": {
+        "k": 5,
+        "excluded": []
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 3,
+      "node": "match",
+      "kind": "observation",
+      "summary": "1 candidate event(s): KXCPIYOY-26SEP",
+      "role": null,
+      "data": {
+        "hits": [
+          {
+            "event_ticker": "KXCPIYOY-26SEP",
+            "similarity": 0.19662737846374512
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 4,
+      "node": "match",
+      "kind": "thought",
+      "summary": "The August CPI report is the latest reading of the 12-month CPI change that the September event resolves on.",
+      "role": "Monitor",
+      "data": {
+        "output": {
+          "matched": true,
+          "event_ticker": "KXCPIYOY-26SEP",
+          "rationale": "The August CPI report is the latest reading of the 12-month CPI change that the September event resolves on."
+        }
+      },
+      "call": {
+        "task": "match",
+        "slot": "monitor",
+        "role": "Monitor",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "low",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 5,
+      "node": "match",
+      "kind": "observation",
+      "summary": "matched event KXCPIYOY-26SEP",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 6,
+      "node": "research",
+      "kind": "thought",
+      "summary": "One query for inflation staying high or rising, one for it easing.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "query_for": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased",
+          "query_against": "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed",
+          "rationale": "One query for inflation staying high or rising, one for it easing."
+        }
+      },
+      "call": {
+        "task": "plan_queries",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 7,
+      "node": "research",
+      "kind": "action",
+      "summary": "retrieve the top 8 passages for two queries as of 2026-09-11T12:35:00+00:00",
+      "role": null,
+      "data": {
+        "queries": [
+          "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased",
+          "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
+        ],
+        "published_after": null
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 8,
+      "node": "research",
+      "kind": "observation",
+      "summary": "8 passage(s) retrieved",
+      "role": null,
+      "data": {
+        "passages": [
+          {
+            "passage_id": "bls:cpi_release:2026-08#1",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.5372742904535085
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-08#2",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.49730405942253436
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-08#0",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.4847061383465339
+          },
+          {
+            "passage_id": "fed:waller20260903a#4",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
+            "published_at": "2026-09-03T12:30:00+00:00",
+            "score": 0.1552026414413212
+          },
+          {
+            "passage_id": "fed:waller20260903a#5",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
+            "published_at": "2026-09-03T12:30:00+00:00",
+            "score": 0.14556946287484515
+          },
+          {
+            "passage_id": "bls:employment_situation:2026-08#2",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
+            "published_at": "2026-09-04T12:30:00+00:00",
+            "score": 0.13667701933075108
+          },
+          {
+            "passage_id": "bls:employment_situation:2026-08#18",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
+            "published_at": "2026-09-04T12:30:00+00:00",
+            "score": 0.13074860827912096
+          },
+          {
+            "passage_id": "fed:fomcminutes20260729#3",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "published_at": "2026-08-19T18:00:00+00:00",
+            "score": 0.09981822386596091
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 9,
+      "node": "research",
+      "kind": "thought",
+      "summary": "Kept the release's headline: the monthly change, the 12-month change, gasoline and core.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "keep_passage_ids": [
+            "bls:cpi_release:2026-08#0",
+            "bls:cpi_release:2026-08#1"
+          ],
+          "dropped": [
+            {
+              "passage_id": "bls:cpi_release:2026-08#2",
+              "reason": "Food detail, small weight in the all items index."
+            },
+            {
+              "passage_id": "fed:waller20260903a#4",
+              "reason": "A speech about PCE inflation and policy."
+            },
+            {
+              "passage_id": "fed:waller20260903a#5",
+              "reason": "A speech about policy, not CPI."
+            },
+            {
+              "passage_id": "bls:employment_situation:2026-08#2",
+              "reason": "Labor market data."
+            },
+            {
+              "passage_id": "bls:employment_situation:2026-08#18",
+              "reason": "Survey methodology."
+            },
+            {
+              "passage_id": "fed:fomcminutes20260729#3",
+              "reason": "Open market operations."
+            }
+          ],
+          "rationale": "Kept the release's headline: the monthly change, the 12-month change, gasoline and core."
+        }
+      },
+      "call": {
+        "task": "select_passages",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 10,
+      "node": "research",
+      "kind": "observation",
+      "summary": "kept 2 of 8 passage(s)",
+      "role": null,
+      "data": {
+        "passage_ids": [
+          "bls:cpi_release:2026-08#1",
+          "bls:cpi_release:2026-08#0"
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 11,
+      "node": "research",
+      "kind": "action",
+      "summary": "resolve origins and apply the origin rule",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 12,
+      "node": "research",
+      "kind": "observation",
+      "summary": "1 independent origin(s), 1 primary",
+      "role": null,
+      "data": {
+        "origins": [
+          {
+            "origin_id": "bls:cpi_release:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
+            "published_at": "2026-07-14T12:30:00Z",
+            "is_primary": true
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 13,
+      "node": "forecast",
+      "kind": "action",
+      "summary": "beam search over 1 level(s); 0 earlier rejection(s), 0 ledger example(s), bankroll $1000",
+      "role": null,
+      "data": {
+        "levels": [
+          {
+            "scheduled_event_id": "resolution:KXCPIYOY-26SEP",
+            "title": "Resolution: Inflation in September 2026 (CPI YoY)",
+            "scheduled_at": "2026-10-14T12:29:00Z",
+            "is_resolution": true
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 14,
+      "node": "forecast",
+      "kind": "action",
+      "summary": "level 1 of 1: generate, check, and score scenarios for Resolution: Inflation in September 2026 (CPI YoY)",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 15,
+      "node": "forecast",
+      "kind": "thought",
+      "summary": "Proposed 3 scenario(s): September 12-month CPI inflation stays close to August's 3.4 percent; Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent; 12-month CPI inflation eases to 3.3 percent or below",
+      "role": "Generator",
+      "data": {
+        "output": {
+          "thoughts": [
+            {
+              "claim": "September 12-month CPI inflation stays close to August's 3.4 percent",
+              "outcome_ids": [],
+              "value_low": 3.3,
+              "value_high": 3.5,
+              "passage_ids": [
+                "bls:cpi_release:2026-08#1"
+              ],
+              "rationale": "The 12-month rate was 3.4 percent in both July and August."
+            },
+            {
+              "claim": "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent",
+              "outcome_ids": [],
+              "value_low": 3.5,
+              "value_high": null,
+              "passage_ids": [
+                "bls:cpi_release:2026-08#0"
+              ],
+              "rationale": "Gasoline drove over a third of August's 0.4 percent monthly rise."
+            },
+            {
+              "claim": "12-month CPI inflation eases to 3.3 percent or below",
+              "outcome_ids": [],
+              "value_low": null,
+              "value_high": 3.3,
+              "passage_ids": [
+                "bls:cpi_release:2026-08#1"
+              ],
+              "rationale": "Core inflation slowed to 2.4 percent over the year."
+            }
+          ]
+        }
+      },
+      "call": {
+        "task": "generate",
+        "slot": "generator",
+        "role": "Generator",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 16,
+      "node": "forecast",
+      "kind": "thought",
+      "summary": "Scored scored 0.50: Two months at 3.4 percent make a nearby reading the single likeliest case. | scored 0.30: Energy could keep adding to the headline, but one month is thin evidence. | scored 0.20: Slowing core makes some easing possible, though energy works against it.",
+      "role": "Critic",
+      "data": {
+        "output": {
+          "scores": [
+            {
+              "scenario_id": "node-c7d62da6ecaf4a5e",
+              "verdict": "scored",
+              "probability": 0.5,
+              "option_probabilities": [],
+              "quantiles": {
+                "q05": 3.2,
+                "q25": 3.3,
+                "q50": 3.4,
+                "q75": 3.5,
+                "q95": 3.6
+              },
+              "rejection_reason": "",
+              "evidence_request": "",
+              "rationale": "Two months at 3.4 percent make a nearby reading the single likeliest case."
+            },
+            {
+              "scenario_id": "node-aae188da09a4de5e",
+              "verdict": "scored",
+              "probability": 0.3,
+              "option_probabilities": [],
+              "quantiles": {
+                "q05": 3.4,
+                "q25": 3.5,
+                "q50": 3.6,
+                "q75": 3.7,
+                "q95": 3.9
+              },
+              "rejection_reason": "",
+              "evidence_request": "",
+              "rationale": "Energy could keep adding to the headline, but one month is thin evidence."
+            },
+            {
+              "scenario_id": "node-bc4be82d9df99e48",
+              "verdict": "scored",
+              "probability": 0.2,
+              "option_probabilities": [],
+              "quantiles": {
+                "q05": 3.0,
+                "q25": 3.1,
+                "q50": 3.2,
+                "q75": 3.3,
+                "q95": 3.4
+              },
+              "rejection_reason": "",
+              "evidence_request": "",
+              "rationale": "Slowing core makes some easing possible, though energy works against it."
+            }
+          ]
+        }
+      },
+      "call": {
+        "task": "score",
+        "slot": "critic_depth1",
+        "role": "Critic",
+        "model": "claude-fable-5-2",
+        "served_model": "claude-fable-5-2",
+        "effort": "high",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 17,
+      "node": "forecast",
+      "kind": "observation",
+      "summary": "level 1: 3 leaf",
+      "role": null,
+      "data": {
+        "nodes": [
+          {
+            "node_id": "node-c7d62da6ecaf4a5e",
+            "parent_id": null,
+            "claim": "September 12-month CPI inflation stays close to August's 3.4 percent",
+            "status": "leaf",
+            "reason": "leaf",
+            "cond_probability": 0.5,
+            "path_mass": 0.5,
+            "passage_ids": [
+              "bls:cpi_release:2026-08#1"
+            ]
+          },
+          {
+            "node_id": "node-aae188da09a4de5e",
+            "parent_id": null,
+            "claim": "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent",
+            "status": "leaf",
+            "reason": "leaf",
+            "cond_probability": 0.3,
+            "path_mass": 0.3,
+            "passage_ids": [
+              "bls:cpi_release:2026-08#0"
+            ]
+          },
+          {
+            "node_id": "node-bc4be82d9df99e48",
+            "parent_id": null,
+            "claim": "12-month CPI inflation eases to 3.3 percent or below",
+            "status": "leaf",
+            "reason": "leaf",
+            "cond_probability": 0.2,
+            "path_mass": 0.2,
+            "passage_ids": [
+              "bls:cpi_release:2026-08#1"
+            ]
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 18,
+      "node": "forecast",
+      "kind": "observation",
+      "summary": "forecast: coverage 1.000, confidence 0.333, depth 1, 1 origin(s)",
+      "role": null,
+      "data": {
+        "forecast": {
+          "forecast_id": "fc-5d272fdcb598451b",
+          "episode_id": "episode-185a4f24404f5cbd",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "as_of": "2026-09-11T12:35:00Z",
+          "system": "pipeline",
+          "outcome_probabilities": {
+            "le_3.2": 0.2000371812528374,
+            "gt_3.2_le_3.3": 0.15949284795516624,
+            "gt_3.3_le_3.4": 0.1966166179122524,
+            "gt_3.4_le_3.5": 0.1813285653102826,
+            "gt_3.5_le_3.6": 0.14664095144154812,
+            "gt_3.6_le_3.7": 0.05582185896050914,
+            "gt_3.7_le_3.8": 0.030060841969159962,
+            "gt_3.8": 0.03000113519824415
+          },
+          "market_probabilities": {
+            "KXCPIYOY-26SEP-T3.2": 0.7999628187471626,
+            "KXCPIYOY-26SEP-T3.3": 0.6404699707919964,
+            "KXCPIYOY-26SEP-T3.4": 0.443853352879744,
+            "KXCPIYOY-26SEP-T3.5": 0.26252478756946135,
+            "KXCPIYOY-26SEP-T3.6": 0.11588383612791325,
+            "KXCPIYOY-26SEP-T3.7": 0.06006197716740411,
+            "KXCPIYOY-26SEP-T3.8": 0.03000113519824415
+          },
+          "coverage": 1.0,
+          "confidence": 0.3333333333333333,
+          "n_independent_origins": 1,
+          "budget_exhausted": false,
+          "depth_reached": 1,
+          "fast_path": false,
+          "protected_node_id": null,
+          "protected_drove_size": false,
+          "paths": [
+            {
+              "node_ids": [
+                "node-c7d62da6ecaf4a5e"
+              ],
+              "claims": [
+                "September 12-month CPI inflation stays close to August's 3.4 percent"
+              ],
+              "mass": 0.5,
+              "status": "leaf"
+            },
+            {
+              "node_ids": [
+                "node-aae188da09a4de5e"
+              ],
+              "claims": [
+                "Energy keeps pushing 12-month CPI inflation up, to above 3.5 percent"
+              ],
+              "mass": 0.3,
+              "status": "leaf"
+            },
+            {
+              "node_ids": [
+                "node-bc4be82d9df99e48"
+              ],
+              "claims": [
+                "12-month CPI inflation eases to 3.3 percent or below"
+              ],
+              "mass": 0.2,
+              "status": "leaf"
+            }
+          ],
+          "passage_ids": [
+            "bls:cpi_release:2026-08#1",
+            "bls:cpi_release:2026-08#0"
+          ]
+        },
+        "calls": {
+          "generator": 1,
+          "critic": 1
+        }
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 19,
+      "node": "size",
+      "kind": "action",
+      "summary": "size the event: confidence 0.333, bankroll $1000",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 20,
+      "node": "size",
+      "kind": "observation",
+      "summary": "no trade: no market meets the liquidity floor",
+      "role": null,
+      "data": {
+        "best": null,
+        "candidates": [
+          {
+            "market_ticker": "KXCPIYOY-26SEP-T3.6",
+            "side": "yes",
+            "ask": "0.5500",
+            "shrunk_probability": "0.232941918063956625",
+            "edge": "-0.334383081936043375",
+            "liquidity": "39.485700",
+            "meets_liquidity": false
+          },
+          {
+            "market_ticker": "KXCPIYOY-26SEP-T3.6",
+            "side": "no",
+            "ask": "0.8500",
+            "shrunk_probability": "0.767058081936043375",
+            "edge": "-0.091866918063956625",
+            "liquidity": "14.604300",
+            "meets_liquidity": false
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 21,
+      "node": "size",
+      "kind": "observation",
+      "summary": "exit no_edge: no market meets the liquidity floor",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 22,
+      "node": "record",
+      "kind": "observation",
+      "summary": "exit no_edge: no market meets the liquidity floor; 7 ledger entries",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    }
+  ],
+  "started_at": "2026-09-11T12:35:00Z",
+  "finished_at": "2026-09-11T12:35:00Z"
+}

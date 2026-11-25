@@ -1,0 +1,522 @@
+{
+  "description": "Real August 2026 CPI report and seven real strikes of the September CPI ladder; one hand-written forecast gives a monotone probability for every strike.",
+  "provenance": "hand-made fixture",
+  "trigger": {
+    "trigger_id": "new-document:bls:cpi_release:2026-08",
+    "kind": "new_document",
+    "at": "2026-09-11T12:35:00Z",
+    "doc_id": "bls:cpi_release:2026-08",
+    "detail": "The August CPI report was published at 12:30 UTC; the feed noticed it five minutes later."
+  },
+  "series": [
+    {
+      "ticker": "KXCPIYOY",
+      "title": "Inflation",
+      "category": "Economics",
+      "frequency": "monthly",
+      "fee_type": "quadratic_with_maker_fees",
+      "fee_multiplier": "1",
+      "settlement_sources": [
+        {
+          "name": "Bureau of Labor Statistics",
+          "url": "https://www.bls.gov/cpi/"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event_ticker": "KXCPIYOY-26SEP",
+      "series_ticker": "KXCPIYOY",
+      "title": "Inflation in September 2026 (CPI YoY)",
+      "sub_title": "In Sep 2026",
+      "category": "Economics",
+      "markets": [
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.2",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.2% for the year ending in September 2026?",
+          "subtitle": "Above 3.2%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.2",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.2% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.7800",
+          "yes_ask": "0.9800",
+          "last_price": "0.8300",
+          "volume": "3109.24",
+          "volume_24h": "2800.00",
+          "open_interest": "2869.97"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.3",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.3% for the year ending in September 2026?",
+          "subtitle": "Above 3.3%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.3",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.3% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.7100",
+          "yes_ask": "1.0000",
+          "last_price": "0.8800",
+          "volume": "603.68",
+          "volume_24h": "1.36",
+          "open_interest": "458.34"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.4",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.4% for the year ending in September 2026?",
+          "subtitle": "Above 3.4%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.4",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.4% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.5500",
+          "yes_ask": "0.7600",
+          "last_price": "0.7300",
+          "volume": "3705.66",
+          "volume_24h": "2274.09",
+          "open_interest": "3455.57"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.5",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.5% for the year ending in September 2026?",
+          "subtitle": "Above 3.5%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.5",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.5% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.4200",
+          "yes_ask": "0.7400",
+          "last_price": "0.3900",
+          "volume": "129.58",
+          "volume_24h": "2.00",
+          "open_interest": "58.00"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.6",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.6% for the year ending in September 2026?",
+          "subtitle": "Above 3.6%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.6",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.6% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.1500",
+          "yes_ask": "0.5500",
+          "last_price": "0.7300",
+          "volume": "3283.84",
+          "volume_24h": "2858.09",
+          "open_interest": "2921.00"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.7",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.7% for the year ending in September 2026?",
+          "subtitle": "Above 3.7%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.7",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.7% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.2200",
+          "yes_ask": "0.5800",
+          "last_price": "0.2100",
+          "volume": "1925.35",
+          "volume_24h": "6.00",
+          "open_interest": "1650.45"
+        },
+        {
+          "ticker": "KXCPIYOY-26SEP-T3.8",
+          "event_ticker": "KXCPIYOY-26SEP",
+          "title": "Will the rate of CPI inflation be above 3.8% for the year ending in September 2026?",
+          "subtitle": "Above 3.8%",
+          "status": "open",
+          "open_time": "2026-06-09T22:25:00Z",
+          "close_time": "2026-10-14T12:29:00Z",
+          "strike_type": "greater",
+          "floor_strike": "3.8",
+          "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.8% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+          "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.1000",
+          "yes_ask": "0.4800",
+          "last_price": "0.1400",
+          "volume": "2912.21",
+          "volume_24h": "170.00",
+          "open_interest": "2408.00"
+        }
+      ]
+    }
+  ],
+  "order_books": {
+    "KXCPIYOY-26SEP-T3.2": {
+      "ticker": "KXCPIYOY-26SEP-T3.2",
+      "as_of": "2026-09-11T12:35:00Z"
+    },
+    "KXCPIYOY-26SEP-T3.3": {
+      "ticker": "KXCPIYOY-26SEP-T3.3",
+      "as_of": "2026-09-11T12:35:00Z"
+    },
+    "KXCPIYOY-26SEP-T3.4": {
+      "ticker": "KXCPIYOY-26SEP-T3.4",
+      "as_of": "2026-09-11T12:35:00Z"
+    },
+    "KXCPIYOY-26SEP-T3.5": {
+      "ticker": "KXCPIYOY-26SEP-T3.5",
+      "as_of": "2026-09-11T12:35:00Z"
+    },
+    "KXCPIYOY-26SEP-T3.6": {
+      "ticker": "KXCPIYOY-26SEP-T3.6",
+      "as_of": "2026-09-11T12:35:00Z",
+      "yes_bids": [
+        {
+          "price": "0.1500",
+          "contracts": "5"
+        }
+      ],
+      "no_bids": [
+        {
+          "price": "0.4500",
+          "contracts": "5"
+        }
+      ]
+    },
+    "KXCPIYOY-26SEP-T3.7": {
+      "ticker": "KXCPIYOY-26SEP-T3.7",
+      "as_of": "2026-09-11T12:35:00Z"
+    },
+    "KXCPIYOY-26SEP-T3.8": {
+      "ticker": "KXCPIYOY-26SEP-T3.8",
+      "as_of": "2026-09-11T12:35:00Z"
+    }
+  },
+  "liquidity": {
+    "KXCPIYOY-26SEP-T3.2": {
+      "no": "0",
+      "yes": "0"
+    },
+    "KXCPIYOY-26SEP-T3.3": {
+      "no": "0",
+      "yes": "0"
+    },
+    "KXCPIYOY-26SEP-T3.4": {
+      "no": "0",
+      "yes": "0"
+    },
+    "KXCPIYOY-26SEP-T3.5": {
+      "no": "0",
+      "yes": "0"
+    },
+    "KXCPIYOY-26SEP-T3.6": {
+      "no": "14.604300",
+      "yes": "39.485700"
+    },
+    "KXCPIYOY-26SEP-T3.7": {
+      "no": "0",
+      "yes": "0"
+    },
+    "KXCPIYOY-26SEP-T3.8": {
+      "no": "0",
+      "yes": "0"
+    }
+  },
+  "documents": [
+    {
+      "doc_id": "bls:cpi_release:2026-08",
+      "source": "bls.gov",
+      "kind": "cpi_release",
+      "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+      "title": "Consumer Price Index for August 2026",
+      "published_at": "2026-09-11T12:30:00Z",
+      "text": "Transmission of material in this release is embargoed until\n8:30 a.m. (ET) Friday, September 11, 2026           USDL-26-1496\n\nTechnical information: (202) 691-7000  *  cpi_info@bls.gov  *  www.bls.gov/cpi\nMedia contact:         (202) 691-5902  *  PressOffice@bls.gov\n\nCONSUMER PRICE INDEX - AUGUST 2026\n\nThe Consumer Price Index for All Urban Consumers (CPI-U) increased 0.4 percent on a seasonally adjusted basis in August after rising 0.1 percent in July, the U.S. Bureau of Labor Statistics reported today. Over the last 12 months, the all items index increased 3.4 percent before seasonal adjustment.\n\nThe index for gasoline rose 3.9 percent in August, accounting for over one third of the monthly all items increase. The index for energy increased 2.1 percent over the month. The shelter index rose 0.3 percent in August after rising 0.1 percent in July. The index for food increased 0.1 percent over the month, as the index for food away from home increased 0.3 percent.\n\nThe index for all items less food and energy rose 0.3 percent after increasing 0.2 percent in July. Indexes that increased over the month include communication, lodging away from home, airline fares, education, and used cars and trucks. Conversely, the index for medical care and the index for motor vehicle insurance were among the major indexes that decreased in August.\n\nThe all items index rose 3.4 percent for the 12 months ending August as it did for the 12 months ending July. The all items less food and energy index rose 2.4 percent over the year, following a 2.5-percent increase over the 12 months ending July. The energy index increased 16.3 percent for the 12 months ending August. The food index increased 2.7 percent over the last year.\n\nFood\n\nThe food index rose 0.1 percent in August, as it did in July. The index for food at home was unchanged over the month. Four of the six major grocery store food group indexes increased in August. The meats, poultry, fish, and eggs index increased 0.1 percent over the month, as the eggs index rose 2.9 percent. The index for other food at home also increased 0.1 percent in August. The nonalcoholic beverages index increased 0.2 percent over the month, and the dairy and related products index rose 0.3 percent. The index for cereals and bakery products was unchanged in August.\n\nIn contrast, the fruits and vegetables index declined 0.4 percent in August after falling in the preceding 2 months. The index for lettuce continued to fall, declining 6.2 percent in August after decreasing 16.4 percent in July.\n\nThe food away from home index rose 0.3 percent in August. The index for full service meals rose 0.4 percent, and the index for limited service meals was unchanged over the month.\n\nThe food at home index rose 2.2 percent over the 12 months ending in August. The index for other food at home increased 2.4 percent, and the index for fruits and vegetables rose 3.2 percent over the year. The nonalcoholic beverages index increased 3.7 percent over the 12 months ending in August, and the cereals and bakery products index rose 2.6 percent over the same period. The index for meats, poultry, fish, and eggs increased 1.1 percent over the last 12 months. In contrast, the dairy and related products index fell 0.3 percent over the year.\n\nThe food away from home index rose 3.4 percent over the last year. The index for full service meals rose 3.5 percent, and the index for limited service meals rose 3.2 percent over the 12 months ending in August.\n\nEnergy\n\nThe index for energy increased 2.1 percent in August after falling 1.5 percent in July. The gasoline index increased 3.9 percent over the month. (Before seasonal adjustment, gasoline prices increased 2.5 percent in August.) Conversely, the index for natural gas decreased 1.1 percent in August, and the index for electricity fell 0.2 percent.\n\nThe index for energy increased 16.3 percent over the past 12 months due in large part to the index for gasoline rising 27.4 percent over the same period. The natural gas index increased 4.4 percent over the 12 months ending in August, and the electricity index rose 3.8 percent.\n\nAll items less food and energy\n\nThe index for all items less food and energy rose 0.3 percent in August after rising 0.2 percent in July. The shelter index increased 0.3 percent over the month after rising 0.1 percent in July. The index for owners' equivalent rent rose 0.2 percent in August as did the index for rent. The lodging away from home index rose 2.4 percent in August after falling 2.8 percent the previous month.\n\nThe index for communication increased 2.3 percent over the month after rising 0.6 percent in July. The airline fares index rose 2.7 percent in August, and the education index increased 0.8 percent. The index for used cars and trucks increased 0.4 percent in August, and the index for new vehicles rose 0.3 percent. The personal care index and the household furnishings and operations index also increased over the month.\n\nThe medical care index decreased 0.2 percent in August after rising 0.4 percent in July. The index for dental services fell 0.6 percent over the month. The hospital services index, physicians' services index, and prescription drugs index were all unchanged in August.\n\nThe motor vehicle insurance index declined 0.8 percent in August after falling 0.3 percent in July. The index for apparel was unchanged in August as was the index for recreation.\n\nThe index for all items less food and energy rose 2.4 percent over the past 12 months. The shelter index increased 3.0 percent over the last year. Other indexes with notable increases over the last year include airline fares (+23.4 percent), recreation (+2.7 percent), medical care (+1.6 percent), and personal care (+3.8 percent).\n\nNot seasonally adjusted CPI measures\n\nThe Consumer Price Index for All Urban Consumers (CPI-U) increased 3.4 percent over the last 12 months to an index level of 334.980 (1982-84=100). For the month, the index rose 0.3 percent prior to seasonal adjustment.\n\nThe Consumer Price Index for Urban Wage Earners and Clerical Workers (CPI-W) increased 3.5 percent over the last 12 months to an index level of 328.481 (1982-84=100). For the month, the index increased 0.4 percent prior to seasonal adjustment.\n\nThe Chained Consumer Price Index for All Urban Consumers (C-CPI-U) increased 3.3 percent over the last 12 months. For the month, the index increased 0.3 percent on a not seasonally adjusted basis. Please note that the indexes for the past 10 to 12 months are subject to revision. _______________ The Consumer Price Index news release for September 2026 is scheduled to be published on Wednesday, October 14, 2026, at 8:30 a.m. (ET).\n\nTechnical Note\n\nBrief Explanation of the CPI The Consumer Price Index (CPI) measures the change in prices paid by consumers for goods and services. The CPI reflects spending patterns for each of two population groups: all urban consumers and urban wage earners and clerical workers. The all urban consumer group represents over 90 percent of the total U.S. population. It is based on the expenditures of almost all residents of urban or metropolitan areas, including professionals, the self-employed, the poor, the unemployed, and retired people, as well as urban wage earners and clerical workers. Not included in the CPI are the spending patterns of people living in rural nonmetropolitan areas, farming families, people in the Armed Forces, and those in institutions, such as prisons and mental hospitals. Consumer inflation for all urban consumers is measured by two indexes, namely, the Consumer Price Index for All Urban Consumers (CPI-U) and the Chained Consumer Price Index for All Urban Consumers (C-CPI-U).\n\nThe Consumer Price Index for Urban Wage Earners and Clerical Workers (CPI-W) is based on the expenditures of households included in the CPI-U definition that meet two requirements: more than one-half of the household's income must come from clerical or wage occupations, and at least one of the household's earners must have been employed for at least 37 weeks during the previous 12 months. The CPI-W population represents approximately 30 percent of the total U.S. population and is a subset of the CPI-U population.\n\nThe CPIs are based on prices of food, clothing, shelter, fuels, transportation, doctors' and dentists' services, drugs, and other goods and services that people buy for day-to-day living. Prices are collected each month in 75 urban areas across the country from about 6,000 housing units and approximately 22,000 retail establishments (department stores, supermarkets, hospitals, and other types of stores and service establishments). All taxes directly associated with the purchase and use of items are included in the index. Prices of fuels and a few other items are obtained every month in all 75 locations. Prices of most other commodities and services are collected every month in the three largest geographic areas and every other month in other areas. Prices of most goods and services are obtained by personal visit, telephone call, web, or app collection by the Bureau's trained representatives.\n\nIn calculating the index, price changes for the various items in each location are aggregated using weights, which represent their importance in the spending of the appropriate population group. Local data are then combined to obtain a U.S. city average. For the CPI-U and CPI-W, separate indexes are also published by size of city, by region of the country, for cross-classifications of regions and population-size classes, and for 23 selected local areas. Area indexes do not measure differences in the level of prices among cities; they only measure the average change in prices for each area since the base period. For the C-CPI-U, data are issued only at the national level. The CPI-U and CPI-W are considered final when released, but the C-CPI-U is issued in preliminary form and subject to three subsequent quarterly revisions.\n\nThe index measures price change from a designed reference date. For most of the CPI-U and the CPI-W, the reference base is 1982-84 equals 100. The reference base for the C-CPI-U is December 1999 equals 100. An increase of 7 percent from the reference base, for example, is shown as 107.000. Alternatively, that relationship can also be expressed as the price of a base period market basket of goods and services rising from $100 to $107.\n\nSampling Error in the CPI\n\nThe CPI is a statistical estimate that is subject to sampling error because it is based upon a sample of retail prices and not the complete universe of all prices. BLS calculates and publishes estimates of the 1-month, 2-month, 6-month, and 12-month percent change standard errors annually for the CPI-U. These standard error estimates can be used to construct confidence intervals for hypothesis testing. For example, the estimated standard error of the 1-month percent change is 0.04 percent for the U.S. all items CPI. This means that if we repeatedly sample from the universe of all retail prices using the same methodology, and estimate a percentage change for each sample, then 95 percent of these estimates will be within 0.08 percent of the 1-month percentage change based on all retail prices. For example, for a 1-month change of 0.2 percent in the all items CPI-U, we are 95 percent confident that the actual percent change based on all retail prices would fall between 0.12 and 0.28 percent. For the latest data, including information on how to use the estimates of standard error, see www.bls.gov/cpi/tables/variance-estimates/home.htm.\n\nCalculating Index Changes\n\nMovements of the indexes from 1 month to another are usually expressed as percent changes rather than changes in index points, because index point changes are affected by the level of the index in relation to its base period, while percent changes are not. The following table shows an example of using index values to calculate percent changes:\n\n                            Item A                  Item B                      Item C\nYear I                      112.500                 225.000                     110.000\nYear II                     121.500                 243.000                     128.000\nChange in index points      9.000                   18.000                      18.000\nPercent change              9.0/112.500 x 100 = 8.0  18.0/225.000 x 100 = 8.0   18.0/110.000 x 100 = 16.4\n\nUse of Seasonally Adjusted and Unadjusted Data\n\nThe Consumer Price Index (CPI) program produces both unadjusted and seasonally adjusted data. Seasonally adjusted data are computed using seasonal factors derived by the X-13ARIMA-SEATS seasonal adjustment method. These factors are updated each February, and the new factors are used to revise the previous 5 years of seasonally adjusted data. The factors are available at www.bls.gov/web/cpi/cpi-seasonal-factors.xlsx. For more information on data revision scheduling, please see the Seasonal Adjustment questions and answers page at www.bls.gov/cpi/seasonal-adjustment/questions-and-answers.htm and the Timeline of Seasonal Adjustment Methodological Changes at www.bls.gov/cpi/seasonal-adjustment/timeline-seasonal-adjustment-methodology-changes.htm.\n\nHow to Use Seasonally Adjusted and Unadjusted Data\n\nFor analyzing short-term price trends in the economy, seasonally adjusted changes are usually preferred since they eliminate the effect of changes that normally occur at the same time and in about the same magnitude every year-such as price movements resulting from weather events, production cycles, model changeovers, holidays, and sales. This allows data users to focus on changes that are not typical for the time of year.\n\nThe unadjusted data are of primary interest to consumers concerned about the prices they actually pay. Unadjusted data are also used extensively for escalation purposes. Many collective bargaining contract agreements and pension plans, for example, tie compensation changes to the Consumer Price Index before adjustment for seasonal variation. BLS advises against the use of seasonally adjusted data in escalation agreements because seasonally adjusted series are revised annually for five years.\n\nIntervention Analysis\n\nThe Bureau of Labor Statistics uses intervention analysis seasonal adjustment (IASA) for some CPI series. Sometimes extreme values or sharp movements can distort the underlying seasonal pattern of price change. Intervention analysis seasonal adjustment is a process by which the distortions caused by such unusual events are estimated and removed from the data prior to calculation of seasonal factors. The resulting seasonal factors, which more accurately represent the seasonal pattern, are then applied to the unadjusted data.\n\nFor example, this procedure was used for the motor fuel series to offset the effects of the 2009 return to normal pricing after the worldwide economic downturn in 2008. Retaining this outlier data during seasonal factor calculation would distort the computation of the seasonal portion of the time series data for motor fuel, so it was estimated and removed from the data prior to seasonal adjustment. Following that, seasonal factors were calculated based on this \"prior adjusted\" data. These seasonal factors represent a clearer picture of the seasonal pattern in the data. The last step is for motor fuel seasonal factors to be applied to the unadjusted data.\n\nFor the seasonal factors introduced for January 2026, BLS adjusted 57 series using intervention analysis seasonal adjustment, including selected food and beverage items, motor fuels and vehicles.\n\nRevision of Seasonally Adjusted Indexes\n\nSeasonally adjusted data, including the U.S. city average all items index levels, are subject to revision for up to 5 years after their original release. Every year, economists in the CPI calculate new seasonal factors for seasonally adjusted series and apply them to the last 5 years of data. Seasonally adjusted indexes beyond the last 5 years of data are considered to be final and not subject to revision. For January 2026, revised seasonal factors and seasonally adjusted indexes for 2021 to 2025 were calculated and published. For series which are directly adjusted using the Census X-13ARIMA-SEATS seasonal adjustment software, the seasonal factors for 2025 will be applied to data for 2026 to produce the seasonally adjusted 2026 indexes. Series which are indirectly seasonally adjusted by summing seasonally adjusted component series have seasonal factors which are derived and are therefore not available in advance.\n\nDetermining Seasonal Status\n\nEach year the seasonal status of every series is reevaluated based upon certain statistical criteria. Using these criteria, BLS economists determine whether a series should change its status from \"not seasonally adjusted\" to \"seasonally adjusted\", or vice versa. If any of the 81 components of the U.S. city average all items index change their seasonal adjustment status from seasonally adjusted to not seasonally adjusted, not seasonally adjusted data will be used in the aggregation of the dependent series for the last 5 years, but the seasonally adjusted indexes before that period will not be changed. For 2026, 36 of the 81 components of the U.S. city average all items index are not seasonally adjusted.\n\nContact Information\n\nFor additional information about the CPI visit www.bls.gov/cpi or contact the CPI Information and Analysis Section at 202-691-7000 or cpi_info@bls.gov.\n\nFor additional information on seasonal adjustment in the CPI visit www.bls.gov/cpi/seasonal-adjustment/home.htm If you are deaf, hard of hearing, or have a speech disability, please dial 7-1-1 to access telecommunications relay services.\n",
+      "content_hash": "072b09c43e0b3015aa059afe865209104f09af088c8af6825b10e6de0c20927b"
+    }
+  ],
+  "scheduled_events": [
+    {
+      "scheduled_event_id": "fomc_decision:2026-09-16",
+      "kind": "fomc_decision",
+      "title": "FOMC meeting decision, September 15-16, 2026",
+      "scheduled_at": "2026-09-16T18:00:00Z"
+    },
+    {
+      "scheduled_event_id": "employment_situation:2026-09",
+      "kind": "employment_situation",
+      "title": "Employment Situation for September 2026",
+      "scheduled_at": "2026-10-02T12:30:00Z",
+      "period": "2026-09"
+    }
+  ],
+  "bankroll": "1000",
+  "stage": "approval",
+  "config_overrides": {
+    "forecast": {
+      "max_depth": 1
+    }
+  },
+  "knowledge_calls": [
+    {
+      "method": "search_events",
+      "arguments": {
+        "query": "Consumer Price Index for August 2026\nTransmission of material in this release is embargoed until\n8:30 a.m. (ET) Friday, September 11, 2026           USDL-26-1496\n\nTechnical information: (202) 691-7000  *  cpi_info@bls.gov  *  www.bls.gov/cpi\nMedia contact:         (202) 691-5902  *  PressOffice@bls.gov\n\nCONSUMER PRICE INDEX - AUGUST 2026\n\nThe Consumer Price Index for All Urban Consumers (CPI-U) increased 0.4 percent on a seasonally adjusted basis in August after rising 0.1 percent in July, the U.S. Bureau of Labor Statistics reported today. Over the last 12 months, the all items index increased 3.4 percent before seasonal adjustment.\n\nThe index for gasoline rose 3.9 percent in August, accounting for over one third of the monthly all items increase. The index for energy increased 2.1 percent over the month. The shelter index rose 0.3 percent in August after rising 0.1 percent in July. The index for food increased 0.1 percent over the month, as the index for food away from home increased 0.3 percent.\n\nThe index for all items less food and energy rose 0.3 percent after increasing 0.2 percent in July. Indexes that increased over the month include communication, lodging away from home, airline fares, education, and used cars and trucks. Conversely, the index for medical care and the index for motor vehicle insurance were among the major indexes that decreased in August.\n\nThe all items index rose 3.4 percent for the 12 months ending August as it did for the 12 months ending July. The all items less food and energy index rose 2.4 percent over the year, following a 2.5-percent increase over the 12 months ending July. The energy index increased 16.3 percent for the 12 months ending August. The food index increased 2.7 percent over the last year.\n\nFood\n\nThe food index rose 0.1 percent in August, as it did in July. The index for food at home was unchanged over the month. Four of the six major grocery store food group indexes increased in August. The meats, poultry, fish, and eggs index increased 0.1 percent over the month, as the eggs index rose 2.9 percent. The index for other food at home also increased 0.1 percent in August. The nonalcoholic beverages index increased 0.2 percent over the month, and the dairy and related products index rose 0.3 percent. The index for cereals and bakery products was unchanged in August.\n\nIn contrast, the fruits and vegetables index declined 0.4 percent in August after falling in the preceding 2 months. The index for lettuce continued to fall, declining 6.2 percent in August after decreasing 16.4 percent in July.\n\nThe food away from home index rose 0.3 percent in August. The index for full service meals rose 0.4 percent, and the index for limited service meals was unchanged over the month.\n\nThe food at home index rose 2.2 percent over the 12 months ending in August. The index for other food at home increased 2.4 percent, and the index for fruits and vegetables rose 3.2 percent over the year. The nonalcoholic beverages index increased 3.7 percent over the 12 months ending in August, and the cereals and bakery products index rose 2.6 percent over the same period. The index for meats, poultry, fish, and eggs increased 1.1 percent over the last 12 months. In contrast, the dairy and related products index fell 0.3 percent over the year.\n\nThe food away from home index rose 3.4 percent over the last year. The index for full service meals rose 3.5 percent, and the index for limited service meals rose 3.2 percent over the 12 months ending in August.\n\nEnergy\n\nThe index for energy increased 2.1 percent in August after falling 1.5 percent in July. The gasoline index increased 3.9 percent over the month. (Before seasonal adjustment, gasoline prices increased 2.5 percent in August.) Conversely, the index for natural gas decreased 1.1 percent in August, and the index for electricity fell 0.2 percent.\n\nThe index for energy increased 16.3 percent over the past 12 months due in large part to the index for gasoline rising 27.4 percent over the same period. The natural gas index increased 4.4 percent over the 12 months ending in August, and the electricity index rose 3.8 percent.\n\nAll items less food and energy\n\nThe index for all items less food and energy rose 0.3 percent in August after rising 0.2 percent in July. The shelter index increased 0.3 percent over the month after rising 0.1 percent in July. The index for owners' equivalent rent rose 0.2 percent in August as did the index for rent. The lodging away from home index rose 2.4 percent in August after falling 2.8 percent the previous month.\n\nThe index for communication increased 2.3 percent over the month after rising 0.6 percent in July. The airline fares index rose 2.7 percent in August, and the education index increased 0.8 percent. The index for used cars and trucks increased 0.4 percent in August, and the index for new vehicles rose 0.3 percent. The personal care index and the household furnishings and operations index also increased over the month.\n\nThe medical care index decreased 0.2 percent in August after rising 0.4 percent in July. The index for dental services fell 0.6 percent over the month. The hospital services index, physicians' services index, and prescription drugs index were all unchanged in August.\n\nThe motor vehicle insurance index declined 0.8 percent in August after falling 0.3 percent in July. The index for apparel was unchanged in August as was the index for recreation.\n\nThe index for all items less food and energy rose 2.4 percent over the past 12 months. The shelter index increased 3.0 percent over the last year. Other indexes with notable increases over the last year include airline fares (+23.4 percent), recreation (+2.7 percent), medical care (+1.6 percent), and personal care (+3.8 percent).\n\nNot seasonally adjusted CPI measures\n\nThe Consumer Price Index for All Urban Consumers (CPI-U) increased 3.4 percent over the last 12 months to an index level of 334.980 (1982-84=100). For the month, the index rose 0.3 percent prior to seasonal adjustment.\n\nThe Consumer Price Index for Urban Wage Earners and Clerical Workers (CPI-W) increased 3.5 percent over the last 12 months to an index level of 328.481 (1982-84=100). For the month, the index increased 0.4 percent prior to seasonal adjustment.\n\nThe Chained Consumer Price Index for All Urban Consumers (C-CPI-U) increased 3.3 percent over the last 12 months. For the month, the index increased 0.3 percent on a not seasonally adjusted basis. Please note that the indexes for the past 10 to 12 months are subject to revision. _______________ The Consumer Price Index news release for September 2026 is scheduled to be published on Wednesday, October 14, 2026, at 8:30 a.m. (ET).\n\nTechnical Note\n\nBrief Explanation of the CPI The Consumer Price Index (CPI) measures the change in prices paid by consumers for goods and services. The CPI reflects spending patterns for each of two population groups: all urban consumers and urban wage earners and clerical workers. The all urban consumer group represents over 90 percent of the total U.S. population. It is based on the expenditures of almost all residents of urban or metropolitan areas, including professionals, the self-employed, the poor, the unemployed, and retired people, as well as urban wage earners and clerical workers. Not included in the CPI are the spending patterns of people living in rural nonmetropolitan areas, farming families, people in the Armed Forces, and those in institutions, such as prisons and mental hospitals. Consumer inflation for all urban consumers is measured by two indexes, namely, the Consumer Price Index for All Urban Consumers (CPI-U) and the Chained Consumer Price Index for All Urban Consumers (C-CPI-U).\n\nThe Consumer Price Index for Urban Wage Earners and Clerical Workers (CPI-W) is based on the expenditures of households included in the CPI-U definition that meet two requirements: more than one-half of the household's income must come from clerical or wage occupations, and at least one of the household's earners must have been employed for at least 37 weeks during the previous 12 months. The CPI-W population represents approximately 30 percent of the total U.S. population and is a subset of the CPI-U population.\n\nThe CPIs are based on prices of food, clothing, shelter, fuels, transportation, doctors' and dentists' services, drugs, and other goods and services that people buy for day-to-day living. Prices are collected each month in 75 urban areas across the country from about 6,000 housing units and approximately 22,000 retail establishments (department stores, supermarkets, hospitals, and other types of stores and service establishments). All taxes directly associated with the purchase and use of items are included in the index. Prices of fuels and a few other items are obtained every month in all 75 locations. Prices of most other commodities and services are collected every month in the three largest geographic areas and every other month in other areas. Prices of most goods and services are obtained by personal visit, telephone call, web, or app collection by the Bureau's trained representatives.\n\nIn calculating the index, price changes for the various items in each location are aggregated using weights, which represent their importance in the spending of the appropriate population group. Local data are then combined to obtain a U.S. city average. For the CPI-U and CPI-W, separate indexes are also published by size of city, by region of the country, for cross-classifications of regions and population-size classes, and for 23 selected local areas. Area indexes do not measure differences in the level of prices among cities; they only measure the average change in prices for each area since the base period. For the C-CPI-U, data are issued only at the national level. The CPI-U and CPI-W are considered final when released, but the C-CPI-U is issued in preliminary form and subject to three subsequent quarterly revisions.\n\nThe index measures price change from a designed reference date. For most of the CPI-U and the CPI-W, the reference base is 1982-84 equals 100. The reference base for the C-CPI-U is December 1999 equals 100. An increase of 7 percent from the reference base, for example, is shown as 107.000. Alternatively, that relationship can also be expressed as the price of a base period market basket of goods and services rising from $100 to $107.\n\nSampling Error in the CPI\n\nThe CPI is a statistical estimate that is subject to sampling error because it is based upon a sample of retail prices and not the complete universe of all prices. BLS calculates and publishes estimates of the 1-month, 2-month, 6-month, and 12-month percent change standard errors annually for the CPI-U. These standard error estimates can be used to construct confidence intervals for hypothesis testing. For example, the estimated standard error of the 1-month percent change is 0.04 percent for the U.S. all items CPI. This means that if we repeatedly sample from the universe of all retail prices using the same methodology, and estimate a percentage change for each sample, then 95 percent of these estimates will be within 0.08 percent of the 1-month percentage change based on all retail prices. For example, for a 1-month change of 0.2 percent in the all items CPI-U, we are 95 percent confident that the actual percent change based on all retail prices would fall between 0.12 and 0.28 percent. For the latest data, including information on how to use the estimates of standard error, see www.bls.gov/cpi/tables/variance-estimates/home.htm.\n\nCalculating Index Changes\n\nMovements of the indexes from 1 month to another are usually expressed as percent changes rather than changes in index points, because index point changes are affected by the level of the index in relation to its base period, while percent changes are not. The following table shows an example of using index values to calculate percent changes:\n\n                            Item A                  Item B                      Item C\nYear I                      112.500                 225.000                     110.000\nYear II                     121.500                 243.000                     128.000\nChange in index points      9.000                   18.000                      18.000\nPercent change              9.0/112.500 x 100 = 8.0  18.0/225.000 x 100 = 8.0   18.0/110.000 x 100 = 16.4\n\nUse of Seasonally Adjusted and Unadjusted Data\n\nThe Consumer Price Index (CPI) program produces both unadjusted and seasonally adjusted data. Seasonally adjusted data are computed using seasonal factors derived by the X-13ARIMA-SEATS seasonal adjustment method. These factors are updated each February, and the new factors are used to revise the previous 5 years of seasonally adjusted data. The factors are available at www.bls.gov/web/cpi/cpi-seasonal-factors.xlsx. For more information on data revision scheduling, please see the Seasonal Adjustment questions and answers page at www.bls.gov/cpi/seasonal-adjustment/questions-and-answers.htm and the Timeline of Seasonal Adjustment Methodological Changes at www.bls.gov/cpi/seasonal-adjustment/timeline-seasonal-adjustment-methodology-changes.htm.\n\nHow to Use Seasonally Adjusted and Unadjusted Data\n\nFor analyzing short-term price trends in the economy, seasonally adjusted changes are usually preferred since they eliminate the effect of changes that normally occur at the same time and in about the same magnitude every year-such as price movements resulting from weather events, production cycles, model changeovers, holidays, and sales. This allows data users to focus on changes that are not typical for the time of year.\n\nThe unadjusted data are of primary interest to consumers concerned about the prices they actually pay. Unadjusted data are also used extensively for escalation purposes. Many collective bargaining contract agreements and pension plans, for example, tie compensation changes to the Consumer Price Index before adjustment for seasonal variation. BLS advises against the use of seasonally adjusted data in escalation agreements because seasonally adjusted series are revised annually for five years.\n\nIntervention Analysis\n\nThe Bureau of Labor Statistics uses intervention analysis seasonal adjustment (IASA) for some CPI series. Sometimes extreme values or sharp movements can distort the underlying seasonal pattern of price change. Intervention analysis seasonal adjustment is a process by which the distortions caused by such unusual events are estimated and removed from the data prior to calculation of seasonal factors. The resulting seasonal factors, which more accurately represent the seasonal pattern, are then applied to the unadjusted data.\n\nFor example, this procedure was used for the motor fuel series to offset the effects of the 2009 return to normal pricing after the worldwide economic downturn in 2008. Retaining this outlier data during seasonal factor calculation would distort the computation of the seasonal portion of the time series data for motor fuel, so it was estimated and removed from the data prior to seasonal adjustment. Following that, seasonal factors were calculated based on this \"prior adjusted\" data. These seasonal factors represent a clearer picture of the seasonal pattern in the data. The last step is for motor fuel seasonal factors to be applied to the unadjusted data.\n\nFor the seasonal factors introduced for January 2026, BLS adjusted 57 series using intervention analysis seasonal adjustment, including selected food and beverage items, motor fuels and vehicles.\n\nRevision of Seasonally Adjusted Indexes\n\nSeasonally adjusted data, including the U.S. city average all items index levels, are subject to revision for up to 5 years after their original release. Every year, economists in the CPI calculate new seasonal factors for seasonally adjusted series and apply them to the last 5 years of data. Seasonally adjusted indexes beyond the last 5 years of data are considered to be final and not subject to revision. For January 2026, revised seasonal factors and seasonally adjusted indexes for 2021 to 2025 were calculated and published. For series which are directly adjusted using the Census X-13ARIMA-SEATS seasonal adjustment software, the seasonal factors for 2025 will be applied to data for 2026 to produce the seasonally adjusted 2026 indexes. Series which are indirectly seasonally adjusted by summing seasonally adjusted component series have seasonal factors which are derived and are therefore not available in advance.\n\nDetermining Seasonal Status\n\nEach year the seasonal status of every series is reevaluated based upon certain statistical criteria. Using these criteria, BLS economists determine whether a series should change its status from \"not seasonally adjusted\" to \"seasonally adjusted\", or vice versa. If any of the 81 components of the U.S. city average all items index change their seasonal adjustment status from seasonally adjusted to not seasonally adjusted, not seasonally adjusted data will be used in the aggregation of the dependent series for the last 5 years, but the seasonally adjusted indexes before that period will not be changed. For 2026, 36 of the 81 components of the U.S. city average all items index are not seasonally adjusted.\n\nContact Information\n\nFor additional information about the CPI visit www.bls.gov/cpi or contact the CPI Information and Analysis Section at 202-691-7000 or cpi_info@bls.gov.\n\nFor additional information on seasonal adjustment in the CPI visit www.bls.gov/cpi/seasonal-adjustment/home.htm If you are deaf, hard of hearing, or have a speech disability, please dial 7-1-1 to access telecommunications relay services.\n",
+        "as_of": "2026-09-11T12:35:00+00:00",
+        "k": 5
+      },
+      "results": [
+        {
+          "event_ticker": "KXCPIYOY-26SEP",
+          "similarity": 0.19662737846374512
+        }
+      ]
+    },
+    {
+      "method": "search_evidence",
+      "arguments": {
+        "queries": [
+          "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased",
+          "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
+        ],
+        "as_of": "2026-09-11T12:35:00+00:00",
+        "category": "cpi",
+        "k": 8,
+        "published_after": null
+      },
+      "results": [
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-08#1",
+            "doc_id": "bls:cpi_release:2026-08",
+            "origin_id": "bls:cpi_release:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "title": "Consumer Price Index for August 2026",
+            "published_at": "2026-09-11T12:30:00Z",
+            "index": 1,
+            "text": "insurance were among the major indexes that decreased in August. The all items index rose 3.4 percent for the 12 months ending August as it did for the 12 months ending July. The all items less food and energy index rose 2.4 percent over the year, following a 2.5-percent increase over the 12 months ending July. The energy index increased 16.3 percent for the 12 months ending August. The food index increased 2.7 percent over the last year. Food The food index rose 0.1 percent in August, as it did in July. The index for food at home was unchanged over the month. Four of the six major grocery store food group indexes increased in August. The meats, poultry, fish, and eggs index increased 0.1 percent over the month, as the eggs index rose 2.9 percent. The index for other food at home also increased 0.1 percent in August. The nonalcoholic beverages index increased 0.2 percent over the month, and the dairy and related products index rose 0.3 percent. The index for cereals and bakery products was unchanged in August. In contrast, the fruits and vegetables index declined 0.4 percent in August after falling in the preceding 2 months. The index for lettuce continued to fall, declining 6.2 percent in August after decreasing 16.4 percent in July. The food away from home index rose 0.3 percent in August. The index for full service meals rose 0.4 percent, and the index for limited service meals was unchanged over the month. The"
+          },
+          "similarity": 0.5373173952102661,
+          "recency": 0.9999197778498484,
+          "score": 0.5372742904535085,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-08#2",
+            "doc_id": "bls:cpi_release:2026-08",
+            "origin_id": "bls:cpi_release:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "title": "Consumer Price Index for August 2026",
+            "published_at": "2026-09-11T12:30:00Z",
+            "index": 2,
+            "text": "index for lettuce continued to fall, declining 6.2 percent in August after decreasing 16.4 percent in July. The food away from home index rose 0.3 percent in August. The index for full service meals rose 0.4 percent, and the index for limited service meals was unchanged over the month. The food at home index rose 2.2 percent over the 12 months ending in August. The index for other food at home increased 2.4 percent, and the index for fruits and vegetables rose 3.2 percent over the year. The nonalcoholic beverages index increased 3.7 percent over the 12 months ending in August, and the cereals and bakery products index rose 2.6 percent over the same period. The index for meats, poultry, fish, and eggs increased 1.1 percent over the last 12 months. In contrast, the dairy and related products index fell 0.3 percent over the year. The food away from home index rose 3.4 percent over the last year. The index for full service meals rose 3.5 percent, and the index for limited service meals rose 3.2 percent over the 12 months ending in August. Energy The index for energy increased 2.1 percent in August after falling 1.5 percent in July. The gasoline index increased 3.9 percent over the month. (Before seasonal adjustment, gasoline prices increased 2.5 percent in August.) Conversely, the index for natural gas decreased 1.1 percent in August, and the index for electricity fell 0.2 percent. The index for energy increased 16.3 percent over the past 12 months"
+          },
+          "similarity": 0.4973439574241638,
+          "recency": 0.9999197778498484,
+          "score": 0.49730405942253436,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:cpi_release:2026-08#0",
+            "doc_id": "bls:cpi_release:2026-08",
+            "origin_id": "bls:cpi_release:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "title": "Consumer Price Index for August 2026",
+            "published_at": "2026-09-11T12:30:00Z",
+            "index": 0,
+            "text": "Consumer Price Index for August 2026\n\nTransmission of material in this release is embargoed until 8:30 a.m. (ET) Friday, September 11, 2026 USDL-26-1496 Technical information: (202) 691-7000 * cpi_info@bls.gov * www.bls.gov/cpi Media contact: (202) 691-5902 * PressOffice@bls.gov CONSUMER PRICE INDEX - AUGUST 2026 The Consumer Price Index for All Urban Consumers (CPI-U) increased 0.4 percent on a seasonally adjusted basis in August after rising 0.1 percent in July, the U.S. Bureau of Labor Statistics reported today. Over the last 12 months, the all items index increased 3.4 percent before seasonal adjustment. The index for gasoline rose 3.9 percent in August, accounting for over one third of the monthly all items increase. The index for energy increased 2.1 percent over the month. The shelter index rose 0.3 percent in August after rising 0.1 percent in July. The index for food increased 0.1 percent over the month, as the index for food away from home increased 0.3 percent. The index for all items less food and energy rose 0.3 percent after increasing 0.2 percent in July. Indexes that increased over the month include communication, lodging away from home, airline fares, education, and used cars and trucks. Conversely, the index for medical care and the index for motor vehicle insurance were among the major indexes that decreased in August. The all items index rose 3.4 percent for the 12 months ending August as it did for the 12 months ending July. The all items less food and energy index rose 2.4 percent over the year, following a 2.5-percent increase"
+          },
+          "similarity": 0.4847450256347656,
+          "recency": 0.9999197778498484,
+          "score": 0.4847061383465339,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "fed:waller20260903a#4",
+            "doc_id": "fed:waller20260903a",
+            "origin_id": "fed:waller20260903a",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
+            "title": "Governor Christopher J. Waller: The Economic Outlook and Some Comments on My Policy Communication",
+            "published_at": "2026-09-03T12:30:00Z",
+            "index": 4,
+            "text": "policy is working to return inflation to 2 percent. More about that in a moment. Inflation is elevated significantly above the FOMC's 2 percent goal and has exceeded that target for five and a half years. In July, prices based on personal consumption expenditures (PCE) rose 0.2 percent, and core prices excluding food and energy increased 0.2 percent. While I was happy to see this monthly number for core inflation because it continued the pattern of lower monthly readings that we saw earlier in the year, what caught my eye in the last PCE report is that nonmarket services prices accounted for approximately half of the increase in core prices. As you are probably aware, I don't like throwing out specific categories going into the estimate of PCE inflation, but nonmarket services prices have always been an issue for me, since they are imputed and not actual price changes. So, ignoring this one factor, my take is that underlying inflation is doing better than the core numbers suggest. PCE prices are up 3.7 percent in the past 12 months, and core PCE inflation is 3.3 percent. While it is important to acknowledge these 12-month increases for the real-world effect they have had on businesses and consumers, they are not the best guide for where inflation is today. I say this because, notwithstanding uncertainty over the geopolitical factors that have raised prices, I don't see elevated energy prices and tariffs now as a significant source of ongoing inflation pressure. The evidence"
+          },
+          "similarity": 0.1867276430130005,
+          "recency": 0.8311712124514717,
+          "score": 0.1552026414413212,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "fed:waller20260903a#5",
+            "doc_id": "fed:waller20260903a",
+            "origin_id": "fed:waller20260903a",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/newsevents/speech/waller20260903a.htm",
+            "title": "Governor Christopher J. Waller: The Economic Outlook and Some Comments on My Policy Communication",
+            "published_at": "2026-09-03T12:30:00Z",
+            "index": 5,
+            "text": "have had on businesses and consumers, they are not the best guide for where inflation is today. I say this because, notwithstanding uncertainty over the geopolitical factors that have raised prices, I don't see elevated energy prices and tariffs now as a significant source of ongoing inflation pressure. The evidence is that the price effects of tariffs have largely passed through inflation, and my earlier worry that higher energy prices would bleed into many goods and services prices hasn't come to pass, at least so far. In the wake of these price shocks, to get a fix on the current trend for inflation, it is helpful to focus on more recent price increases, such as how inflation measured over the past three months has evolved over the year. To deal with the ongoing volatility in energy prices, I will focus on core inflation, excluding food and energy prices, which is a good guide for inflation going forward. Three-month core inflation is 3.05 percent for the three months through July, a level that is still not consistent with the FOMC's 2 percent goal. Nevertheless, it is important to note the trend. Three-month inflation has fallen steadily from 4.76 percent in February. That is a considerable improvement, and the speed of this downward trajectory is encouraging. One factor that I expect will lower reported inflation a bit is a pending change in the way the Commerce Department estimates the fees paid to stock market traders and related professionals. That change in this"
+          },
+          "similarity": 0.17513775825500488,
+          "recency": 0.8311712124514717,
+          "score": 0.14556946287484515,
+          "query": "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:employment_situation:2026-08#2",
+            "doc_id": "bls:employment_situation:2026-08",
+            "origin_id": "bls:employment_situation:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
+            "title": "Employment Situation for August 2026",
+            "published_at": "2026-09-04T12:30:00Z",
+            "index": 2,
+            "text": "were not actively looking for work during the 4 weeks preceding the survey or were unavailable to take a job. (See table A-1.) Among those not in the labor force who wanted a job, the number of people marginally attached to the labor force changed little at 1.7 million in August. These individuals wanted and were available for work and had looked for a job sometime in the prior 12 months but had not looked for work in the 4 weeks preceding the survey. The number of discouraged workers, a subset of the marginally attached who believed that no jobs were available for them, changed little in August at 441,000. (See Summary table A.) Establishment Survey Data Total nonfarm payroll employment rose by 162,000 in August, higher than the average monthly gain of 31,000 over the prior 12 months. In August, employment increased in food services and drinking places and in local government education. The information industry lost jobs. (See table B-1.) Employment in food services and drinking places increased by 59,000 in August, well above the average monthly gain of 12,000 over the prior 12 months. Local government education added 42,000 jobs in August, largely offsetting a decrease in the prior month. Local government education has shown little net change since January 2025. In August, employment in manufacturing continued its upward trend (+16,000) and is up by 58,000 since a recent low in December 2025. Employment in machinery manufacturing (+6,000) and in fabricated metal product manufacturing (+6,000) continued trending"
+          },
+          "similarity": 0.160683274269104,
+          "recency": 0.8505989186021409,
+          "score": 0.13667701933075108,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "bls:employment_situation:2026-08#18",
+            "doc_id": "bls:employment_situation:2026-08",
+            "origin_id": "bls:employment_situation:2026-06",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
+            "title": "Employment Situation for August 2026",
+            "published_at": "2026-09-04T12:30:00Z",
+            "index": 18,
+            "text": "employment had, in fact, increased that month. If, however, the reported nonfarm employment rise was 250,000, then all of the values within the 90-percent confidence interval would be greater than zero. In this case, it is likely (at least a 90-percent chance) that nonfarm employment had, in fact, risen that month. At an unemployment rate of around 6.0 percent, the 90-percent confidence interval for the monthly change in unemployment as measured by the household survey is about +/- 425,000, and for the monthly change in the unemployment rate it is about +/- 0.3 percentage point. In general, estimates involving many individuals or establishments have lower standard errors (relative to the size of the estimate) than estimates which are based on a small number of observations. The precision of estimates also is improved when the data are cumulated over time, such as for quarterly and annual averages. The household and establishment surveys are also affected by nonsampling error, which can occur for many reasons, including the failure to sample a segment of the population, inability to obtain information for all respondents in the sample, inability or unwillingness of respondents to provide correct information on a timely basis, mistakes made by respondents, and errors made in the collection or processing of the data. For example, in the establishment survey, estimates for the most recent 2 months are based on incomplete returns; for this reason, these estimates are labeled preliminary in the tables. It is only after two successive revisions to a monthly"
+          },
+          "similarity": 0.15371358394622803,
+          "recency": 0.8505989186021409,
+          "score": 0.13074860827912096,
+          "query": "all items index rose 3.4 percent for the 12 months ending August; gasoline and energy index increased"
+        },
+        {
+          "passage": {
+            "passage_id": "fed:fomcminutes20260729#3",
+            "doc_id": "fed:fomcminutes20260729",
+            "origin_id": "fed:fomcminutes20260617",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "title": "Minutes of the Federal Open Market Committee, July 28–29, 2026",
+            "published_at": "2026-08-19T18:00:00Z",
+            "index": 3,
+            "text": "ample supply. With reserve management purchases continuing, the Desk forecast was for reserves to remain within that range in coming months. By unanimous vote, the Committee ratified the Desk's domestic transactions over the intermeeting period. There were no intervention operations in foreign currencies for the System's account during the intermeeting period. Staff Review of the Economic Situation The information available at the time of the meeting indicated that inflation remained elevated. Labor market conditions remained stable, and real gross domestic product (GDP) continued to expand. Total consumer price inflation—as measured by the 12-month change in the price index for personal consumption expenditures (PCE)—was 4.1 percent in May. Core PCE price inflation, which excludes changes in consumer energy prices and many consumer food prices, was 3.4 percent. Both total and core inflation were higher than their levels from a year earlier, a development that the staff attributed to factors such as the effects of past tariff increases, higher energy and input costs stemming from the conflict in the Middle East, and the surge in demand related to the AI buildout. Core goods price inflation had moved up relative to a year earlier; the staff viewed this increase as being largely attributable to the effects of tariffs and AI-related price pressures. Core services price inflation had edged up over the past year, as an acceleration in core nonhousing services prices had offset a deceleration in prices for housing services. Based on data from the consumer and producer price indexes, the staff estimated"
+          },
+          "similarity": 0.16894090175628662,
+          "recency": 0.5908469934057664,
+          "score": 0.09981822386596091,
+          "query": "index for all items less food and energy rose 2.4 percent over the year; food and shelter slowed"
+        }
+      ]
+    },
+    {
+      "method": "origins",
+      "arguments": {
+        "passage_ids": [
+          "bls:cpi_release:2026-08#1",
+          "bls:cpi_release:2026-08#0"
+        ],
+        "category": "cpi"
+      },
+      "results": [
+        {
+          "origin_id": "bls:cpi_release:2026-06",
+          "source": "bls.gov",
+          "url": "https://www.bls.gov/news.release/archives/cpi_07142026.htm",
+          "published_at": "2026-07-14T12:30:00Z",
+          "is_primary": true
+        }
+      ]
+    },
+    {
+      "method": "search_ledger",
+      "arguments": {
+        "query": "Inflation in September 2026 (CPI YoY)",
+        "as_of": "2026-09-11T12:35:00+00:00",
+        "category": "cpi",
+        "k": 5
+      },
+      "results": []
+    }
+  ]
+}

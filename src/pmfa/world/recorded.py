@@ -16,14 +16,18 @@ The ports built from it obey the as-of rule inside each call:
 - The built world's ``Knowledge`` indexes every document, including those
   dated after the trigger: the as-of filter inside retrieval, not omission,
   must keep them out, and the tests check that it does.
+- A file written by ``pmfa.world.recording.Recording`` holds only what its
+  episode read, so it also carries the episode's ``Knowledge`` calls with their
+  results, and ``RecordedKnowledge`` serves them back in order instead.
 """
 
 from __future__ import annotations
 
 import json
+import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -31,7 +35,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import ValidationError
 
 from pmfa.config import Config
-from pmfa.errors import ConfigError, NotFound
+from pmfa.errors import ConfigError, NotFound, PmfaError
 from pmfa.ports import Models, World
 from pmfa.records.base import ONE, Dollars, Record, RunMode, Stage
 from pmfa.records.decision import (
@@ -44,7 +48,16 @@ from pmfa.records.decision import (
     ReviewPolicy,
 )
 from pmfa.records.episode import LedgerEntry
-from pmfa.records.evidence import Document, ScheduledEvent, Trigger
+from pmfa.records.evidence import (
+    Document,
+    EventHit,
+    LedgerHit,
+    Origin,
+    Passage,
+    RetrievedPassage,
+    ScheduledEvent,
+    Trigger,
+)
 from pmfa.records.market import (
     BookLevel,
     Candle,
@@ -58,7 +71,7 @@ from pmfa.records.market import (
 from pmfa.world.clocks import SimClock
 
 if TYPE_CHECKING:
-    from pmfa.ports import Clock
+    from pmfa.ports import Clock, Knowledge
 
 PRIOR_EPISODE = "recorded-prior"
 """Episode id given to the orders that carry a recorded world's prior fills."""
@@ -91,6 +104,26 @@ class ScriptedReview(Record):
             reviewer=self.reviewer,
             decided_at=decided_at,
         )
+
+
+KnowledgeMethod = Literal[
+    "search_events", "search_evidence", "search_ledger", "get_passages", "origins"
+]
+
+
+class RecordedKnowledgeCall(Record):
+    """One ``Knowledge`` call an episode made, with its arguments and what came back.
+
+    A recorded file holds only the documents an episode touched, so an index
+    rebuilt from them would not rank passages the way the full corpus did.
+    Replaying the calls themselves keeps retrieval exact.
+    """
+
+    method: KnowledgeMethod
+    arguments: dict[str, Any]
+    """Plain JSON (see ``knowledge_arguments``): times as ISO strings, passages by id."""
+    results: list[dict[str, Any]]
+    """The returned records as plain JSON."""
 
 
 class RecordedWorldFile(Record):
@@ -126,6 +159,9 @@ class RecordedWorldFile(Record):
     config_overrides: dict[str, Any] = {}
     """Merged into the default configuration, section by section."""
     review: ScriptedReview | None = None
+    knowledge_calls: list[RecordedKnowledgeCall] = []
+    """Recorded ``Knowledge`` calls, served back in order by ``RecordedKnowledge``.
+    Empty: the built world indexes ``documents``, ``events`` and ``ledger`` instead."""
 
     @property
     def as_of(self) -> datetime:
@@ -312,6 +348,124 @@ class RecordedEvidence:
         )
 
 
+# --------------------------------------------------------------------------- knowledge
+
+
+class RecordedKnowledgeMiss(PmfaError):
+    """Replay made a ``Knowledge`` call that was not recorded, or with different arguments.
+
+    Like a cassette miss, it means the replay is no longer faithful, so it stops
+    the episode instead of returning something made up.
+    """
+
+
+KNOWLEDGE_RESULTS: dict[str, type[Record]] = {
+    "search_events": EventHit,
+    "search_evidence": RetrievedPassage,
+    "search_ledger": LedgerHit,
+    "get_passages": Passage,
+    "origins": Origin,
+}
+"""The record type each ``Knowledge`` method returns a list of."""
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat()
+    if isinstance(value, list | tuple):
+        return [_plain(v) for v in value]
+    return value
+
+
+def knowledge_arguments(method: str, **arguments: Any) -> dict[str, Any]:
+    """A ``Knowledge`` call's arguments as plain JSON, the form they are recorded and compared in.
+
+    ``origins`` takes passages; they are recorded by id, since the passages
+    themselves are already in the recorded search results.
+    """
+    if method == "origins":
+        passages = arguments.pop("passages")
+        arguments = {"passage_ids": [p.passage_id for p in passages], **arguments}
+    return {name: _plain(value) for name, value in arguments.items()}
+
+
+class RecordedKnowledge:
+    """The ``Knowledge`` port answered from recorded calls, in the order they were made.
+
+    Each call must match the next recorded one: the same method and the same
+    arguments. Anything else raises ``RecordedKnowledgeMiss`` naming the first
+    difference. The as-of rule was applied when the calls were recorded.
+    """
+
+    def __init__(self, calls: list[RecordedKnowledgeCall]) -> None:
+        self.calls = list(calls)
+        self.position = 0
+        self._lock = threading.Lock()
+
+    def _serve(self, method: str, **arguments: Any) -> list[Any]:
+        from pmfa.models.cassette import first_difference
+
+        now = knowledge_arguments(method, **arguments)
+        with self._lock:
+            n = self.position + 1
+            if self.position >= len(self.calls):
+                raise RecordedKnowledgeMiss(
+                    f"knowledge call #{n} ({method}) was not recorded: the file holds "
+                    f"{len(self.calls)} call(s)"
+                )
+            recorded = self.calls[self.position]
+            if recorded.method != method:
+                raise RecordedKnowledgeMiss(
+                    f"knowledge call #{n} asks for {method}, the file recorded {recorded.method}"
+                )
+            difference = first_difference(recorded.arguments, now)
+            if difference is not None:
+                raise RecordedKnowledgeMiss(
+                    f"knowledge call #{n} ({method}) arguments differ from the recording at "
+                    f"{difference}"
+                )
+            self.position += 1
+        result_type = KNOWLEDGE_RESULTS[method]
+        return [result_type.model_validate(r) for r in recorded.results]
+
+    def remaining(self) -> int:
+        """Recorded calls not yet served (a faithful replay ends at 0)."""
+        with self._lock:
+            return len(self.calls) - self.position
+
+    def search_events(self, query: str, *, as_of: datetime, k: int = 5) -> list[EventHit]:
+        return self._serve("search_events", query=query, as_of=as_of, k=k)
+
+    def search_evidence(
+        self,
+        queries: list[str],
+        *,
+        as_of: datetime,
+        category: str,
+        k: int = 8,
+        published_after: datetime | None = None,
+    ) -> list[RetrievedPassage]:
+        return self._serve(
+            "search_evidence",
+            queries=queries,
+            as_of=as_of,
+            category=category,
+            k=k,
+            published_after=published_after,
+        )
+
+    def search_ledger(
+        self, query: str, *, as_of: datetime, category: str, k: int = 5
+    ) -> list[LedgerHit]:
+        return self._serve("search_ledger", query=query, as_of=as_of, category=category, k=k)
+
+    def get_passages(self, passage_ids: list[str], *, as_of: datetime) -> list[Passage]:
+        return self._serve("get_passages", passage_ids=passage_ids, as_of=as_of)
+
+    def origins(self, passages: list[Passage], *, category: str) -> list[Origin]:
+        return self._serve("origins", passages=passages, category=category)
+
+
 # --------------------------------------------------------------------------- the world
 
 
@@ -360,11 +514,10 @@ def build_recorded_world(
     and the prior fills, and gets a first equity point at the trigger time. The
     knowledge index holds every document (future ones included: retrieval's
     as-of filter must keep them out), every event, and the resolved ledger
-    entries, embedded with the deterministic hashing embedder.
+    entries, embedded with the deterministic hashing embedder. A file with
+    recorded knowledge calls gets ``RecordedKnowledge`` instead, and no index.
     """
     from pmfa.execution.paper import PaperExecutor
-    from pmfa.knowledge.embedders import HashingEmbedder
-    from pmfa.knowledge.retriever import ChromaKnowledge
     from pmfa.state.store import MEMORY, SqliteStore
 
     config = recorded_config(file)
@@ -380,10 +533,18 @@ def build_recorded_world(
     for order in prior_orders(list(file.fills)):
         store.save_order(order)
 
-    knowledge = ChromaKnowledge(config, embedder=HashingEmbedder())
-    knowledge.index_documents(list(file.documents))
-    knowledge.index_events([e for e in file.events if e.markets])
-    knowledge.index_ledger(list(file.ledger))
+    knowledge: Knowledge
+    if file.knowledge_calls:
+        knowledge = RecordedKnowledge(list(file.knowledge_calls))
+    else:
+        from pmfa.knowledge.embedders import HashingEmbedder
+        from pmfa.knowledge.retriever import ChromaKnowledge
+
+        index = ChromaKnowledge(config, embedder=HashingEmbedder())
+        index.index_documents(list(file.documents))
+        index.index_events([e for e in file.events if e.markets])
+        index.index_ledger(list(file.ledger))
+        knowledge = index
 
     exchange = RecordedExchange(file, clock, config)
     executor = PaperExecutor(
@@ -412,10 +573,14 @@ __all__ = [
     "RecordedBooks",
     "RecordedEvidence",
     "RecordedExchange",
+    "RecordedKnowledge",
+    "RecordedKnowledgeCall",
+    "RecordedKnowledgeMiss",
     "RecordedWorld",
     "RecordedWorldFile",
     "ScriptedReview",
     "build_recorded_world",
+    "knowledge_arguments",
     "load_recorded_world",
     "prior_orders",
     "recorded_config",

@@ -1,0 +1,42 @@
+{
+  "proposal_id": "proposal-bd61a65d271f417b",
+  "episode_id": "episode-4beae283471895ee",
+  "event_title": "Fed decision in Oct 2026?",
+  "market_title": "Fed maintains rate",
+  "market_ticker": "KXFEDDECISION-26OCT-H0",
+  "side": "no",
+  "contracts": 25,
+  "limit_price": "0.1800",
+  "cost": "4.7600",
+  "forecast_probability": 0.29175000000000006,
+  "market_price": "0.1800",
+  "edge": "0.04297500000000005",
+  "confidence": 0.6666666666666666,
+  "routing_reasons": [
+    "category_calibrated"
+  ],
+  "passages": [
+    {
+      "passage_id": "fed:fomcminutes20260916#17",
+      "source": "federalreserve.gov",
+      "title": "Minutes of the Federal Open Market Committee, September 15-16, 2026",
+      "published_at": "2026-10-07T18:00:00Z",
+      "excerpt": "participants viewed a higher path for the target range as necessary based on their modal outlooks rather than on risk-management grounds. Some participants remarked that a higher policy rate would diminish the risk of persistently elevated inflation unanchoring inflation expectations …"
+    },
+    {
+      "passage_id": "fed:fomcminutes20260916#16",
+      "source": "federalreserve.gov",
+      "title": "Minutes of the Federal Open Market Committee, September 15-16, 2026",
+      "published_at": "2026-10-07T18:00:00Z",
+      "excerpt": "timing of the effects. A few participants flagged emerging concerns regarding potential repercussions associated with rapid adoption of AI, including cybersecurity and other risks, that could act as a drag on productivity in some cases. In their consideration of monetary …"
+    },
+    {
+      "passage_id": "fed:jefferson20261001a#6",
+      "source": "federalreserve.gov",
+      "title": "Vice Chair Philip N. Jefferson: The U.S. Economy and Monetary Policy",
+      "published_at": "2026-10-01T17:30:00Z",
+      "excerpt": "Considering the economic conditions that persisted through mid-September, the FOMC voted last month to raise the target range for the federal funds rate by a 1/4 percentage point to 3-3/4 to 4 percent as shown in figure 8. I supported …"
+    }
+  ],
+  "expires_at": "2026-10-07T18:15:00Z"
+}
