@@ -136,7 +136,7 @@ def test_the_printed_fill_assumptions_keep_the_wording_the_tests_above_check() -
     leakage = " ".join(LEAKAGE_CONTROLS)
     assert "only the paper fill is priced from a later candle" in leakage
     assert "A paper fill is timed at the end of the candle that priced it" in leakage
-    assert "the clock moves past the latest order's outcome time" in leakage
+    assert "the next episode starts no earlier than the latest order's outcome time" in leakage
 
 
 def test_the_report_does_not_say_how_fills_were_priced_beyond_what_it_counted(
