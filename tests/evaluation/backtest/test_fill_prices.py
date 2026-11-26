@@ -129,6 +129,7 @@ def test_the_printed_fill_assumptions_keep_the_wording_the_tests_above_check() -
     assert "every decision" in fills and "reads the order book as of the as-of time" in fills
     assert "Only the fill is priced from the first one-minute candle after the as-of time" in fills
     assert "flagged coarse" in fills and "execution.backtest_volume_share" in fills
+    assert "is under one contract" in fills and "no quote to price it from" in fills
     assert "A fill is timed at the end of the candle that priced it" in fills
     assert "count an order only from that time" in fills
     assert "an episode can start later than its trigger" in fills

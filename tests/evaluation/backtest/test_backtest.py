@@ -96,6 +96,38 @@ def test_resolver_writes_brier_scores_and_the_pruning_audit(full_run: FullRun) -
     store.close()
 
 
+@pytest.mark.parametrize("store_name", ["scoring.sqlite", "trading.sqlite"])
+def test_each_pass_starts_with_the_bankroll_at_the_windows_start(
+    full_run: FullRun, store_name: str
+) -> None:
+    """The daily loss stop and the drawdown halt measure from the equity points. Each pass
+    writes the first one before any order, so the stops measure from the bankroll and the
+    first trade's spread and fee count against them."""
+    from pmfa.evaluation.schedule import window_start_time
+
+    store = SqliteStore(full_run.run_dir / "work" / store_name)
+    series = store.equity_series()
+    orders = store.list_orders()
+    store.close()
+    start = window_start_time(full_run.config.evaluation.window_start)
+    assert series[0] == (start, full_run.config.execution.notional_bankroll)
+    assert orders and series[0][0] < min(o.placed_at for o in orders)
+
+
+def test_the_report_says_what_the_scoring_passs_rows_mean_only_when_it_has_some(
+    full_run: FullRun, data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.backtest import run_backtest
+    from pmfa.evaluation.report import SCORING_PASS_NOTE, build_report
+
+    text = build_report(full_run.run_dir).read_text(encoding="utf-8")
+    tiers = text.split("## Routing tiers", 1)[1].split("\n## ", 1)[0]
+    assert SCORING_PASS_NOTE in tiers
+    # A market-only run has no pipeline episode in either pass, so there is nothing to explain.
+    run_backtest(data_config, run_dir=tmp_path / "market", systems=["market"])
+    assert SCORING_PASS_NOTE not in build_report(tmp_path / "market").read_text(encoding="utf-8")
+
+
 def test_outputs_and_traces(full_run: FullRun) -> None:
     run_dir = full_run.run_dir
     for name in ("manifest.json", "forecasts.csv", "trades.csv", "episodes.jsonl", "metrics.json"):

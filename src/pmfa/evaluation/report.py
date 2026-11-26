@@ -669,6 +669,8 @@ def build_report(run_dir: str | Path) -> Path:
     if not eps or not any(t.get("n_episodes") for t in eps.values()):
         w("No pipeline episode ran, so there are no routing tiers to report.\n")
     else:
+        if (eps.get("scoring") or {}).get("n_episodes"):
+            w(SCORING_PASS_NOTE + "\n")
         rows = []
         for name, t in eps.items():
             rows.append(
@@ -1097,6 +1099,16 @@ def _error_concentration(w: Any, manifest: Any, metrics: dict[str, Any], shown: 
         )
 
 
+SCORING_PASS_NOTE = (
+    "The scoring pass exists to score forecasts. Its pipeline episodes also size, gate and "
+    "fill on a paper account, but nothing is settled until the run ends: that account never "
+    "realizes a result during the pass, and no scoring forecast sees the outcome of an earlier "
+    "one. Its tiers and its exits after the forecast step therefore say little about trading, "
+    "and its orders are not in the trading results. The trading pass is the trading simulation."
+)
+"""Printed above the first per-pass table, so the scoring pass's rows are not read as trading."""
+
+
 def _self_halt_sentence(name: str, halt: dict[str, Any]) -> str:
     """What a self-halt in one pass means for that pass's results, in plain sentences."""
     head = (
@@ -1107,7 +1119,7 @@ def _self_halt_sentence(name: str, halt: dict[str, Any]) -> str:
     )
     if name == "trading":
         return (
-            head + " From that time the simulation holds forecasts but places no further "
+            head + " From that time the simulation still forecasts but places no further "
             "orders, so the trading results describe the run only up to the halt.\n"
         )
     return (
@@ -1197,7 +1209,13 @@ def dirty_notice(manifest: Any) -> str:
     )
 
 
-def publish_run(run_dir: str | Path, name: str, *, root: str | Path = PUBLISH_ROOT) -> Path:
+def publish_run(
+    run_dir: str | Path,
+    name: str,
+    *,
+    root: str | Path = PUBLISH_ROOT,
+    allow_supplied: bool = False,
+) -> Path:
     """Copy the committed artifact set of ``run_dir`` to ``root/name`` and return it.
 
     The set is the manifest, the per-forecast table, the metrics, the report with
@@ -1206,10 +1224,21 @@ def publish_run(run_dir: str | Path, name: str, *, root: str | Path = PUBLISH_RO
     published manifest's ``outputs`` lists exactly what was copied. A run made
     from a tree with uncommitted changes is published with that said in its
     manifest notes and in a logged warning (and in the report).
+
+    A run whose models were supplied by the caller (scripted answers in a test,
+    or a rehearsal) is not a result, so publishing it is refused with a
+    ``ValueError`` before anything is written, unless ``allow_supplied`` is set.
+    The command line never sets it.
     """
     import logging
 
     run_dir = Path(run_dir)
+    if read_manifest(run_dir).models_source == "supplied" and not allow_supplied:
+        raise ValueError(
+            "this run's answers came from models supplied by the caller (scripted answers "
+            "or a rehearsal), not from the live gateway, so it is not a result and is not "
+            "published"
+        )
     if not (run_dir / REPORT_FILE).exists():
         build_report(run_dir)
     target = Path(root) / name

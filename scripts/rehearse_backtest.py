@@ -6,35 +6,47 @@ the Generator proposes one scenario, and the Critic and the baselines always
 give the same distribution (most of the mass on the middle option, or quantiles
 around the middle strike). **So no forecast in a rehearsal means anything, and
 nothing it scores is a result.** Its manifest and report say the models were
-supplied by the caller.
+supplied by the caller, and ``pmfa report --publish`` refuses such a run.
 
-What a rehearsal is for: it drives every step of the real pipeline over the real
+What a rehearsal is for: it drives the pipeline around the models over the real
 snapshot and corpus before any money is spent. It builds the retrieval indexes,
 runs every scoring point for every system and every news trigger of the trading
 pass, sizes and gates orders against real books, fills them from real candles,
-applies the stops, saves traces and replays each one, and writes the report. If
-a rehearsal completes and its traces replay, a paid run will not fail on the
-data or the plumbing; what it cannot show is how a model's answers behave.
+applies the stops, saves traces and replays each one, and writes the report. A
+rehearsal that passes shows a paid run will not fail on the data or on those
+steps.
+
+What it does not exercise is the model side. The fixed rules stand in for the
+gateway, so its structured-output schemas, the response cache, cassette
+recording, the role runners and the dollar caps are never reached (the
+per-episode call cap still applies). The critic here always scores, so critic
+rejections and evidence follow-ups never run. And it cannot show how a model's
+answers behave.
 
 Run it after ``pmfa data build``, from the repository root::
 
     uv run python scripts/rehearse_backtest.py
 
-It writes ``runs/<date>-rehearsal`` (ignored by git), prints a summary, and
-exits 0 only when the run completed and every saved trace replays and matches.
-Do not publish a rehearsal: it is a test of the harness.
+It writes ``runs/<date>-rehearsal`` (ignored by git) and prints a summary. It
+exits 0 only when the run completed, every pipeline episode's answers were
+accepted, forecasts were made, at least one order was sent, and every saved
+trace replays and matches. It refuses to write into a directory that holds a
+run it did not make.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import shutil
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pmfa.config import Config, load_config
+from pmfa.evaluation.manifest import RunManifest
 from pmfa.models import ScriptedModels
 from pmfa.records.base import Record
 from pmfa.records.roles import (
@@ -61,6 +73,12 @@ from pmfa.records.roles import (
 ALL_SYSTEMS = ["market", "prompt_only", "single_pass", "single_pass_similarity", "pipeline"]
 MATCHES = "replays and matches"
 NOTE = "Fixed rule in scripts/rehearse_backtest.py, not a model's answer."
+REHEARSAL_NOTE = (
+    "REHEARSAL: every role answer in this run is a fixed rule in scripts/rehearse_backtest.py. "
+    "Nothing in it is a result."
+)
+BROKEN_EXITS = frozenset({"rules_mismatch", "low_coverage", "error"})
+"""Exits a fixed rule must never cause: its answer was refused, or a step failed."""
 
 
 def _middle_option(event: EventBrief) -> str:
@@ -185,12 +203,69 @@ def rehearsal_models(config: Config) -> ScriptedModels:
     )
 
 
+def _not_a_rehearsal(run_dir: Path) -> bool:
+    """Whether ``run_dir`` holds something a rehearsal (or another supplied-models run) did not write."""
+    from pmfa.evaluation.manifest import MANIFEST_FILE, read_manifest
+
+    if not run_dir.exists():
+        return False
+    if not (run_dir / MANIFEST_FILE).exists():
+        return True
+    return read_manifest(run_dir).models_source != "supplied"
+
+
+def _problems(run_dir: Path, manifest: RunManifest, metrics: dict[str, Any]) -> list[str]:
+    """What stops this rehearsal from passing: each entry is one thing that was not decided as it should be."""
+    from pmfa.evaluation.backtest import FORECASTS_FILE
+
+    problems: list[str] = []
+    progress = manifest.progress
+    if manifest.status != "complete":
+        problems.append(f"the run's status is {manifest.status}")
+    if progress.points_not_run or progress.triggers_not_run:
+        problems.append("some scoring points or trading triggers were not run")
+    episodes = metrics.get("episodes") or {}
+    if set(episodes) != {"scoring", "trading"}:
+        problems.append("the pipeline did not run in both passes")
+    executed = 0
+    for name, tally in episodes.items():
+        exits = tally["exits"]
+        refused = {k: v for k, v in exits.items() if k in BROKEN_EXITS}
+        if refused:
+            problems.append(
+                f"{name} pass: a fixed rule's answer was refused or a step failed: {refused}"
+            )
+        if not set(exits) - {"no_match"}:
+            problems.append(f"{name} pass: no pipeline episode got past matching")
+        executed += exits.get("executed", 0)
+    if not executed:
+        problems.append("no pipeline episode sent an order")
+    with (run_dir / FORECASTS_FILE).open(encoding="utf-8", newline="") as fh:
+        made = [r for r in csv.DictReader(fh) if r["system"] == "pipeline" and r["probability"]]
+    if not made:
+        problems.append("the pipeline made no forecast")
+    if not manifest.traces:
+        problems.append("no trace was saved")
+    elif any(verdict != MATCHES for verdict in manifest.traces.values()):
+        problems.append("a saved trace does not replay to what was recorded")
+    return problems
+
+
 def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[bool, list[str]]:
-    """Run the rehearsal into ``run_dir``. Returns whether it passed and the summary lines."""
+    """Run the rehearsal into ``run_dir``. Returns whether it passed and the summary lines.
+
+    Raises ``ValueError`` when ``run_dir`` holds a run a rehearsal did not make:
+    the directory is replaced, and a paid run must never be the one replaced.
+    """
     from pmfa.evaluation.backtest import run_backtest
+    from pmfa.evaluation.manifest import write_manifest
     from pmfa.evaluation.report import build_report
     from pmfa.evaluation.run_metrics import METRICS_FILE
 
+    if _not_a_rehearsal(run_dir):
+        raise ValueError(
+            f"{run_dir} holds a run this script did not make; choose another --run-name"
+        )
     shutil.rmtree(run_dir, ignore_errors=True)
     manifest = run_backtest(
         config,
@@ -199,6 +274,8 @@ def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[
         models=rehearsal_models(config),
         save_examples=save_examples,
     )
+    manifest = manifest.model_copy(update={"notes": [REHEARSAL_NOTE, *manifest.notes]})
+    write_manifest(manifest, run_dir)
     report = build_report(run_dir)
     metrics = json.loads((run_dir / METRICS_FILE).read_text(encoding="utf-8"))
     progress = manifest.progress
@@ -209,7 +286,7 @@ def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[
         "(one per scoring point and system)",
         f"trading triggers: {len(progress.triggers_done)} done, {len(progress.triggers_not_run)} not run",
     ]
-    for name, tally in metrics.get("episodes", {}).items():
+    for name, tally in (metrics.get("episodes") or {}).items():
         exits = ", ".join(f"{k} {v}" for k, v in sorted(tally["exits"].items()))
         lines.append(f"{name} pass: {tally['n_episodes']} pipeline episode(s): {exits or 'none'}")
     for name, halt in (metrics.get("self_halts") or {}).items():
@@ -230,14 +307,10 @@ def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[
     for name, verdict in manifest.traces.items():
         lines.append(f"{name}: {verdict}")
     lines.append(f"report: {report}")
-    passed = (
-        manifest.status == "complete"
-        and not progress.points_not_run
-        and not progress.triggers_not_run
-        and all(verdict == MATCHES for verdict in manifest.traces.values())
-    )
-    lines.append("rehearsal passed" if passed else "REHEARSAL FAILED: see the lines above")
-    return passed, lines
+    problems = _problems(run_dir, manifest, metrics)
+    lines.extend(f"PROBLEM: {problem}" for problem in problems)
+    lines.append("rehearsal passed" if not problems else "REHEARSAL FAILED: see the problems above")
+    return not problems, lines
 
 
 def main() -> int:
@@ -248,7 +321,11 @@ def main() -> int:
     args = parser.parse_args()
     config = load_config()
     run_dir = Path(config.paths.runs_dir) / f"{datetime.now(UTC):%Y-%m-%d}-{args.run_name}"
-    passed, lines = rehearse(config, run_dir)
+    try:
+        passed, lines = rehearse(config, run_dir)
+    except ValueError as exc:
+        sys.stderr.write(f"rehearsal refused: {exc}\n")
+        return 1
     sys.stdout.write("\n".join(lines) + "\n")
     return 0 if passed else 1
 

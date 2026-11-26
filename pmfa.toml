@@ -62,7 +62,7 @@ min_seconds_between_requests = 2.0
 manual_dir = "data/manual"
 feeds = []
 
-# What starts an episode: price moves, and an optional daily re-check of holdings.
+# Trigger settings: what counts as a price move; the daily re-check of holdings.
 [triggers]
 price_move_cents = 3
 price_move_window_minutes = 30

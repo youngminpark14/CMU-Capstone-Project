@@ -9,7 +9,7 @@ from pmfa.config import Config
 from pmfa.records.market import Side
 from pmfa.world.snapshot.book import execution_book
 from pmfa.world.snapshot.store import SnapshotStore
-from tests.world.snapshot.fakes import JUL_CLOSE, T0, A
+from tests.world.snapshot.fakes import JUL_CLOSE, T0, A, candle, flat
 
 S = timedelta(seconds=1)
 M = timedelta(minutes=1)
@@ -58,6 +58,21 @@ def test_size_is_capped_at_the_volume_share_and_floored(
         }
     )
     assert execution_book(store, A, T0 + 30 * S, half).book.best_ask(Side.YES).contracts == 25
+
+
+def test_a_side_the_candle_has_no_quote_to_price_is_empty(
+    store: SnapshotStore, config: Config
+) -> None:
+    # A minute in which nobody offered YES (a YES ask of 1) while the YES bid stood at 0.40.
+    end = T0 + 50 * M
+    quiet = candle(A, end, 1, bid=flat("0.40"), ask=flat("1"), price=flat("0.40"), volume="100")
+    store.put_candles(A, 1, [quiet], start=end - M, end=end)
+    found = execution_book(store, A, end - 90 * S, config)
+    assert found.candle is not None and found.candle.end_ts == end
+    # Buying YES meets nothing; buying NO meets 1 minus the YES bid, for the volume share.
+    assert found.book.asks(Side.YES) == []
+    best = found.book.best_ask(Side.NO)
+    assert best is not None and (best.price, best.contracts) == (Decimal("0.60"), 10)
 
 
 def test_falls_back_to_the_hourly_candle_and_says_so(store: SnapshotStore, config: Config) -> None:

@@ -159,7 +159,11 @@ def register(app: typer.Typer) -> None:
             from pmfa.evaluation.manifest import read_manifest
             from pmfa.evaluation.report import dirty_notice
 
-            target = publish_run(run_dir, publish)
+            try:
+                target = publish_run(run_dir, publish)
+            except ValueError as exc:
+                typer.echo(f"not published: {exc}", err=True)
+                raise typer.Exit(1) from exc
             typer.echo(f"Published to {target}")
             manifest = read_manifest(run_dir)
             if manifest.git_dirty:

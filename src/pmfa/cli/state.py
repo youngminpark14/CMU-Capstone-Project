@@ -54,7 +54,7 @@ HEADER = (
 SECTION_NOTES = {
     "follow": "Followed series, how each becomes an outcome space, and the blocklist.",
     "sources": "The official evidence sources and how politely they are fetched.",
-    "triggers": "What starts an episode: price moves, and an optional daily re-check of holdings.",
+    "triggers": "Trigger settings: what counts as a price move; the daily re-check of holdings.",
     "retrieval": "The events, evidence and ledger indexes: passage size, top-k, ranking.",
     "models": "Model and effort per role slot, prices and cutoffs, the API key variable.",
     "budget": "Per-episode and per-run caps on model calls, seconds and dollars.",

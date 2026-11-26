@@ -10,6 +10,8 @@
    before close), every system forecasts every listed market of the event as
    of that time: the market's price, the one-call baselines, and a full pipeline
    episode from a schedule trigger. One simulated clock and one state store.
+   Nothing is settled until the run ends, so each scoring forecast is made
+   without the outcomes of earlier ones.
 5. **Trading pass** (pipeline only). Every corpus document in the window, in
    time order, triggers an episode on one continuous clock and a second store,
    so holdings, the ledger and the bankroll carry forward. An episode starts no
@@ -468,7 +470,18 @@ def _scoring_pass(
     models: Models | None,
     run_id: str,
 ) -> World | None:
-    """Every running system at every scoring point. Returns the scoring world (for the final resolve)."""
+    """Every running system at every scoring point. Returns the scoring world (for the final resolve).
+
+    The pass exists to score forecasts, and it settles nothing until the run
+    ends: no outcome is written back between points. So a pipeline forecast
+    here is made without the outcomes of earlier scoring forecasts (the critic
+    gets no calibration example from them). The pipeline's episodes still
+    size, gate and fill on one paper account, but that account never realizes
+    a result during the pass: a settled holding stays in it at cost, the
+    bankroll leaves out settled profit and loss, and the calibration stop has
+    nothing resolved to read. Its orders are not reported as trades; the
+    trading pass is the trading simulation.
+    """
     from pmfa.state.store import SqliteStore
 
     data, config = run.data, run.config
@@ -492,7 +505,8 @@ def _scoring_pass(
         knowledge=knowledge if knowledge is not None else data.guard(_NoKnowledge()),
     )
     run.worlds.append(world)
-    # The stops measure from the bankroll at the window's start, as in the trading pass.
+    # The daily loss stop and the drawdown halt measure from the equity points, so the first
+    # one is the bankroll at the window's start, written before any order (as in the trading pass).
     world.executor.mark(schedule.window_start)  # type: ignore[attr-defined]
     pending = [(p, s) for p in points for s in running]
     done = 0

@@ -142,7 +142,12 @@ def test_publish_copies_exactly_the_committed_set(full_run: FullRun, tmp_path: P
     from pmfa.evaluation.report import build_report, publish_run
 
     build_report(full_run.run_dir)
-    target = publish_run(full_run.run_dir, "2026-08-31-test", root=tmp_path / "evaluation" / "runs")
+    target = publish_run(
+        full_run.run_dir,
+        "2026-08-31-test",
+        root=tmp_path / "evaluation" / "runs",
+        allow_supplied=True,
+    )
     published = {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()}
     top = {p for p in published if "/" not in p}
     assert top == {"manifest.json", "forecasts.csv", "metrics.json", "report.md"}
@@ -214,12 +219,33 @@ def test_an_out_of_range_probability_is_clamped_with_a_note() -> None:
     assert by[f"{FED}-H25"][1].note == ""
 
 
+def test_a_run_answered_by_supplied_models_is_not_published_as_a_result(
+    full_run: FullRun, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scripted answers (a test, or a rehearsal) are not results, so publishing is refused."""
+    from typer.testing import CliRunner
+
+    from pmfa.cli.app import app
+    from pmfa.evaluation.report import build_report, publish_run
+
+    build_report(full_run.run_dir)
+    assert full_run.manifest.models_source == "supplied"
+    with pytest.raises(ValueError, match="not a result"):
+        publish_run(full_run.run_dir, "x", root=tmp_path / "runs")
+    assert not (tmp_path / "runs").exists()  # refused before anything was written
+    # The command line has no way to override the refusal.
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["report", str(full_run.run_dir), "--publish", "x"])
+    assert result.exit_code == 1
+    assert not (tmp_path / "evaluation").exists()
+
+
 def test_published_outputs_list_exactly_what_was_copied(full_run: FullRun, tmp_path: Path) -> None:
     from pmfa.evaluation.manifest import read_manifest
     from pmfa.evaluation.report import build_report, publish_run
 
     build_report(full_run.run_dir)
-    target = publish_run(full_run.run_dir, "outputs", root=tmp_path / "runs")
+    target = publish_run(full_run.run_dir, "outputs", root=tmp_path / "runs", allow_supplied=True)
     outputs = read_manifest(target).outputs
     for entry in outputs:
         assert (target / entry).exists(), entry

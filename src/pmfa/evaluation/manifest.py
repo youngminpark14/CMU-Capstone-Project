@@ -307,8 +307,10 @@ FILL_ASSUMPTIONS = [
     "One-minute candles exist only for minutes in which a quote or trade changed, so when no "
     "one-minute candle holds the arrival time the hourly candle holding it is used, and that "
     "order is flagged coarse (see How each fill was priced). When neither exists, the market "
-    "has closed by the arrival time, or the candle had no volume, the book is empty and "
-    "nothing fills.",
+    "has closed by the arrival time, or the candle's volume times "
+    "execution.backtest_volume_share is under one contract, the book is empty and nothing "
+    "fills. A side is empty when the candle has no quote to price it from: buying YES needs "
+    "a YES ask below 1, buying NO a YES bid above 0.",
     "The exchange's history has no order-book depth, so liquidity is a candle-volume proxy.",
     "Taker fees are paid on every fill, rounded up to the cent once per order; the unfilled "
     "remainder of an order is dropped.",
