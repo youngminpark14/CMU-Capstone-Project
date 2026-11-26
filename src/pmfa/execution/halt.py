@@ -14,6 +14,9 @@ starts with its name:
 - ``fill failures``: among the last ``oversight.fill_failure_window`` orders
   (once that many exist), more than ``oversight.fill_failure_halt_fraction`` of
   them were ``UNFILLED`` or ``REJECTED`` (with the defaults: two or more in ten).
+  An order counts only once its outcome is known (``outcome_at``, else
+  ``placed_at``, at or before now): a backtest order's outcome comes from a
+  candle after it was sent.
 - ``source changed`` / ``source withdrawn``: a document cited by an episode
   that holds an open position (its passages, or its trigger document) has a
   remembered content hash in the store, and its source now gives a different
@@ -21,7 +24,8 @@ starts with its name:
   ``recheck(doc_id, as_of=...)`` method (the live modes' ``LiveEvidence``,
   which fetches the page again because its stored copy never changes), that
   is asked; otherwise ``get_document`` (recorded and frozen worlds). Documents
-  the store never remembered cannot be compared and are skipped.
+  the store never remembered cannot be compared and are skipped. As for fill
+  failures, an order counts only once its outcome is known.
 - ``calibration``: for a category, the calibration error of the pipeline's
   resolved forecasts (``store.calibration``) is above
   ``routing.calibration_error_max`` at every weekly checkpoint ``now - k weeks``
@@ -94,7 +98,7 @@ def stop_reasons(
             )
 
     window = config.oversight.fill_failure_window
-    orders = store.list_orders()
+    orders = [o for o in store.list_orders() if (o.outcome_at or o.placed_at) <= now]
     if window > 0 and len(orders) >= window:
         recent = orders[-window:]
         failed = sum(o.status in FAILED_ORDERS for o in recent)
@@ -151,7 +155,9 @@ def _source_reasons(
     if not open_markets:
         return []
     episode_ids = dict.fromkeys(
-        o.episode_id for o in store.list_orders() if o.market_ticker in open_markets and o.fills
+        o.episode_id
+        for o in store.list_orders()
+        if (o.outcome_at or o.placed_at) <= now and o.market_ticker in open_markets and o.fills
     )
     cited: dict[str, None] = {}
     for episode_id in episode_ids:

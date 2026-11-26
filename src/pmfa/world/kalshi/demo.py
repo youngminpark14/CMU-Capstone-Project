@@ -19,6 +19,11 @@ What the executor does, per the spec's "Execution and oversight" section:
   outcome is unknown (timeout, 408, 5xx), the order is looked up by that id
   instead of being sent again. The exchange only reserves an id while the
   order is open, so the lookup, not a resend, is what prevents a double order.
+  When the lookup answers with no such order, the result is ``REJECTED``: the
+  exchange was asked and lists nothing. When the lookup itself fails,
+  :meth:`DemoExecutor.place` raises :class:`~pmfa.errors.ExchangeError`
+  instead, because an order may stand on the exchange and a rejection would
+  record that nothing was placed.
 - **Breaker.** Every order joins an order group whose contracts limit is
   ``config.caps.order_group_contracts_limit`` over the exchange's rolling
   15-second window; the group is found or created once per exchange shard.
@@ -206,7 +211,15 @@ class DemoExecutor:
     # -- orders
 
     def place(self, intent: OrderIntent) -> OrderResult:
-        """Send one immediate-or-cancel limit order and reconcile its fills."""
+        """Send one immediate-or-cancel limit order and reconcile its fills.
+
+        Refusals come back as ``REJECTED`` results, including an unknown outcome
+        whose lookup by client order id answers with no such order. When the
+        outcome is unknown (or the id is already taken) and that lookup cannot be
+        made, this raises :class:`~pmfa.errors.ExchangeError`: the order may stand
+        on the exchange, so the caller must report the outcome as unknown rather
+        than store a rejection and cancel the proposal.
+        """
         placed_at = self.clock.now()
         halted = self._halted(intent, placed_at)
         if halted is not None:
@@ -230,11 +243,11 @@ class DemoExecutor:
                 try:
                     found = self._find_order(intent)
                 except ExchangeError as lookup:
-                    return self._rejected(
-                        intent,
-                        placed_at,
-                        f"outcome unknown and the order lookup failed ({lookup}): {exc}",
-                    )
+                    # The exchange could not be asked: an order may stand, so this is not
+                    # a rejection. Both messages carry method, path and status, never headers.
+                    raise ExchangeError(
+                        f"outcome unknown and the order lookup failed ({lookup}): {exc}"
+                    ) from exc
                 if found is not None:
                     return self._from_order(intent, found, placed_at)
                 if exc.outcome_unknown:

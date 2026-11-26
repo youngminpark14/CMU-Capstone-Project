@@ -236,9 +236,12 @@ class BacktestData:
         self.embedder_identity = make_embedder(config.retrieval.embedder).identity
         retrieval = config.retrieval
         material = {
-            # What was dropped does not change what is indexed, and leaving it out
-            # keeps the key of a snapshot built before the field existed.
-            "snapshot": self.snapshot_manifest.model_dump(mode="json", exclude={"dropped_events"}),
+            # What was dropped does not change what is indexed. The content digest is left
+            # out too: recording it must not move the key of a snapshot built before it was
+            # recorded (``built_at`` already tells one build from another).
+            "snapshot": self.snapshot_manifest.model_dump(
+                mode="json", exclude={"dropped_events", "content_sha256"}
+            ),
             "corpus": self.corpus_manifest.model_dump(mode="json"),
             "embedder": self.embedder_identity,
             "chunking": [

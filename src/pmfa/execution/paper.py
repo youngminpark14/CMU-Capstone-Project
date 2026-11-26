@@ -16,13 +16,31 @@ replay, and the as-of book in backtests (nothing priced after the as-of time).
 one-minute candle after the as-of time plus the latency
 (``pmfa.world.snapshot.book``), which the decision never sees.
 
+**When an order's outcome counts.** The fill book is dated: its ``as_of`` is
+when everything it shows had happened. A backtest fill book is dated at the end
+of the candle that priced it, so later than the clock. The order's outcome (its
+fills, or that it did not fill) is timed at the later of the clock's time and
+the fill book's time: every fill is stamped with that time, the order carries
+it as ``outcome_at`` when it is later than ``placed_at``, and the equity point
+after the order is written at it. ``balance()`` and ``positions()`` read the
+account as of the clock's time, and each equity point values the account as of
+its own time, so a decision made before the outcome's time cannot count it,
+even one made at the same as-of time right after the order. A point already
+written in the clock's future is valued again when a later order's outcome
+falls before it, so every point counts each outcome timed at or before it. With a fill book
+not dated later than the clock, nothing changes: the fills are stamped at the
+clock's time and count at once. In shadow mode the live book is stamped when
+it was read, a moment after the order was timed, so the outcome carries that
+moment.
+
 Balance and positions are rebuilt from the stored fills and settlements
 (``pmfa.execution.portfolio``), so the state store is the only record of the
 paper account. ``balance().equity`` carries holdings at cost (the bankroll
 sizing uses); the equity points written for the daily loss stop and the
 drawdown halt (``mark``, at every fill and settlement) carry them at their own
 side's current bid from ``books``, or at cost when there is no bid, so the
-stops see unrealized losses.
+stops see unrealized losses. ``account()`` with no time holds every stored fill
+and settlement.
 """
 
 from __future__ import annotations
@@ -77,11 +95,14 @@ class PaperExecutor:
     # -- the Executor port
 
     def balance(self) -> Balance:
-        acct = self.account()
+        """Cash and equity at cost as of the clock's time: a fill counts only from its own time."""
+        acct = self.account(as_of=self.clock.now())
         return Balance(cash=acct.cash, equity=acct.equity)
 
     def positions(self, event_ticker: str | None = None) -> list[Position]:
-        return portfolio.positions(self.account(), self._event_of, event_ticker=event_ticker)
+        """Holdings as of the clock's time: a fill counts only from its own time."""
+        acct = self.account(as_of=self.clock.now())
+        return portfolio.positions(acct, self._event_of, event_ticker=event_ticker)
 
     def execution_book(self, ticker: str) -> OrderBook:
         """The book the pipeline decides with at execution (``books``; see the module docstring)."""
@@ -89,6 +110,11 @@ class PaperExecutor:
 
     def place(self, intent: OrderIntent) -> OrderResult:
         """Fill ``intent`` against the fill book, record it, and mark equity.
+
+        The outcome is timed at the later of now and the fill book's time (see
+        the module docstring): the fills are stamped with it, ``outcome_at``
+        carries it when it is later than ``placed_at``, and the equity point is
+        written at it.
 
         An order whose ``client_order_id`` is already stored is returned as it
         was, so a retry cannot double it. An order sent while the persisted
@@ -121,7 +147,9 @@ class PaperExecutor:
             self.store.save_order(result)
             return result
 
-        fills = self._walk(intent, order_id, now)
+        book = self.fill_books(intent.market_ticker)
+        outcome = max(now, book.as_of)
+        fills = self._walk(intent, order_id, book, outcome)
         filled = sum((f.contracts for f in fills), ZERO)
         if filled == 0:
             status = OrderStatus.UNFILLED
@@ -129,9 +157,14 @@ class PaperExecutor:
             status = OrderStatus.PARTIALLY_FILLED
         else:
             status = OrderStatus.FILLED
-        result = OrderResult(**base, status=status, fills=fills)
+        result = OrderResult(
+            **base,
+            status=status,
+            fills=fills,
+            outcome_at=outcome if outcome > now else None,
+        )
         self.store.save_order(result)
-        self.mark(now)
+        self.mark(outcome)
         return result
 
     def find_order(self, intent: OrderIntent) -> OrderResult | None:
@@ -155,7 +188,7 @@ class PaperExecutor:
         """Record a market's settlement and mark equity. The outcome resolver calls this.
 
         The settlement is recorded at ``at``, but the equity point at
-        ``max(at, now)``: the mark holds the whole account as it stands now, so
+        ``max(at, now)``: the mark values the account as it stands then, so
         writing it under a past time would leave a later point (from another
         settlement or fill) as the "current" equity without this one.
         """
@@ -163,7 +196,11 @@ class PaperExecutor:
         self.mark(max(at, self.clock.now()))
 
     def account(self, as_of: datetime | None = None) -> Account:
-        """The paper account rebuilt from the stored fills and settlements."""
+        """The paper account rebuilt from the stored fills and settlements.
+
+        ``as_of`` leaves out fills and settlements timed after it; without it,
+        everything stored counts.
+        """
         return portfolio.account(
             self.store.list_fills(),
             self.store.list_settlements(),
@@ -174,15 +211,32 @@ class PaperExecutor:
     def mark(self, at: datetime | None = None) -> Decimal:
         """Record an equity point (at ``at``, else now) and return its equity.
 
-        The equity is marked (``portfolio.marked_equity``): open holdings at
-        their own side's current bid in ``books``, at cost without one. These
-        points are what the daily loss stop and the drawdown halt read.
+        The point values the account as of its own time, so it holds no fill
+        timed after it. The equity is marked (``portfolio.marked_equity``): open
+        holdings at their own side's current bid in ``books``, at cost without
+        one. These points are what the daily loss stop and the drawdown halt read.
+
+        Stored points dated after both ``at`` and the clock's time are valued
+        again, each as of its own time. Such a point was written for an earlier
+        order whose outcome is later than this one's (an hourly candle, then a
+        one-minute candle), so without this it would leave out an outcome timed
+        before it. No decision has read it yet: it is in the clock's future.
         """
-        equity = portfolio.marked_equity(self.account(), self._bid)
-        self.store.record_equity(at if at is not None else self.clock.now(), equity)
+        now = self.clock.now()
+        when = at if at is not None else now
+        equity = self._record_point(when)
+        for t, _ in self.store.equity_series():
+            if t > when and t > now:
+                self._record_point(t)
         return equity
 
     # -- internals
+
+    def _record_point(self, at: datetime) -> Decimal:
+        """Write the equity point at ``at``, valuing the account as of ``at``, and return it."""
+        equity = portfolio.marked_equity(self.account(as_of=at), self._bid)
+        self.store.record_equity(at, equity)
+        return equity
 
     def _bid(self, market_ticker: str, side: Side) -> Decimal | None:
         """The best bid for ``side`` now, or ``None`` when there is none or it cannot be read."""
@@ -193,9 +247,13 @@ class PaperExecutor:
         prices = [lvl.price for lvl in book.bids(side) if lvl.contracts > 0]
         return max(prices) if prices else None
 
-    def _walk(self, intent: OrderIntent, order_id: str, now: datetime) -> list[Fill]:
-        """Take whole contracts up to the limit. A level offers floor(its contracts)."""
-        book = self.fill_books(intent.market_ticker)
+    def _walk(
+        self, intent: OrderIntent, order_id: str, book: OrderBook, at: datetime
+    ) -> list[Fill]:
+        """Take whole contracts from ``book`` up to the limit, stamped ``at``.
+
+        A level offers floor(its contracts).
+        """
         series = self._series(intent.market_ticker)
         remaining = intent.contracts
         taken: list[tuple[Decimal, int]] = []
@@ -217,7 +275,7 @@ class PaperExecutor:
                 contracts=Decimal(take),
                 price=price,
                 fee=fee,
-                filled_at=now,
+                filled_at=at,
                 simulated=True,
             )
             for i, ((price, take), fee) in enumerate(zip(taken, fees, strict=True))

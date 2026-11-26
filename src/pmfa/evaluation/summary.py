@@ -1,9 +1,9 @@
 """The tallies the report shows, computed from episode records.
 
 Exits by reason, gate rejections by reason, routing tiers, and cost, calls, and
-latency per episode; plus the aggregate of the per-episode pruning audits.
-Most episodes are expected to end in a no-trade exit, which is why the exit
-tally matters as much as the P&L.
+latency per episode; the first self-halt of a pass and what followed it; plus
+the aggregate of the per-episode pruning audits. Most episodes are expected to
+end in a no-trade exit, which is why the exit tally matters as much as the P&L.
 """
 
 from __future__ import annotations
@@ -11,10 +11,11 @@ from __future__ import annotations
 import statistics
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from datetime import datetime
 from decimal import Decimal
 
-from pmfa.records.base import Dollars, Record
-from pmfa.records.episode import EpisodeRecord
+from pmfa.records.base import Dollars, Record, UtcTime
+from pmfa.records.episode import EpisodeRecord, Exit
 
 
 class Spread(Record):
@@ -49,6 +50,26 @@ class EpisodeTallies(Record):
     calls: Spread
     latency_seconds: Spread
     """Model-call seconds per episode, as the gateway meters them."""
+
+
+class SelfHalt(Record):
+    """The first episode of a pass that ended ``halted``, and how the pass went from then on.
+
+    Nobody resumes a halt in a backtest, so once a stop condition trips, every
+    later episode still forecasts but ends ``halted`` at the gate and sends no
+    order. A report needs this said, not only counted.
+    """
+
+    first_episode_id: str
+    first_trigger_id: str
+    first_started_at: UtcTime
+    """When the first halted episode started, on the pass's simulated clock."""
+    reason: str
+    """That episode's exit detail: the stop condition that tripped."""
+    n_from_then: int
+    """Episodes from the first halted one on, that one included."""
+    n_halted_from_then: int
+    """Of those, the episodes that ended ``halted``."""
 
 
 class PruningSummary(Record):
@@ -107,6 +128,40 @@ def episode_tallies(episodes: Sequence[EpisodeRecord]) -> EpisodeTallies:
         cost_usd=dollar_spread([e.usage.cost_usd for e in episodes]),
         calls=spread([float(e.usage.calls) for e in episodes]),
         latency_seconds=spread([e.usage.seconds for e in episodes]),
+    )
+
+
+def _run_order(e: EpisodeRecord) -> tuple[datetime, datetime, str, str, str]:
+    """The key that puts one pass's episodes in the order the backtest ran them.
+
+    Start time, then as-of time; then, for triggers that share both, the order
+    the schedule lists them in: scoring points by event ticker, trading
+    triggers by document id. The trigger id comes last, only to make the key total.
+    """
+    t = e.trigger
+    return (e.started_at, e.as_of, t.event_ticker or "", t.doc_id or "", t.trigger_id)
+
+
+def self_halt(episodes: Sequence[EpisodeRecord]) -> SelfHalt | None:
+    """The first ``halted`` exit of one pass's episodes and what followed; ``None`` with none.
+
+    Episodes are taken in the order they ran: by start time on the pass's
+    clock, then as-of time, then the order the backtest runs triggers that
+    share a time in (see ``_run_order``). The episode id is a hash, so it would
+    not keep that order.
+    """
+    ordered = sorted(episodes, key=_run_order)
+    first = next((i for i, e in enumerate(ordered) if e.exit is Exit.HALTED), None)
+    if first is None:
+        return None
+    head, later = ordered[first], ordered[first:]
+    return SelfHalt(
+        first_episode_id=head.episode_id,
+        first_trigger_id=head.trigger.trigger_id,
+        first_started_at=head.started_at,
+        reason=head.exit_detail or "no reason recorded",
+        n_from_then=len(later),
+        n_halted_from_then=sum(e.exit is Exit.HALTED for e in later),
     )
 
 

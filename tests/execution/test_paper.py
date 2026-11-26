@@ -9,6 +9,8 @@ from datetime import timedelta
 from decimal import Decimal
 
 from pmfa.decision import series_fee
+from pmfa.decision.risk import risk_state
+from pmfa.execution import portfolio
 from pmfa.execution.paper import PaperExecutor
 from pmfa.ports import Executor
 from pmfa.records.decision import OrderIntent, OrderStatus
@@ -142,11 +144,12 @@ def test_halted_orders_are_refused_and_not_stored() -> None:
 
 
 def test_settle_records_the_settlement_and_an_equity_point() -> None:
-    executor, store, _ = paper(bankroll="500")
+    executor, store, clock = paper(bankroll="500")
     executor.place(intent(10, "0.62"))
     later = AS_OF + timedelta(days=19)
     executor.settle(HOLD, Side.YES, later)
     assert store.list_settlements() == [(HOLD, Side.YES, later)]
+    clock.set(later)  # the balance is read as of the clock: the settlement counts from its time
     balance = executor.balance()
     assert balance.cash == balance.equity == Decimal("500") - Decimal("6.37") + Decimal("10")
     assert store.equity_series()[-1] == (later, balance.equity)
@@ -274,3 +277,75 @@ def test_a_fractional_level_offers_only_its_whole_contracts() -> None:
         (10, Decimal("0.50")),
         (10, Decimal("0.51")),
     ]
+
+
+# -- the outcome's time: a fill book dated later than the clock
+
+
+def test_a_fill_from_a_later_book_counts_only_from_that_books_time() -> None:
+    known = AS_OF + timedelta(minutes=2)  # the end of the candle that priced the fill
+    later = book(at=known)  # YES offers 0.62 x 30, 0.64 x 40, dated two minutes on
+    executor, store, clock = _executor_on({HOLD: book()}, fill_books={HOLD: later})
+    executor.mark(AS_OF - timedelta(days=1))
+    result = executor.place(intent(10, "0.62"))
+    assert result.placed_at == AS_OF
+    assert result.outcome_at == known
+    assert [f.filled_at for f in result.fills] == [known]
+
+    # A second decision at the same as-of time sees none of it, nor does a mark written then.
+    assert executor.positions() == []
+    assert executor.balance().cash == executor.balance().equity == Decimal("1000")
+    assert executor.mark() == Decimal("1000")
+    assert [t for t, _ in store.equity_series()] == [AS_OF - timedelta(days=1), AS_OF, known]
+    assert all(e == Decimal("1000") for t, e in store.equity_series() if t <= AS_OF)
+    assert risk_state(store.equity_series(), AS_OF, CONFIG).bankroll == Decimal("1000")
+
+    # Once the clock reaches the fill's time, it counts.
+    clock.set(known)
+    [position] = executor.positions()
+    assert (position.side, position.contracts) == (Side.YES, 10)
+    assert executor.balance().cash == Decimal("1000") - Decimal("6.20") - Decimal("0.17")
+    assert store.equity_series()[-1] == (known, Decimal("993.63") + Decimal("6.00"))
+
+
+def test_a_fill_from_a_book_not_dated_later_counts_at_once() -> None:
+    executor, store, _ = _executor_on({HOLD: book()}, fill_books={HOLD: book()})
+    result = executor.place(intent(10, "0.62"))
+    assert result.outcome_at is None
+    assert [f.filled_at for f in result.fills] == [AS_OF]
+    assert executor.positions()[0].contracts == 10
+    assert store.equity_series() == [(AS_OF, Decimal("993.63") + Decimal("6.00"))]
+
+
+def test_an_unfilled_order_against_a_later_book_carries_its_outcome_time() -> None:
+    known = AS_OF + timedelta(hours=1)
+    executor, store, _ = _executor_on({HOLD: book()}, fill_books={HOLD: book(at=known)})
+    result = executor.place(intent(10, "0.61"))
+    assert result.status is OrderStatus.UNFILLED
+    assert result.outcome_at == known
+    assert store.equity_series() == [(known, Decimal("1000"))]
+
+
+def test_a_later_outcome_before_a_future_point_is_counted_in_that_point() -> None:
+    # Order A is priced from an hourly candle (outcome AS_OF + 1h); order B, sent ten minutes
+    # later, from a one-minute candle (outcome AS_OF + 12m). The point at AS_OF + 1h was
+    # written for A, before B existed, and must count B once B's outcome is before it.
+    hourly, minute = AS_OF + timedelta(hours=1), AS_OF + timedelta(minutes=12)
+    fill_books = {HOLD: book(at=hourly)}
+    executor, store, clock = _executor_on({HOLD: book()}, fill_books=fill_books)
+    executor.mark(AS_OF - timedelta(days=1))
+    assert executor.place(intent(10, "0.62")).outcome_at == hourly
+    clock.set(AS_OF + timedelta(minutes=10))
+    fill_books[HOLD] = book(at=minute)
+    assert executor.place(intent(10, "0.62", client_order_id="coid-2")).outcome_at == minute
+
+    # Each order costs 6.20 + 0.17 and its 10 YES are marked at the 0.60 bid.
+    one, both = Decimal("999.63"), Decimal("999.26")
+    assert store.equity_series() == [
+        (AS_OF - timedelta(days=1), Decimal("1000")),
+        (minute, one),  # B only: A's outcome is later
+        (hourly, both),
+    ]
+    clock.set(AS_OF + timedelta(hours=2))
+    current = risk_state(store.equity_series(), clock.now(), CONFIG).bankroll
+    assert current == both == portfolio.marked_equity(executor.account(), executor._bid)

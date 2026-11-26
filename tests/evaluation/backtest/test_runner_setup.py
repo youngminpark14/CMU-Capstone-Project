@@ -96,7 +96,7 @@ def test_the_manifest_identifies_the_data_and_a_dirty_tree(
     from pmfa.evaluation.manifest import GitState, file_sha256, hashes_digest, read_manifest
     from pmfa.evaluation.report import build_report, publish_run
     from pmfa.world.evidence.corpus import CorpusStore
-    from pmfa.world.snapshot.store import snapshot_path
+    from pmfa.world.snapshot.store import SnapshotStore, snapshot_path
 
     monkeypatch.setattr(
         backtest,
@@ -107,11 +107,19 @@ def test_the_manifest_identifies_the_data_and_a_dirty_tree(
     manifest = run_backtest(data_config, run_dir=run_dir, systems=["market"])
     assert manifest.git_changes == ["src/pmfa/x.py"]
     assert manifest.snapshot_sha256 == file_sha256(snapshot_path(data_config))
+    # The test snapshot's manifest predates the content digest: the runner computes it.
+    snapshot = SnapshotStore(snapshot_path(data_config))
+    stored = snapshot.manifest()
+    assert stored is not None and stored.content_sha256 is None
+    assert manifest.snapshot_content_sha256 == snapshot.content_sha256()
+    snapshot.close()
     corpus = CorpusStore(data_config.paths.corpus_dir()).manifest()
     assert corpus is not None and corpus.content_hashes
     assert manifest.corpus_hashes_digest == hashes_digest(corpus.content_hashes)
 
     text = build_report(run_dir).read_text()
+    assert f"snapshot content SHA-256 `{manifest.snapshot_content_sha256}`" in text
+    assert f"snapshot file SHA-256 `{manifest.snapshot_sha256}`" in text
     assert "uncommitted changes (1 path(s) changed or untracked: src/pmfa/x.py)" in text
     assert "does not hold exactly the code that produced it" in text
     target = publish_run(run_dir, "dirty", root=tmp_path / "published")
@@ -120,3 +128,55 @@ def test_the_manifest_identifies_the_data_and_a_dirty_tree(
     files = {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()}
     assert {o for o in published.outputs if "/" not in o} == {f for f in files if "/" not in f}
     assert {o.split("/")[0] for o in published.outputs} == {f.split("/")[0] for f in files}
+
+
+def _record_content_digest(config: Config, digest: str) -> None:
+    """Rewrite the test snapshot's manifest as a build that recorded ``digest`` would have."""
+    from pmfa.world.snapshot.store import SnapshotStore, snapshot_path
+
+    store = SnapshotStore(snapshot_path(config))
+    manifest = store.manifest()
+    assert manifest is not None
+    store.write_manifest(manifest.model_copy(update={"content_sha256": digest}))
+    store.close()
+
+
+def test_the_manifest_takes_the_content_digest_the_snapshot_recorded(
+    data_config: Config, tmp_path: Path
+) -> None:
+    recorded = "ab" * 32  # not the real digest: shows it was read, not recomputed
+    _record_content_digest(data_config, recorded)
+    manifest = run_backtest(data_config, run_dir=tmp_path / "run", systems=["market"])
+    assert manifest.snapshot_content_sha256 == recorded
+    assert manifest.snapshot_manifest["content_sha256"] == recorded
+
+
+def test_a_report_of_a_run_recorded_before_the_content_digest_says_so(
+    data_config: Config, tmp_path: Path
+) -> None:
+    import json
+
+    from pmfa.evaluation.manifest import MANIFEST_FILE
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "run"
+    run_backtest(data_config, run_dir=run_dir, systems=["market"])
+    path = run_dir / MANIFEST_FILE
+    raw = json.loads(path.read_text())
+    del raw["snapshot_content_sha256"]  # as an older runner wrote it
+    path.write_text(json.dumps(raw))
+    text = build_report(run_dir).read_text()
+    assert "snapshot content SHA-256 `not recorded`" in text
+
+
+def test_recording_the_content_digest_keeps_the_index_key(data_config: Config) -> None:
+    from pmfa.world.backtest import BacktestData
+
+    before = BacktestData(data_config)  # a snapshot built before the digest was recorded
+    key = before.index_key
+    before.close()
+    _record_content_digest(data_config, "cd" * 32)
+    after = BacktestData(data_config)
+    assert after.snapshot_manifest.content_sha256 == "cd" * 32
+    assert after.index_key == key
+    after.close()

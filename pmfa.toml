@@ -62,12 +62,11 @@ min_seconds_between_requests = 2.0
 manual_dir = "data/manual"
 feeds = []
 
-# What starts an episode: price moves, schedule ticks, scoring horizons.
+# What starts an episode: price moves, and an optional daily re-check of holdings.
 [triggers]
 price_move_cents = 3
 price_move_window_minutes = 30
 daily_recheck_open_positions = false
-schedule_horizons_days = [7, 3, 1]
 
 # The events, evidence and ledger indexes: passage size, top-k, ranking.
 [retrieval]
@@ -152,7 +151,7 @@ max_seconds_per_episode = 90.0
 max_usd_per_episode = 2
 max_usd_per_run = 25
 
-# The scenario tree: depth, beam, coverage floor, quantiles.
+# The scenario tree: depth, beam, coverage floor, follow-ups, the fast path.
 [forecast]
 max_depth = 3
 beam_width = 3
@@ -162,7 +161,6 @@ tie_band = 0.05
 confidence_full_origins = 3
 max_evidence_followups = 3
 fast_path_within_minutes = 60
-quantile_levels = [0.05, 0.25, 0.5, 0.75, 0.95]
 
 # Fractional Kelly and the minimum edge after fees.
 [sizing]
@@ -227,7 +225,7 @@ request_timeout_seconds = 30.0
 [state]
 transport = "mcp"
 
-# The backtest window, systems compared, bootstrap and the canary.
+# The backtest window, scoring horizons, systems compared, bootstrap, the canary.
 [evaluation]
 window_start = 2026-07-01
 horizons_days = [7, 3, 1]

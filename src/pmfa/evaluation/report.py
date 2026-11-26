@@ -22,6 +22,7 @@ from typing import Any
 
 from pmfa.evaluation.baselines import MARKET_PRICE_RULE, PIPELINE, SYSTEMS
 from pmfa.evaluation.manifest import MANIFEST_FILE, read_manifest, write_manifest
+from pmfa.evaluation.schedule import RELEASE_MATCH
 
 REPORT_FILE = "report.md"
 FIGURES_DIR = "figures"
@@ -375,8 +376,11 @@ def build_report(run_dir: str | Path) -> Path:
             else ""
         )
         + ".\n"
-        f"- Data: snapshot file SHA-256 `{manifest.snapshot_sha256 or 'not recorded'}`, corpus "
-        f"texts digest `{manifest.corpus_hashes_digest or 'not recorded'}`.\n"
+        f"- Data: snapshot content SHA-256 "
+        f"`{manifest.snapshot_content_sha256 or 'not recorded'}` (the same for any rebuild "
+        "that holds the same rows), snapshot file SHA-256 "
+        f"`{manifest.snapshot_sha256 or 'not recorded'}` (this exact file; differs on every "
+        f"rebuild), corpus texts digest `{manifest.corpus_hashes_digest or 'not recorded'}`.\n"
         f"- Snapshot: {snap.get('counts', {}).get('events', '?')} events, "
         f"{snap.get('counts', {}).get('markets', '?')} markets, built "
         f"{snap.get('built_at', '?')} from {snap.get('source_host', '?')}.\n"
@@ -543,6 +547,8 @@ def build_report(run_dir: str | Path) -> Path:
         )
         w("")
 
+    _error_concentration(w, manifest, metrics, shown)
+
     # -- quote age
     quotes = metrics.get("quotes")
     if quotes and "quote_age_hours" in quotes:
@@ -644,6 +650,13 @@ def build_report(run_dir: str | Path) -> Path:
             )
         )
         w("")
+        trading_halt = (metrics.get("self_halts") or {}).get("trading")
+        if trading_halt:
+            w(
+                f"The trading pass halted itself at {trading_halt['first_started_at']}, and "
+                "nobody resumes a halt in a backtest, so these figures describe the run only "
+                "up to then (see Exits by reason).\n"
+            )
 
     # -- routing
     w("## Routing tiers\n")
@@ -699,10 +712,13 @@ def build_report(run_dir: str | Path) -> Path:
 
         # -- exits and gate
         w("## Exits by reason\n")
+        halts = metrics.get("self_halts") or {}
         for name, t in eps.items():
             w(f"{name.capitalize()} pass, {t['n_episodes']} episode(s):\n")
             w(_counts_table(t["exits"], "exit"))
             w("")
+            if halts.get(name):
+                w(_self_halt_sentence(name, halts[name]))
         w("## Gate rejections by reason\n")
         for name, t in eps.items():
             w(f"{name.capitalize()} pass, {t['n_gate_rejected']} rejected proposal(s):\n")
@@ -792,6 +808,9 @@ def build_report(run_dir: str | Path) -> Path:
             "as-of book offered nothing at or below the limit (exit stale_price); that check "
             "never reads the book an order fills against.\n"
         )
+    late = metrics.get("late_starts")
+    if late:
+        w(_late_start_sentence(late))
 
     # -- leakage
     w("## How look-ahead was prevented\n")
@@ -881,44 +900,56 @@ RELEASE_LINE = re.compile(r", (\S+)\): no (\S+) event in the snapshot$")
 DROPPED_CLOSE = re.compile(r"^closes (\S+),")
 """The close time at the start of a dropped event's reason, when the builder knew it."""
 
-NEAR_RELEASE = timedelta(days=1)
-"""A dropped event closing this close to a release may be that release's event."""
+NUMBER_WORDS = {1: "a", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+
+
+def _span(delta: timedelta) -> str:
+    """A time span in words, such as ``two days`` or ``a day``, for the report's sentences."""
+    seconds = delta.total_seconds()
+    for unit, size in (("day", 86_400), ("hour", 3_600), ("minute", 60)):
+        if seconds >= size and seconds % size == 0:
+            n = int(seconds // size)
+            return f"{NUMBER_WORDS.get(n, str(n))} {unit}" + ("" if n == 1 else "s")
+    return f"{seconds:g} seconds"
 
 
 def _release_verdict(line: str, dropped: dict[str, str]) -> str:
     """What the dropped events say about one release without an event, in one sentence.
 
-    Only a dropped event of the release's series that closes within a day of the
-    release is named as possibly its event. One without a close time on record can
-    be neither matched nor ruled out. Otherwise the exchange listed no event for it.
+    Only a dropped event of the release's series that closes within
+    ``RELEASE_MATCH`` of the release is named as possibly its event: the same
+    rule the schedule uses to match an event to a release, so the two cannot
+    disagree. One without a close time on record can be neither matched nor
+    ruled out. Otherwise the exchange listed no event for it.
     """
     found = RELEASE_LINE.search(line)
     if found is None:
         return ""
     released, series = datetime.fromisoformat(found.group(1)), found.group(2)
+    within = f"within {_span(RELEASE_MATCH)}"
     of_series = {t: r for t, r in dropped.items() if t.split("-", 1)[0] == series}
     near, unknown = [], []
     for ticker, reason in of_series.items():
         close = DROPPED_CLOSE.match(reason)
         if close is None:
             unknown.append(ticker)
-        elif abs(datetime.fromisoformat(close.group(1)) - released) <= NEAR_RELEASE:
+        elif abs(datetime.fromisoformat(close.group(1)) - released) <= RELEASE_MATCH:
             near.append(ticker)
     if near:
         return (
-            f"The snapshot builder dropped {', '.join(near)}, which closes within a day of the "
+            f"The snapshot builder dropped {', '.join(near)}, which closes {within} of the "
             f"release (listed below): it may be this release's {series} event."
         )
     if unknown:
         return (
-            f"No {series} event the builder dropped closes within a day of it, but "
+            f"No {series} event the builder dropped closes {within} of it, but "
             f"{', '.join(unknown)} has no close time on record (listed below), so whether it "
             "belongs to this release is not known."
         )
     if of_series:
         return (
             f"So the exchange listed no {series} event for this release: none of the "
-            f"{len(of_series)} {series} event(s) the builder dropped closes within a day of it."
+            f"{len(of_series)} {series} event(s) the builder dropped closes {within} of it."
         )
     return (
         f"So the exchange listed no {series} event for this release: the builder dropped no "
@@ -1006,6 +1037,103 @@ def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
             f"{len(unresolved)} market forecast(s), listed in `metrics.json` under "
             "`unresolved_rows`.\n"
         )
+
+
+def _percent(share: Any) -> str:
+    return "not defined" if share is None else f"{float(share) * 100:.1f}%"
+
+
+def _error_concentration(w: Any, manifest: Any, metrics: dict[str, Any], shown: list[str]) -> None:
+    """The "Where the error comes from" section, from each system's ``error_concentration`` block.
+
+    A Brier score is a mean, so a handful of confident misses can decide it.
+    This says how much of each system's summed squared error comes from rows
+    priced near 0 or 1 and from its largest event and markets, so no reading
+    of the scores has to guess. Left out for a run whose metrics predate it.
+    """
+    blocks = {
+        s: metrics["systems"][s]["error_concentration"]
+        for s in shown
+        if (metrics["systems"].get(s) or {}).get("error_concentration")
+    }
+    if not blocks:
+        return
+    w("## Where the error comes from\n")
+    w(
+        "Each system's summed squared error, (probability - outcome)^2 added over the rows of "
+        "its pooled Brier score (answered forecasts, all horizons), split by the forecast "
+        "probability and by event and market. When one event carries a large share, a "
+        "comparison on this sample rests heavily on that event; the event-clustered interval "
+        "above already reflects it.\n"
+    )
+    for s, block in blocks.items():
+        total = float(block["squared_error"])
+        w(
+            f"{_label(manifest, s)}: summed squared error {_num(total)} over "
+            f"{block['n_rows']} row(s).\n"
+        )
+        if total <= 0:
+            w("Every forecast on these rows matched its outcome, so there is no error to split.\n")
+            continue
+        w(
+            _table(
+                ["Forecast probability", "Rows", "Squared error", "Share of the error"],
+                [
+                    [b["name"], str(b["n_rows"]), _num(b["squared_error"]), _percent(b["share"])]
+                    for b in block["bands"]
+                ],
+            )
+        )
+        w("")
+        top = block["top_event"]
+        w(
+            f"The event with the largest share is {top['name']}: {_percent(top['share'])} of "
+            f"the error, from {top['n_rows']} row(s). The markets with the largest shares: "
+            + "; ".join(
+                f"{m['name']} {_percent(m['share'])} ({m['n_rows']} row(s))"
+                for m in block["top_markets"]
+            )
+            + ".\n"
+        )
+
+
+def _self_halt_sentence(name: str, halt: dict[str, Any]) -> str:
+    """What a self-halt in one pass means for that pass's results, in plain sentences."""
+    head = (
+        f"The first {name} episode to end halted started at {halt['first_started_at']} "
+        f"(trigger {halt['first_trigger_id']}). Its reason: {halt['reason']}. From then on, "
+        f"that episode included, {halt['n_halted_from_then']} of the {halt['n_from_then']} "
+        f"{name} episode(s) ended halted. Nobody resumes a halt in a backtest."
+    )
+    if name == "trading":
+        return (
+            head + " From that time the simulation holds forecasts but places no further "
+            "orders, so the trading results describe the run only up to the halt.\n"
+        )
+    return (
+        head + " Forecasts are made before the gate, where the halt stops an episode, so the "
+        "scores are not affected.\n"
+    )
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:.0f} seconds"
+    if seconds < 7_200:
+        return f"{seconds / 60:.1f} minutes"
+    return f"{seconds / 3_600:.1f} hours"
+
+
+def _late_start_sentence(late: dict[str, Any]) -> str:
+    """How many trading episodes started after their trigger's time, and the longest wait."""
+    n, of = int(late.get("episodes", 0)), int(late.get("of", 0))
+    if not n:
+        return f"None of the {of} trading episode(s) started later than its trigger's time.\n"
+    return (
+        f"{n} of the {of} trading episode(s) started later than their trigger's time, the "
+        f"longest by {_duration(float(late.get('longest_seconds', 0)))}: the simulation waits "
+        "for the candle that priced the previous order to end before the next episode starts.\n"
+    )
 
 
 def _canary_sentence(manifest: Any) -> str:

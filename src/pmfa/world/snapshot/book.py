@@ -23,6 +23,14 @@ reaches the re-read, the recompute, the gate or routing.
 The book is empty when the market has closed by ``t``, when no candle
 contains ``t``, or when that candle has no volume. A side with no quote in the
 candle (a YES ask of 1, a YES bid of 0, or none at all) is empty.
+
+**Its time.** The book is dated ``known_at``: when everything it shows had
+happened, so the order's outcome (its fills, or that it did not fill) is known
+only from then. That is the end of the candle used (even one with no volume or
+no quote); ``t`` itself when the market had closed by ``t``; and ``t`` plus one
+hour when no candle was found, the end of the hourly window searched. The
+paper executor stamps fills at this time, so nothing a decision reads before
+it can count the order's outcome.
 """
 
 from __future__ import annotations
@@ -43,11 +51,15 @@ class ExecutionBook(Record):
     """The book an order would meet, the candle it came from, and how fine that candle was."""
 
     book: OrderBook
+    """Dated ``known_at``."""
     candle: Candle | None = None
     granularity: Granularity = "none"
     """``minute``: priced from a one-minute candle; ``hour``: the coarse hourly fallback; ``none``: empty."""
     arrival: UtcTime
     """``as_of`` plus the configured latency: when the order reaches the exchange."""
+    known_at: UtcTime
+    """When everything the book shows had happened: the candle's end, else the end of the
+    window searched, or ``arrival`` when the market had closed by then (module docstring)."""
 
     @property
     def coarse(self) -> bool:
@@ -60,17 +72,19 @@ def execution_book(
     """The book an order sent at ``as_of`` meets. See the module docstring for the rule."""
     arrival = as_of + timedelta(seconds=config.execution.backtest_latency_seconds)
     market = store.get_market(ticker)
-    empty = ExecutionBook(book=OrderBook(ticker=ticker, as_of=arrival), arrival=arrival)
     if arrival >= market.close_time:
-        return empty
+        return _empty(ticker, arrival, known_at=arrival)
     granularity: Granularity = "minute"
     candle = store.first_candle(ticker, 1, after=arrival, until=arrival + timedelta(minutes=1))
     if candle is None:
         granularity = "hour"
-        candle = store.first_candle(ticker, 60, after=arrival, until=arrival + timedelta(hours=1))
-    if candle is None:
-        return empty
-    found = empty.model_copy(update={"candle": candle, "granularity": granularity})
+        searched = arrival + timedelta(hours=1)
+        candle = store.first_candle(ticker, 60, after=arrival, until=searched)
+        if candle is None:
+            return _empty(ticker, arrival, known_at=searched)
+    found = _empty(ticker, arrival, known_at=candle.end_ts).model_copy(
+        update={"candle": candle, "granularity": granularity}
+    )
     size = (candle.volume * config.execution.backtest_volume_share).to_integral_value(
         rounding=ROUND_FLOOR
     )
@@ -83,6 +97,12 @@ def execution_book(
         no_bids.append(BookLevel(price=ONE - candle.yes_ask.high, contracts=size))
     book = found.book.model_copy(update={"yes_bids": yes_bids, "no_bids": no_bids})
     return found.model_copy(update={"book": book})
+
+
+def _empty(ticker: str, arrival: datetime, *, known_at: datetime) -> ExecutionBook:
+    return ExecutionBook(
+        book=OrderBook(ticker=ticker, as_of=known_at), arrival=arrival, known_at=known_at
+    )
 
 
 __all__ = ["ExecutionBook", "Granularity", "execution_book"]

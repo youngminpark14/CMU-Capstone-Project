@@ -100,6 +100,7 @@ def build_snapshot(
     cutoff = exchange.historical_cutoff()
     series_tickers = [s.ticker for s in config.follow.enabled_series()]
     dropped: dict[str, str] = {}
+    _forget_content_digest(store)
 
     for series_ticker in series_tickers:
         store.put_series(exchange.get_series(series_ticker))
@@ -127,6 +128,7 @@ def build_snapshot(
 
     hourly = store.coverage_summary(60)
     minute = store.coverage_summary(1)
+    content = store.content_sha256()  # the rows alone, so a rebuild can be matched to this build
     manifest = SnapshotManifest(
         built_at=datetime.now(UTC),
         window_start=start,
@@ -140,9 +142,24 @@ def build_snapshot(
         source_host=_host(exchange),
         elapsed_seconds=round(time.monotonic() - began, 1),
         dropped_events=dict(sorted(dropped.items())),
+        content_sha256=content,
     )
     say(f"done: {manifest.counts}, hourly ranges {hourly[0]}, minute ranges {minute[0]}")
     return store.write_manifest(manifest)
+
+
+def _forget_content_digest(store: SnapshotStore) -> None:
+    """Clear a digest an earlier build recorded, before this build changes any row.
+
+    A rebuild rewrites records and candles in place and writes its manifest only at the
+    end. If it stops part way, the earlier manifest stays, and a digest kept in it would
+    name rows the file no longer holds. With the digest cleared, a reader computes it
+    from the rows instead (as ``run_backtest`` does) until this build records a fresh one.
+    The retrieval index key leaves this field out, so clearing it does not move the key.
+    """
+    old = store.manifest()
+    if old is not None and old.content_sha256 is not None:
+        store.write_manifest(old.model_copy(update={"content_sha256": None}))
 
 
 def _fetch_range(

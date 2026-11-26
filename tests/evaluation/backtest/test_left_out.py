@@ -6,6 +6,8 @@ import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 from pmfa.config import Config
 from pmfa.evaluation.backtest import run_backtest
 from pmfa.records.evidence import ScheduledEvent
@@ -124,7 +126,7 @@ def test_a_release_whose_series_dropped_only_far_events_had_no_event_listed(
     run_backtest(data_config, run_dir=run_dir, systems=["market"])
     left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
     assert "the exchange listed no KXCPIYOY event for this release" in left_out
-    assert "none of the 2 KXCPIYOY event(s) the builder dropped closes within a day" in left_out
+    assert "none of the 2 KXCPIYOY event(s) the builder dropped closes within two days" in left_out
     assert "may be" not in left_out and "may belong" not in left_out
 
 
@@ -138,8 +140,27 @@ def test_a_dropped_event_closing_near_a_release_is_named_as_possibly_its_event(
     run_dir = tmp_path / "run"
     run_backtest(data_config, run_dir=run_dir, systems=["market"])
     left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
-    assert f"{CPI}-26NOVX, which closes within a day of the release" in left_out
+    assert f"{CPI}-26NOVX, which closes within two days of the release" in left_out
     assert f"{CPI}-26DEC," not in left_out.split("Events the exchange listed")[0]
+    assert "listed no KXCPIYOY event for this release" not in left_out
+
+
+def test_a_dropped_event_closing_a_day_and_a_half_after_a_release_is_named(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """The report matches a dropped event to a release by the schedule's own rule, two days.
+
+    The CPI-26NOVX close is 36 hours after the 2026-08-30 12:30 release: within
+    the schedule's match, so the report must not say the exchange listed no event.
+    """
+    from pmfa.evaluation.report import build_report
+
+    _add_release(data_config)
+    _set_dropped(data_config, _far_and_near("2026-09-01T00:30:00+00:00"))
+    run_dir = tmp_path / "run"
+    run_backtest(data_config, run_dir=run_dir, systems=["market"])
+    left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
+    assert f"{CPI}-26NOVX, which closes within two days of the release" in left_out
     assert "listed no KXCPIYOY event for this release" not in left_out
 
 
@@ -179,3 +200,38 @@ def test_trading_rows_without_a_final_result_are_counted(
     assert all(f"{CPI}-T3.0" in line for line in metrics["unresolved_rows"])
     left_out = _section(build_report(run_dir).read_text(), "Left out of scoring")
     assert f"{len(metrics['unresolved_rows'])} market forecast(s)" in left_out
+
+
+RELEASE = (
+    "cpi_release:2026-07-extra (Consumer Price Index, an extra release, "
+    "2026-08-30T12:30:00+00:00): no KXCPIYOY event in the snapshot"
+)
+
+
+def test_spans_are_said_in_words() -> None:
+    from datetime import timedelta
+
+    from pmfa.evaluation.report import _span
+
+    assert _span(timedelta(days=2)) == "two days"
+    assert _span(timedelta(days=1)) == "a day"
+    assert _span(timedelta(hours=36)) == "36 hours"
+    assert _span(timedelta(minutes=90)) == "90 minutes"
+
+
+def test_the_release_rule_and_its_wording_follow_the_schedules_constant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Change the match to 36 hours: a close 30 hours away is named, one 40 hours away is not."""
+    from datetime import timedelta
+
+    from pmfa.evaluation import report
+
+    monkeypatch.setattr(report, "RELEASE_MATCH", timedelta(hours=36))
+    near = {f"{CPI}-26NOVX": "closes 2026-08-31T18:30:00+00:00, after the window"}
+    far = {f"{CPI}-26NOVX": "closes 2026-09-01T04:30:00+00:00, after the window"}
+    named = report._release_verdict(RELEASE, near)
+    assert f"{CPI}-26NOVX, which closes within 36 hours of the release" in named
+    ruled_out = report._release_verdict(RELEASE, far)
+    assert "the exchange listed no KXCPIYOY event for this release" in ruled_out
+    assert "closes within 36 hours of it" in ruled_out

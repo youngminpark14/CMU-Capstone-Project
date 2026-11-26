@@ -188,6 +188,37 @@ def _labels(file: RecordedWorldFile | None) -> dict[str, str]:
     return {m.ticker: m.subtitle or m.title for e in file.events for m in e.markets}
 
 
+def is_last_trade(file: RecordedWorldFile | None, ticker: str, price: float) -> bool | None:
+    """Whether ``price``, the forecast-time price of ``ticker``, is a last trade, not a YES mid.
+
+    The pipeline takes the YES mid of the market's trigger-time book when the book
+    has both sides, else the market's own quote's mid when that has both sides,
+    else the last trade. This repeats that choice from the episode's recorded
+    inputs, so the forecast table can say which rows are trades. ``None`` when it
+    cannot tell: no recorded world (a stored episode), no such market, or a
+    recomputed price that does not match the one shown.
+    """
+    if file is None:
+        return None
+    market = next((m for e in file.events for m in e.markets if m.ticker == ticker), None)
+    if market is None:
+        return None
+    book = file.order_books.get(ticker)
+    mid = book.mid_yes() if book is not None else None
+    if mid is None:
+        bid, ask = market.yes_bid, market.yes_ask
+        if bid is not None and ask is not None and bid > 0 and ask < 1:
+            mid = (bid + ask) / 2
+    expected = mid if mid is not None else market.last_price
+    if expected is None or abs(float(expected) - price) > 1e-9:
+        return None
+    return mid is None
+
+
+LAST_TRADE_MARK = "*"
+"""Trails a market price that is the last trade because one side of the quote is empty."""
+
+
 def render_forecast(
     console: Console,
     episode: EpisodeRecord,
@@ -208,21 +239,39 @@ def render_forecast(
     table.add_column("Option")
     table.add_column("Forecast", justify="right")
     table.add_column("Market price at as-of", justify="right")
+    # The mark sits in a column of its own, so the digits of every row stay aligned.
+    table.add_column("", no_wrap=True)
+    sources: list[bool | None] = []
     for ticker, probability in forecast.market_probabilities.items():
         price = prices.get(ticker)
+        trade = None if price is None else is_last_trade(file, ticker, price)
+        if price is not None:
+            sources.append(trade)
         table.add_row(
             ticker,
             labels.get(ticker, ""),
             f"{probability:.3f}",
             "n/a" if price is None else f"{price:.3f}",
+            LAST_TRADE_MARK if trade else "",
         )
     console.print(table)
+    if any(sources):
+        price_note = (
+            "Market price is the YES mid, or the last trade where one side of the quote is "
+            f"empty (marked {LAST_TRADE_MARK}); no role saw it."
+        )
+    elif all(s is False for s in sources):
+        price_note = "Market price is the YES mid; no role saw it."
+    else:
+        price_note = (
+            "Market price is the YES mid, or the last trade where one side of the quote is "
+            "empty; no role saw it."
+        )
     console.print(
         f"Coverage {forecast.coverage:.2f}, confidence {forecast.confidence:.2f}, "
         f"{forecast.n_independent_origins} independent origin(s), depth reached "
         f"{forecast.depth_reached}{', budget exhausted' if forecast.budget_exhausted else ''}"
-        f"{', fast path' if forecast.fast_path else ''}. Market price is the YES mid; "
-        "no role saw it."
+        f"{', fast path' if forecast.fast_path else ''}. {price_note}"
     )
     if forecast.passage_ids:
         render_citations(console, forecast.passage_ids, episode.trace)
@@ -469,7 +518,9 @@ def register(app: typer.Typer) -> None:
 
 
 __all__ = [
+    "LAST_TRADE_MARK",
     "cited_passages",
+    "is_last_trade",
     "register",
     "render_citations",
     "render_decision",

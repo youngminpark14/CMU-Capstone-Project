@@ -295,7 +295,8 @@
         }
       ],
       "error": "",
-      "placed_at": "2026-10-07T18:06:30Z"
+      "placed_at": "2026-10-07T18:06:30Z",
+      "outcome_at": null
     }
   ],
   "fill_tagged": false,
@@ -1781,7 +1782,8 @@
             }
           ],
           "error": "",
-          "placed_at": "2026-10-07T18:06:30Z"
+          "placed_at": "2026-10-07T18:06:30Z",
+          "outcome_at": null
         }
       },
       "call": null,

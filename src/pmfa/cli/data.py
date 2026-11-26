@@ -148,6 +148,7 @@ def _build_snapshot(
     counts = ", ".join(f"{k} {v}" for k, v in manifest.counts.items())
     size_mb = path.stat().st_size / 1e6 if path.exists() else 0.0
     typer.echo(f"snapshot: {counts}; {size_mb:.1f} MB; {manifest.elapsed_seconds:.0f} s")
+    typer.echo(f"snapshot: content SHA-256 {manifest.content_sha256 or 'not recorded'}")
 
 
 @data_app.command("status")

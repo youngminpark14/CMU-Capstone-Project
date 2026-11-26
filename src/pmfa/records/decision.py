@@ -209,6 +209,12 @@ class OrderResult(Record):
     fills: list[Fill] = []
     error: str = ""
     placed_at: UtcTime
+    outcome_at: UtcTime | None = None
+    """When the order's outcome (its fills, or that it did not fill) was known.
+
+    Set only when that is later than ``placed_at``: a backtest order is priced
+    from a candle after it was sent, and nothing may count its outcome before then.
+    """
 
     @property
     def filled_contracts(self) -> Count:

@@ -78,3 +78,28 @@ def test_empty_when_no_candle_or_after_close(store: SnapshotStore, config: Confi
     closed = execution_book(store, A, JUL_CLOSE - 30 * S, config)
     assert closed.granularity == "none"
     assert closed.book.yes_bids == [] and closed.book.no_bids == []
+
+
+def test_the_book_is_dated_when_everything_it_shows_had_happened(
+    store: SnapshotStore, config: Config
+) -> None:
+    hour = timedelta(hours=1)
+    # A one-minute candle: arrives 12:00:30, priced from the candle ending 12:01.
+    minute = execution_book(store, A, T0 - 30 * S, config)
+    assert minute.granularity == "minute"
+    assert minute.known_at == minute.book.as_of == T0 + M
+    # The hourly fallback: arrives 12:11, priced from the hourly candle ending 13:00.
+    hourly = execution_book(store, A, T0 + 10 * M, config)
+    assert hourly.granularity == "hour"
+    assert hourly.known_at == hourly.book.as_of == T0 + hour
+    # No candle while the market is open: the end of the hour searched after the arrival.
+    nothing = execution_book(store, A, T0 + 5 * hour, config)
+    assert nothing.granularity == "none" and nothing.arrival == T0 + 5 * hour + M
+    assert nothing.known_at == nothing.book.as_of == nothing.arrival + hour
+    # Closed by the arrival: nothing more can happen, so the arrival itself.
+    closed = execution_book(store, A, JUL_CLOSE - 30 * S, config)
+    assert closed.granularity == "none" and closed.arrival == JUL_CLOSE + 30 * S
+    assert closed.known_at == closed.book.as_of == closed.arrival
+    # A candle with no volume still dates the empty book at its end.
+    thin = execution_book(store, A, T0 + 38 * M + 30 * S, config)
+    assert thin.book.yes_bids == [] and thin.known_at == thin.book.as_of == T0 + 40 * M

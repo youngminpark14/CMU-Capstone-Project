@@ -101,6 +101,11 @@ class RunManifest(Record):
     alone does not hold the code that produced a run made from a dirty tree."""
     snapshot_sha256: str | None = None
     """The SHA-256 of the snapshot file the run read."""
+    snapshot_content_sha256: str | None = None
+    """``SnapshotStore.content_sha256`` of the snapshot the run read: a hash of its data rows
+    alone, so a snapshot rebuilt later can be shown to hold the same data. ``snapshot_sha256``
+    names this exact file, but differs on every rebuild because the file also holds the build
+    manifest and a layout that depends on the build. ``None``: a run recorded before it."""
     corpus_hashes_digest: str | None = None
     """``hashes_digest`` of the corpus manifest's per-document content hashes."""
     seed: int
@@ -258,6 +263,15 @@ LEAKAGE_CONTROLS = [
     "recompute, the second gate, routing's price move) reads the order book as of the as-of "
     "time; only the paper fill is priced from a later candle (see Fill assumptions), and no "
     "role or decision sees that book.",
+    "A paper fill is timed at the end of the candle that priced it, not at the as-of time. "
+    "The paper account's balance and positions, the equity points and the fill-failure stop "
+    "count an order only from that time, so no decision made before it sees the order's "
+    "price or outcome.",
+    "In the trading pass the clock moves past the latest order's outcome time before the next "
+    "episode starts, so an episode can start later than its trigger, with that later time as "
+    "its as-of time; the report counts these late starts. The scoring pass keeps its fixed "
+    "as-of times and relies on the time filter of the paper account, the equity points and "
+    "the fill-failure stop.",
     "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, "
     "and no port in the backtest world holds an HTTP client.",
     "The response cache key includes the as-of time, which is part of every role input.",
@@ -279,6 +293,14 @@ FILL_ASSUMPTIONS = [
     "second gate, routing's price move) reads the order book as of the as-of time. Only the "
     "fill is priced from the first one-minute candle after the as-of time plus "
     "execution.backtest_latency_seconds (the candle whose period holds that arrival time).",
+    "A fill is timed at the end of the candle that priced it: up to a minute after the "
+    "arrival time on one-minute candles, up to an hour on the hourly fallback. An order that "
+    "meets no candle has its outcome timed at the end of the hour searched, or at the "
+    "arrival time when the market had closed by then. The paper account, the equity points "
+    "and the fill-failure stop count an order only from that time.",
+    "In the trading pass the clock moves past that time before the next episode starts, so "
+    "an episode can start later than its trigger (the report counts these). The scoring pass "
+    "keeps its fixed as-of times and relies on that time filter.",
     "The immediate-or-cancel limit order fills against a book built from that candle on the "
     "conservative side of its period: buying YES meets its highest YES ask, buying NO meets 1 "
     "minus its lowest YES bid. Each side holds execution.backtest_volume_share of the candle's "

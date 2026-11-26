@@ -2,10 +2,11 @@
 
 Nothing here reimplements a metric: Brier scores, skill, reliability, sample
 sizes and the clustered intervals come from ``metrics`` and ``bootstrap``; P&L,
-the equity curve and drawdown from ``pnl``; the episode tallies and the pruning
-summary from ``summary``. This module only groups the rows (by system, by
-horizon, scoring pass against trading pass) and writes the result as one JSON
-document, ``metrics.json``, which the report reads.
+the equity curve and drawdown from ``pnl``; the episode tallies, the self-halts
+and the pruning summary from ``summary``. This module groups the rows (by
+system, by horizon, scoring pass against trading pass), says where each
+system's squared error comes from, and writes the result as one JSON document,
+``metrics.json``, which the report reads.
 """
 
 from __future__ import annotations
@@ -17,11 +18,11 @@ from typing import Any, Literal
 
 from pmfa.config import Config
 from pmfa.evaluation.bootstrap import brier_interval, pnl_interval, skill_interval
-from pmfa.evaluation.metrics import market_brier_score, reliability, sample_size
+from pmfa.evaluation.metrics import market_brier_score, reliability, sample_size, scored_rows
 from pmfa.evaluation.pnl import equity_curve, max_drawdown, pnl_summary
 from pmfa.evaluation.resolver import EpisodeAudit
 from pmfa.evaluation.rows import ForecastRow, TradeRow
-from pmfa.evaluation.summary import episode_tallies, pruning_summary
+from pmfa.evaluation.summary import episode_tallies, pruning_summary, self_halt
 from pmfa.records.base import Record
 from pmfa.records.decision import RoutingTier
 from pmfa.records.episode import EpisodeRecord
@@ -41,6 +42,90 @@ class OrderPricing(Record):
     granularity: Granularity
     filled_contracts: Decimal
     requested_contracts: int
+
+
+LOW_PRICE = 0.10
+HIGH_PRICE = 0.90
+"""Forecasts below ``LOW_PRICE`` or above ``HIGH_PRICE`` count as priced near 0 or 1."""
+
+TOP_MARKETS = 3
+
+
+class ErrorShare(Record):
+    """One group of rows and its share of a system's summed squared error.
+
+    ``share`` is ``None`` when the summed error is zero, so there is nothing to share out.
+    """
+
+    name: str
+    n_rows: int
+    squared_error: float
+    share: float | None
+
+
+class ErrorConcentration(Record):
+    """Where a system's summed squared error comes from, over the rows its pooled Brier scores.
+
+    A Brier score is a mean, so a few confident misses can carry most of it. The
+    bands say whether the rows priced near 0 or 1 matter; the largest event and
+    markets say how much the score rests on one of them.
+    """
+
+    n_rows: int
+    squared_error: float
+    """The sum of ``(probability - outcome)^2`` over the rows."""
+    bands: list[ErrorShare]
+    """Rows with a forecast below 0.10, from 0.10 to 0.90, and above 0.90, in that order."""
+    top_event: ErrorShare
+    top_markets: list[ErrorShare]
+    """Up to three markets with the largest shares, largest first."""
+
+
+def _largest(groups: dict[str, list[float]], total: float, n: int) -> list[ErrorShare]:
+    ranked = sorted(groups.items(), key=lambda kv: (-sum(kv[1]), kv[0]))[:n]
+    return [_share(name, errors, total) for name, errors in ranked]
+
+
+def _share(name: str, errors: list[float], total: float) -> ErrorShare:
+    summed = sum(errors)
+    return ErrorShare(
+        name=name,
+        n_rows=len(errors),
+        squared_error=summed,
+        share=summed / total if total > 0 else None,
+    )
+
+
+def error_concentration(rows: Sequence[ForecastRow]) -> ErrorConcentration | None:
+    """How one system's squared error splits by price band, event and market; ``None`` with no row.
+
+    It covers exactly the rows the pooled answered Brier score uses: every
+    horizon, abstentions dropped.
+    """
+    scored = scored_rows(rows)
+    if not scored:
+        return None
+    total = sum(s.error for s in scored)
+    bands: dict[str, list[float]] = {"below 0.10": [], "0.10 to 0.90": [], "above 0.90": []}
+    events: dict[str, list[float]] = {}
+    markets: dict[str, list[float]] = {}
+    for s in scored:
+        if s.probability < LOW_PRICE:
+            band = "below 0.10"
+        elif s.probability > HIGH_PRICE:
+            band = "above 0.90"
+        else:
+            band = "0.10 to 0.90"
+        bands[band].append(s.error)
+        events.setdefault(s.event_ticker, []).append(s.error)
+        markets.setdefault(s.market_ticker, []).append(s.error)
+    return ErrorConcentration(
+        n_rows=len(scored),
+        squared_error=total,
+        bands=[_share(name, errors, total) for name, errors in bands.items()],
+        top_event=_largest(events, total, 1)[0],
+        top_markets=_largest(markets, total, TOP_MARKETS),
+    )
 
 
 def _block(
@@ -94,6 +179,9 @@ def compute_metrics(
         entry: dict[str, Any] = {"status": status, "by_horizon": {}}
         if mine:
             entry["by_horizon"]["all"] = forecast_block(mine, config)
+            concentration = error_concentration(mine)
+            if concentration is not None:
+                entry["error_concentration"] = concentration.model_dump(mode="json")
             for h in horizons:
                 at_h = [r for r in mine if r.horizon_days == h]
                 if at_h:
@@ -158,6 +246,10 @@ def compute_metrics(
             e.routing is not None and e.routing.tier is RoutingTier.AUTO for e in executed
         )
         out["episodes"][name] = tallies
+    out["self_halts"] = {
+        name: None if (found := self_halt(group)) is None else found.model_dump(mode="json")
+        for name, group in (("scoring", scoring_eps), ("trading", trading_eps))
+    }
 
     out["pruning"] = {
         "summary": pruning_summary(
@@ -184,4 +276,12 @@ def _reason(note: str) -> str:
     return head or "no reason recorded"
 
 
-__all__ = ["METRICS_FILE", "OrderPricing", "compute_metrics", "forecast_block"]
+__all__ = [
+    "METRICS_FILE",
+    "ErrorConcentration",
+    "ErrorShare",
+    "OrderPricing",
+    "compute_metrics",
+    "error_concentration",
+    "forecast_block",
+]

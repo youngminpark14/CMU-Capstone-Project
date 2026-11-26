@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -54,11 +54,11 @@ HEADER = (
 SECTION_NOTES = {
     "follow": "Followed series, how each becomes an outcome space, and the blocklist.",
     "sources": "The official evidence sources and how politely they are fetched.",
-    "triggers": "What starts an episode: price moves, schedule ticks, scoring horizons.",
+    "triggers": "What starts an episode: price moves, and an optional daily re-check of holdings.",
     "retrieval": "The events, evidence and ledger indexes: passage size, top-k, ranking.",
     "models": "Model and effort per role slot, prices and cutoffs, the API key variable.",
     "budget": "Per-episode and per-run caps on model calls, seconds and dollars.",
-    "forecast": "The scenario tree: depth, beam, coverage floor, quantiles.",
+    "forecast": "The scenario tree: depth, beam, coverage floor, follow-ups, the fast path.",
     "sizing": "Fractional Kelly and the minimum edge after fees.",
     "caps": "Hard limits the gate enforces: per order, market, event, day, drawdown, liquidity.",
     "routing": "When a proposal may go auto instead of to human review.",
@@ -67,7 +67,7 @@ SECTION_NOTES = {
     "execution": "The notional bankroll and the backtest fill assumptions.",
     "kalshi": "Exchange hosts, demo credential variable names (never values), request rate.",
     "state": "How the controller reaches the roles' shared state.",
-    "evaluation": "The backtest window, systems compared, bootstrap and the canary.",
+    "evaluation": "The backtest window, scoring horizons, systems compared, bootstrap, the canary.",
     "paths": "Where data, the state database, indexes and runs live.",
 }
 
@@ -336,6 +336,29 @@ def _counts_line(counts: dict[str, int]) -> str:
     return ", ".join(f"{k} {v}" for k, v in counts.items()) or "none"
 
 
+def drawdown_base(
+    marks: list[tuple[datetime, Decimal]], config: Config, mode: RunMode
+) -> tuple[Decimal, str]:
+    """The bankroll the report's drawdown starts from, and words saying which one it is.
+
+    The spec makes the bankroll the demo subaccount's balance in demo mode and the
+    notional amount elsewhere. The demo executor records the subaccount's marked
+    equity in the demo store, so in demo mode the first mark is the balance the
+    run started from. Without a mark, or with a mark of zero or less (a fraction of
+    nothing means nothing), the notional bankroll stands in, and the words say so.
+    """
+    from pmfa.records.base import RunMode
+
+    if mode is RunMode.DEMO and marks and marks[0][1] > 0:
+        return marks[0][1], "the demo subaccount's first recorded equity"
+    if mode is RunMode.DEMO:
+        return (
+            config.execution.notional_bankroll,
+            "the notional bankroll: no usable demo equity mark",
+        )
+    return config.execution.notional_bankroll, "the notional bankroll"
+
+
 def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]:
     """The plain-text monitoring report for one mode's store."""
     from pmfa.evaluation.metrics import (
@@ -350,7 +373,6 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
     from pmfa.evaluation.summary import episode_tallies
     from pmfa.records.decision import ReviewDecision
 
-    bankroll = config.execution.notional_bankroll
     lines = [f"pmfa status report ({mode.value})"]
     stage, halt = store.get_stage(), store.get_halt()
     lines.append(f"stage: {stage.stage.value}" + (f" ({stage.reason})" if stage.reason else ""))
@@ -358,8 +380,9 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
 
     trades = _trade_rows(store, mode)
     pnl = pnl_summary(trades)
-    drawdown = max_drawdown(equity_curve(trades, bankroll), bankroll)
     marks = store.equity_series()
+    bankroll, base = drawdown_base(marks, config, mode)
+    drawdown = max_drawdown(equity_curve(trades, bankroll), bankroll)
     lines.append("")
     lines.append("P&L (after fees, settled trades only)")
     lines.append(
@@ -369,7 +392,8 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
     for event, value in sorted(pnl.by_event.items()):
         lines.append(f"  {event}: ${value}")
     lines.append(
-        f"  max drawdown {drawdown.fraction:.4f} (${drawdown.dollars}) from a ${bankroll} bankroll"
+        f"  max drawdown {drawdown.fraction:.4f} (${drawdown.dollars}) from a ${bankroll} "
+        f"bankroll ({base})"
     )
     if marks:
         lines.append(f"  last equity mark ${marks[-1][1]} at {marks[-1][0]:%Y-%m-%d %H:%M} UTC")

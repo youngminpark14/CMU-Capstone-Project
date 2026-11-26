@@ -3,7 +3,8 @@
 The decision (the execute re-read, the one recompute, the gate, routing's price
 move) reads ``Executor.execution_book``, which must show only prices at or before
 the as-of time. The fill alone is priced from the first one-minute candle after
-the as-of time plus the latency.
+the as-of time plus the latency, and is timed at that candle's end, so the
+account read at the as-of time does not hold it.
 
 The cut market gets one-minute candles here: an as-of candle at the clock's time
 asking 0.31, and the next candle (the fill candle) asking 0.35.
@@ -99,17 +100,43 @@ def test_the_fill_is_priced_from_the_candle_after_the_as_of_time(data_config: Co
     data.close()
 
 
-def test_the_printed_fill_assumptions_match_what_decides_and_what_fills() -> None:
+def test_the_fill_is_timed_at_the_end_of_its_candle_and_not_seen_before_then(
+    data_config: Config,
+) -> None:
+    world, store, clock, data = _world(data_config)
+    executor = world.executor  # type: ignore[attr-defined]
+    filled = executor.place(_intent("0.35", "c1"))
+    candle_end = AS_OF + timedelta(minutes=2)
+    assert filled.placed_at == AS_OF
+    assert filled.outcome_at == candle_end
+    assert [f.filled_at for f in filled.fills] == [candle_end]
+    assert data.execution_book(CUT, AS_OF).known_at == candle_end
+    # Read at the as-of time, as a second episode at the same instant would read it.
+    assert executor.positions() == []
+    assert executor.account(as_of=AS_OF).holdings == []
+    assert [t for t, _ in store.equity_series()] == [candle_end]  # no point at the as-of time
+    clock.set(candle_end)
+    assert [(p.market_ticker, p.contracts) for p in executor.positions()] == [(CUT, 5)]
+    data.close()
+
+
+def test_the_printed_fill_assumptions_keep_the_wording_the_tests_above_check() -> None:
+    """Pins the wording only: the behaviour behind each sentence is checked by the tests above
+    and by tests/evaluation/backtest/test_trading_pass.py."""
     from pmfa.evaluation.manifest import FILL_ASSUMPTIONS, LEAKAGE_CONTROLS
 
     fills = " ".join(FILL_ASSUMPTIONS)
-    # The two tests above: decisions read the as-of book, only the fill reads later prices.
     assert "every decision" in fills and "reads the order book as of the as-of time" in fills
     assert "Only the fill is priced from the first one-minute candle after the as-of time" in fills
-    # The hourly fallback is flagged, and the cap is a share of the candle's volume.
     assert "flagged coarse" in fills and "execution.backtest_volume_share" in fills
+    assert "A fill is timed at the end of the candle that priced it" in fills
+    assert "count an order only from that time" in fills
+    assert "an episode can start later than its trigger" in fills
+    assert "The scoring pass keeps its fixed as-of times" in fills
     leakage = " ".join(LEAKAGE_CONTROLS)
     assert "only the paper fill is priced from a later candle" in leakage
+    assert "A paper fill is timed at the end of the candle that priced it" in leakage
+    assert "the clock moves past the latest order's outcome time" in leakage
 
 
 def test_the_report_does_not_say_how_fills_were_priced_beyond_what_it_counted(

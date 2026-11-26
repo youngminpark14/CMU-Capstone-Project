@@ -20,6 +20,9 @@ Tables
   makes an interrupted build resumable without gaps.
 - ``meta``: the manifest, as JSON under the key ``manifest``.
 
+:meth:`SnapshotStore.content_sha256` hashes every table but ``meta``, keyed by
+ticker, so a rebuild that stored the same rows gets the same digest.
+
 The store knows nothing about clocks: it returns what is stored. The as-of rule
 is applied by :class:`pmfa.world.snapshot.reader.SnapshotExchange` and
 :func:`pmfa.world.snapshot.book.execution_book`, which pass explicit time bounds.
@@ -27,6 +30,7 @@ is applied by :class:`pmfa.world.snapshot.reader.SnapshotExchange` and
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -104,6 +108,43 @@ _CANDLE_COLUMNS = (
     "px_o, px_h, px_l, px_c, volume, open_interest"
 )
 
+CONTENT_FORMAT = "pmfa-snapshot-content-v1"
+"""The first line of what :meth:`SnapshotStore.content_sha256` hashes; a new encoding gets a new one."""
+
+_CONTENT_TABLES: tuple[tuple[str, str, str], ...] = (
+    (
+        "series",
+        "SELECT ticker, record FROM series ORDER BY ticker",
+        "SELECT COUNT(*) FROM series",
+    ),
+    (
+        "events",
+        "SELECT event_ticker, series_ticker, close_ts, record FROM events ORDER BY event_ticker",
+        "SELECT COUNT(*) FROM events",
+    ),
+    (
+        "markets",
+        "SELECT ticker, event_ticker, open_ts, close_ts, settled_ts, result, record "
+        "FROM markets ORDER BY ticker",
+        "SELECT COUNT(*) FROM markets",
+    ),
+    (
+        "candles",
+        f"SELECT m.ticker, c.interval, c.{_CANDLE_COLUMNS.replace(', ', ', c.')} "
+        "FROM markets AS m JOIN candles AS c ON c.market_id = m.id "
+        "ORDER BY m.ticker, c.interval, c.end_ts",
+        "SELECT COUNT(*) FROM candles",
+    ),
+    (
+        "coverage",
+        "SELECT m.ticker, v.interval, v.start_ts, v.end_ts "
+        "FROM markets AS m JOIN coverage AS v ON v.market_id = m.id "
+        "ORDER BY m.ticker, v.interval",
+        "SELECT COUNT(*) FROM coverage",
+    ),
+)
+"""Per data table: its name, the query that yields its rows in canonical order, and its row count."""
+
 
 class SnapshotManifest(Record):
     """What a snapshot holds and how it was built."""
@@ -129,6 +170,11 @@ class SnapshotManifest(Record):
     dropped_events: dict[str, str] | None = None
     """Events the exchange listed that the builder did not store, with why (no markets, or a
     close time outside the window). ``None``: built before the builder recorded them."""
+    content_sha256: str | None = None
+    """:meth:`SnapshotStore.content_sha256` when the build finished: the same for any build
+    that stored the same rows, unlike the file's hash. ``None``: built before it was recorded,
+    or a later build into the same file started and did not finish (it clears the digest
+    before it changes a row, so a recorded digest always describes the rows the file holds)."""
 
 
 def snapshot_path(config: Config) -> Path:
@@ -455,6 +501,71 @@ class SnapshotStore:
         )
         return rows[0][0], rows[0][1] / 86400
 
+    # -- identity --------------------------------------------------------------------------
+
+    def content_sha256(self) -> str:
+        """A SHA-256 of the stored data alone, so two builds can be shown to hold the same rows.
+
+        The file's own hash cannot show that: the file also holds the build manifest, and
+        its page layout depends on how it was built. This digest covers the data tables
+        and nothing else: not ``meta`` (the manifest), not the surrogate ``markets.id``,
+        not insertion order, not the layout.
+
+        What is hashed, as UTF-8 bytes, is a sequence of lines, each ending in ``\\n``:
+
+        1. :data:`CONTENT_FORMAT`, as a JSON string.
+        2. For each table in the order ``series``, ``events``, ``markets``, ``candles``,
+           ``coverage``: the table's name as a JSON string, then one line per row, the
+           row's values as a compact JSON array (``json.dumps`` with ``","`` and ``":"``
+           separators, ASCII only). A ``NULL`` is ``null``, an integer is its digits, a text
+           (the stored record JSON included) is a JSON string; so ``NULL``, ``0`` and ``"0"``
+           all differ. A name line starts with ``"`` and a row line with ``[``, so the two
+           never mix up.
+
+        The columns and the row order, per table (text sorts by its UTF-8 bytes):
+
+        - ``series``: ticker, record; by ticker.
+        - ``events``: event ticker, series ticker, close time, record; by event ticker.
+        - ``markets``: ticker, event ticker, open, close and settlement times, result,
+          record; by ticker. ``id`` is left out.
+        - ``candles``: the market's ticker (in place of its id), interval, then the stored
+          columns in schema order from ``end_ts`` to ``open_interest``; by ticker,
+          interval and end time.
+        - ``coverage``: the market's ticker, interval, start and end times; by ticker
+          and interval.
+
+        All tables are read in one transaction, row by row, so a large file needs no more
+        memory than a small one. Raises ``ValueError`` if a candle or coverage row names a
+        market that is not stored: such a row has no ticker to be keyed by.
+        """
+        digest = hashlib.sha256()
+
+        def line(value: object) -> str:
+            return json.dumps(value, separators=(",", ":"), ensure_ascii=True) + "\n"
+
+        with self._lock:
+            began = not self._db.in_transaction
+            if began:
+                self._db.execute("BEGIN")
+            try:
+                digest.update(line(CONTENT_FORMAT).encode())
+                for table, rows_sql, count_sql in _CONTENT_TABLES:
+                    digest.update(line(table).encode())
+                    seen = 0
+                    cursor = self._db.execute(rows_sql)
+                    while batch := cursor.fetchmany(10_000):
+                        seen += len(batch)
+                        digest.update("".join(line(list(row)) for row in batch).encode())
+                    stored = self._db.execute(count_sql).fetchone()[0]
+                    if seen != stored:
+                        raise ValueError(
+                            f"{stored - seen} {table} row(s) name a market that is not stored"
+                        )
+            finally:
+                if began:
+                    self._db.rollback()
+        return digest.hexdigest()
+
     # -- internals -------------------------------------------------------------------------
 
     def _market_id(self, ticker: str) -> int:
@@ -474,6 +585,7 @@ def manifest_json(manifest: SnapshotManifest) -> str:
 
 
 __all__ = [
+    "CONTENT_FORMAT",
     "INTERVALS",
     "SNAPSHOT_FILE",
     "SnapshotManifest",

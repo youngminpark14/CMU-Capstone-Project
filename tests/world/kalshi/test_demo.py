@@ -497,12 +497,39 @@ def test_find_order_is_none_only_when_the_exchange_lists_no_such_order() -> None
     assert executor(fake).find_order(intent()) is None
 
 
-def test_an_unknown_outcome_whose_lookup_fails_says_so() -> None:
+def test_an_unknown_outcome_whose_lookup_fails_raises_instead_of_rejecting() -> None:
+    # A rejection would be stored and its proposal cancelled while the order may stand;
+    # raising sends the caller down its "outcome unknown" path instead.
     fake = trading_fake((500, {"error": {"code": "internal_server_error"}}))
     fake.add("GET", "/portfolio/orders", (503, {"error": {"code": "service_unavailable"}}))
+    with pytest.raises(ExchangeError, match="outcome unknown and the order lookup failed") as err:
+        executor(fake).place(intent())
+    message = str(err.value)
+    assert "503" in message and "500" in message
+    assert "KALSHI-ACCESS" not in message and SIGNATURE_HEADER not in message
+    assert len(fake.sent("POST", ORDERS)) == 1
+
+
+def test_a_duplicate_client_order_id_whose_lookup_fails_raises_instead_of_rejecting() -> None:
+    # The exchange says the order stands; with its fills unknown, a rejection would be false.
+    fake = trading_fake("constructed_order_already_exists_409")
+    fake.add("GET", "/portfolio/orders", (503, {"error": {"code": "service_unavailable"}}))
+    with pytest.raises(ExchangeError, match="order lookup failed") as err:
+        executor(fake).place(intent())
+    message = str(err.value)
+    assert "order_already_exists" in message and "503" in message
+    assert "KALSHI-ACCESS" not in message and SIGNATURE_HEADER not in message
+    assert len(fake.sent("POST", ORDERS)) == 1
+
+
+def test_an_unknown_outcome_whose_lookup_answers_with_no_order_is_rejected() -> None:
+    # Here the exchange did answer, and lists no order with this client order id.
+    fake = trading_fake((503, {"error": {"code": "service_unavailable"}}))
+    fake.add("GET", "/portfolio/orders", (200, {"orders": [], "cursor": ""}), ticker=TICKER)
     result = executor(fake).place(intent())
     assert result.status is OrderStatus.REJECTED
-    assert "outcome unknown and the order lookup failed" in result.error
+    assert result.fills == []
+    assert "no order with this client_order_id was found" in result.error
     assert len(fake.sent("POST", ORDERS)) == 1
 
 

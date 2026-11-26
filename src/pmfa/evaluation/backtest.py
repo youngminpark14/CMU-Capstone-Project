@@ -603,7 +603,16 @@ def _forecast(
 
 
 def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) -> World | None:
-    """The news-triggered trading simulation on one continuous clock and store."""
+    """The news-triggered trading simulation on one continuous clock and store.
+
+    Episodes run one at a time. Each starts at the latest of its trigger's
+    time, the clock's time, and the latest order outcome in the store (the end
+    of the candle that priced an earlier order), so it never starts before an
+    earlier order's outcome existed. An episode that starts later than its
+    trigger runs with that later time as its as-of time; ``_late_starts``
+    counts them. The clock is not moved after an episode: the forecast rows
+    below read the market prices at the episode's own as-of time.
+    """
     from pmfa.state.store import SqliteStore
 
     data, config = run.data, run.config
@@ -619,12 +628,16 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
     run.worlds.append(world)
     world.executor.mark(schedule.window_start)  # type: ignore[attr-defined]
     for i, trigger in enumerate(triggers):
-        clock.set(max(trigger.at, clock.now()))
+        outcomes = [o.outcome_at for o in store.list_orders() if o.outcome_at is not None]
+        start = max([trigger.at, clock.now(), *outcomes])
+        clock.set(start)
         run.audits.extend(resolve_outcomes(world, now=clock.now()).audits)
+        # The trigger's time is the episode's as-of time, so a late start carries its own time.
+        started = trigger if start == trigger.at else trigger.model_copy(update={"at": start})
         try:
             episode = run.run_episode(
                 world,
-                trigger,
+                started,
                 f"Backtest trading episode: document {trigger.doc_id} as a new-document trigger, "
                 "on the frozen snapshot and corpus.",
             )
@@ -653,6 +666,22 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
                 )
             )
     return world
+
+
+def _late_starts(schedule: Schedule, world: World) -> dict[str, Any]:
+    """How many trading episodes started later than their trigger, of how many, and the longest wait.
+
+    An episode starts late when an earlier order's outcome was priced after its
+    trigger's time (see ``_trading_pass``).
+    """
+    at = {t.trigger_id: t.at for t in schedule.triggers}
+    waits = [
+        (e.as_of - at[e.trigger.trigger_id]).total_seconds()
+        for e in _episodes(world)
+        if e.trigger.trigger_id in at
+    ]
+    late = [w for w in waits if w > 0]
+    return {"episodes": len(late), "of": len(waits), "longest_seconds": max(late, default=0.0)}
 
 
 def _category(config: Config, series_ticker: str) -> str:
@@ -954,6 +983,9 @@ def run_backtest(
         git_dirty=git.dirty,
         git_changes=git.changes,
         snapshot_sha256=file_sha256(snapshot_path(config)),
+        snapshot_content_sha256=(
+            data.snapshot_manifest.content_sha256 or data.snapshot.content_sha256()
+        ),
         corpus_hashes_digest=hashes_digest(data.corpus_manifest.content_hashes),
         seed=config.evaluation.seed,
         window_start=config.evaluation.window_start,
@@ -1072,6 +1104,8 @@ def run_backtest(
         {r.event_ticker for r, _ in run.rows if r.horizon_days is not None}
     )
     metrics["quotes"] = _quote_summary(run.quotes)
+    if trading_world is not None:
+        metrics["late_starts"] = _late_starts(schedule, trading_world)
     (run_dir / METRICS_FILE).write_text(
         json.dumps(metrics, indent=2, default=str) + "\n", encoding="utf-8"
     )

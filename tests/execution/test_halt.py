@@ -92,6 +92,21 @@ def test_fill_failures_more_than_one_in_ten() -> None:
     assert names(reasons(one)) == ["fill failures"]
 
 
+def test_fill_failures_count_an_order_only_once_its_outcome_is_known() -> None:
+    # A backtest order sent now is priced from a later candle: its outcome is known at NOW + 2 min.
+    store = SqliteStore(MEMORY)
+    for i in range(8):
+        store.save_order(order(f"o{i}", OrderStatus.FILLED))
+    known = NOW + timedelta(minutes=2)
+    for i in (8, 9):
+        late = order(f"o{i}", OrderStatus.UNFILLED, at=NOW)
+        store.save_order(late.model_copy(update={"outcome_at": known}))
+    assert reasons(store) == []  # at NOW only eight orders have an outcome: not judged yet
+    later = stop_reasons(store, CONFIG, SimClock(known), EVIDENCE)
+    assert names(later) == ["fill failures"]
+    assert "2 of the last 10" in later[0]
+
+
 def holding_store() -> SqliteStore:
     """An open YES position in HOLD from an episode that cited the minutes."""
     store = SqliteStore(MEMORY)
@@ -115,6 +130,26 @@ def test_changed_source_alone() -> None:
 def test_withdrawn_source_alone() -> None:
     evidence = RecordedEvidence(world_file(documents=[]))
     assert names(reasons(holding_store(), evidence=evidence)) == ["source withdrawn"]
+
+
+def test_a_source_is_rechecked_only_for_orders_whose_outcome_is_known() -> None:
+    # ep-0 holds HOLD with no cited documents. ep-2 cites the minutes and its order, sent now,
+    # is priced from a later candle: until then nothing of it may be read, fills included.
+    store = SqliteStore(MEMORY)
+    store.save_episode(episode("ep-0"))
+    held = fill(Side.YES, 10, "0.62", "0.17", NOW - timedelta(days=1), fill_id="f0")
+    store.save_order(order("o0", OrderStatus.FILLED, episode_id="ep-0", fills=[held]))
+    store.save_episode(episode("ep-2", passage_ids=[f"{MINUTES.doc_id}#0"]))
+    known = NOW + timedelta(minutes=2)
+    late = fill(Side.YES, 10, "0.62", "0.17", known, fill_id="f2")
+    pending = order("o2", OrderStatus.FILLED, episode_id="ep-2", fills=[late], at=NOW)
+    store.save_order(pending.model_copy(update={"outcome_at": known}))
+    store.remember_document(MINUTES.doc_id, MINUTES.content_hash, NOW - timedelta(days=1))
+    edited = MINUTES.model_copy(update={"text": "Revised text.", "content_hash": "different"})
+    evidence = RecordedEvidence(world_file(documents=[edited]))
+    assert reasons(store, evidence=evidence) == []
+    later = stop_reasons(store, CONFIG, SimClock(known), evidence)
+    assert names(later) == ["source changed"]
 
 
 def test_a_changed_source_behind_a_settled_position_does_not_halt() -> None:
