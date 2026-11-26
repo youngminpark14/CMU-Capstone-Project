@@ -23,8 +23,8 @@ funds. Nothing here is investment or trading advice.
 | Pipeline and tests | Built end to end. The offline suite of 1,080 tests runs with no keys and no network in about two minutes on one machine (1,076 passed in 108 seconds on 2026-11-25). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
-| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). |
-| Measured | Only the market's own Brier score (see [Results](#results)). It is the baseline every later run is compared with. |
+| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](scripts/rehearse_backtest.py)), as a check of the plumbing only: its forecasts mean nothing. |
+| Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here (fill coverage, build time) describe the data and the harness, not forecasting. |
 | Not yet done | **No live model call has been made in this repository**, because no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
 | Sample episodes | Hand-made fixtures: the inputs are real, but a person wrote every model record. They show the pipeline working, not forecasting skill, and each one says so. |
 | Shadow mode | Exercised for plumbing only, against recorded worlds in [tests/live/](tests/live/). |
@@ -106,7 +106,7 @@ Nothing to install.
 4. **The evaluation report.** [evaluation/runs/2026-11-26-market-baseline/report.md](evaluation/runs/2026-11-26-market-baseline/report.md).
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
-5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 42 short
+5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 43 short
    records, each with its reasons and where it came from: a capstone checkpoint where the
    specification names one, otherwise the item of the specification or the build.
 
@@ -182,15 +182,29 @@ To check a rebuilt snapshot against the published run, compare the content SHA-2
 `pmfa data build` prints with `snapshot_content_sha256` in the run's
 [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json); the file's own hash differs on
 every rebuild. The digest covers the snapshot only, not the corpus. Both end their window at the
-build time, so a later rebuild can hold more: an event that has closed since, or a document
-published since. A rebuild from scratch on 2026-11-25 took 1,532 seconds (about 25 minutes), 1,408
-of them for the snapshot at two requests per second. Its snapshot gave the published content
-SHA-256; its corpus held 56 documents, one Federal Reserve speech more than the published 55.
+build time unless `pmfa data build --end YYYY-MM-DD` ends it earlier, so a later rebuild can hold
+more: an event that has closed since, or a document published since
+([The frozen data](docs/evaluation.md#the-frozen-data)). A rebuild from scratch on 2026-11-25 took
+1,532 seconds (about 25 minutes), 1,408 of them for the snapshot at two requests per second.
 
 BLS pages may refuse automated clients. When a release is not fetched, save it from a browser into
 `data/manual/` as `bls-cpi-YYYY-MM.html` (the reference month, for example `bls-cpi-2026-10.html` for
 the October CPI) and run `pmfa data build` again. The steps are in the docstring of
 [bls.py](src/pmfa/world/evidence/bls.py).
+
+Before any paid run, rehearse the whole backtest. It needs no key and costs nothing:
+
+```bash
+uv run python scripts/rehearse_backtest.py
+```
+
+It runs every system at every scoring point and the pipeline at every news trigger over the frozen
+data, with a fixed rule in place of every model answer. It builds the retrieval indexes, sizes and
+gates orders against real books, fills them from real candles, applies the stops, saves traces and
+replays each one, and writes a report to `runs/<date>-rehearsal` (ignored by git). It takes about a
+minute and exits non-zero unless the run completed and every saved trace replays and matches. Its
+forecasts come from fixed rules and mean nothing: it checks the data and the plumbing, not
+forecasting, and is never published as a run.
 
 Then plan the backtest. The dry run prints the model calls and the dollar estimate per system and
 calls no model; the order in which to run the real backtest (a subsample first, then the full run)
@@ -267,8 +281,11 @@ warns that demo prices may not reflect real markets.
 In a backtest, every decision (sizing, the price re-read before sending, the recompute when
 nothing is offered at the limit, the gate and routing) reads the market as of the as-of time. Only
 the fill is priced later, from the candle that holds the order's arrival 60 seconds after the as-of
-time: the one-minute candle, else the hourly one. The fill is timed at the end of that candle, and
-the paper account, the equity points and the stops count it only from then. The next trading
+time: the one-minute candle, else the hourly one, else nothing fills. The order's outcome, filled
+or not, is timed at the end of that candle; at the end of the hour searched when there is none; or
+at the arrival time when the market had closed by then. The paper account, the equity points and
+the stops that read orders (fill failures, a changed source) count the order only from that time,
+so an order that did not fill counts toward the fill-failure stop from then too. The next trading
 episode starts no earlier than that time, and one that starts after its trigger takes the later
 time as its as-of time.
 
@@ -282,7 +299,7 @@ time as its as-of time.
 | `pmfa trace` | Print a stored episode's trace from a state database. |
 | `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
 | `pmfa data status` | Print the corpus and snapshot manifests. |
-| `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`). |
+| `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
 | `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`. |
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
@@ -368,8 +385,9 @@ not guaranteed, is in [docs/guardrails.md](docs/guardrails.md).
 One backtest has been run and published:
 [evaluation/runs/2026-11-26-market-baseline/](evaluation/runs/2026-11-26-market-baseline/report.md).
 It scored only the market's own price at 7, 3 and 1 days before each event's close, because the
-systems that need a model could not run without an API key. The market's price is the YES mid when
-both sides are quoted, else the last trade clamped into the standing quote. These numbers are not
+systems that need a model could not run without an API key (the run requested the market alone, so
+its report lists the others as "not requested"). The market's price is the YES mid when both sides
+are quoted, else the last trade clamped into the standing quote. These numbers are not
 the agent's. They are the bar any later system has to clear: Brier skill is
 1 − system Brier ÷ market Brier on the same rows.
 
@@ -406,13 +424,14 @@ The tests exercise the canary, for example
 [tests/evaluation/backtest/test_backtest.py](tests/evaluation/backtest/test_backtest.py), where a
 canary in a retrieval result aborts the run. Method and controls:
 [docs/evaluation.md](docs/evaluation.md). The notebook
-[notebooks/evaluation.ipynb](notebooks/evaluation.ipynb) reproduces the report's figures and tables
-from the committed files.
+[notebooks/evaluation.ipynb](notebooks/evaluation.ipynb) rebuilds the report's main tables (Brier
+score and skill, reliability) and its three figures from the committed `forecasts.csv` and
+`metrics.json`, and stops if a number differs from `metrics.json`.
 
 ## Limitations
 
 - **The agent's forecasting has not been measured.** No live model call has been made here; the only
-  measured number is the market's own Brier score.
+  forecasting result measured is the market's own (its Brier score and calibration error).
 - **The sample is small.** The window from 2026-07-01 holds 7 settled events in the two followed
   series. No result on it can separate skill from luck; the harness is the deliverable and its numbers
   are a pilot.
@@ -425,11 +444,19 @@ from the committed files.
   candle covers its arrival time.
 - **A backtest's trading simulation is likely to halt itself early.** It applies the same stops as
   the live modes, nobody resumes a halt in a backtest, and the report says when and why each pass
-  halted. On the frozen data, [scripts/fill_coverage.py](scripts/fill_coverage.py) finds that of the
-  204 market sides that pass the liquidity floor at the 55 news triggers, 86 (42%) had nothing to
-  fill against in the candle an order would meet, while the fill-failure stop trips when two or more
-  of the last ten orders did not fill (`oversight.fill_failure_window = 0` turns that stop off). No
-  backtest with model forecasts has run yet, so this is an expectation from the data, not a result
+  halted. Two stops are likely to trip. On the frozen data,
+  [scripts/fill_coverage.py](scripts/fill_coverage.py) finds that of the 204 market sides that pass
+  the liquidity floor at the 55 news triggers, 86 (42%) had nothing to fill against in the candle an
+  order would meet, while the fill-failure stop trips when two or more of the last ten orders did
+  not fill (`oversight.fill_failure_window = 0` turns that stop off). The calibration stop trips for
+  a category when the expected calibration error of the pipeline's resolved forecasts stays above
+  0.10 for two weeks, with at least 30 resolved market forecasts at each weekly check; one CPI
+  release (21 markets) forecast twice is enough. The market's own prices for the window's first CPI
+  release (the June 2026 CPI, closed 2026-07-14) have an expected calibration error of 0.140, so an
+  agent no better calibrated on it would stop trading about two weeks later, near the end of July.
+  A halt leaves the Brier scores unchanged, because
+  the forecast comes before the gate, and `pmfa backtest --no-trade` runs the scoring alone. No
+  backtest with model forecasts has run yet, so these are expectations from the data, not results
   ([Fill assumptions and their limits](docs/evaluation.md#fill-assumptions-and-their-limits)).
 - **Sample episodes are hand-made.** Their model records were written by a person who knew the
   outcomes.
@@ -467,17 +494,20 @@ public domain and ask to be credited as the source; this project credits them he
 example's README names its sources and URLs. Market data comes from Kalshi's public API. The
 exchange data committed here is: the examples' `world.json` files (one event and a handful of
 markets per example, one book level per side, no candle series), some of whose prices the
-`expected/` outputs repeat; test fixtures under
-[tests/world/kalshi/fixtures/](tests/world/kalshi/fixtures/) and
-[tests/forecast/fixtures/](tests/forecast/fixtures/), API responses and events cut down to a few
-items each; and the published run's `forecasts.csv` (312 rows: the market price of 104 markets in 7
-events at three horizons, each with its outcome), `manifest.json`, which names the 12 events the
-snapshot builder did not store, with their close times, and `metrics.json`, `report.md` and
-`figures/`, which summarize those rows by event and market. The snapshot with its candle series and the
-corpus are not committed: they are rebuilt locally and ignored by git. Kalshi's data terms have not
-been checked yet.
-The one synthetic story in `single-origin-syndicated` uses made-up outlets on reserved `.example`
-domains.
+`expected/` outputs repeat; the test fixtures under
+[tests/world/kalshi/fixtures/](tests/world/kalshi/fixtures/) whose `_source` says they were
+recorded, API responses cut down to a few items each (the four candle files hold two to seven
+candles each), and the events under [tests/forecast/fixtures/](tests/forecast/fixtures/), cut down
+to a few markets each; and the published run's `forecasts.csv` (312 rows: the market price of 104
+markets in 7 events at three horizons, each with its outcome), `manifest.json`, which names the 12
+events the snapshot builder did not store, with their close times, and `metrics.json`, `report.md`
+and `figures/`, which summarize those rows (scores by horizon, sample sizes by event and market,
+reliability, where the error comes from) and draw them as Brier scores by horizon, a reliability
+diagram and an equity curve, which is empty because the run did not trade. The fixtures whose
+`_source` says CONSTRUCTED were built by hand from Kalshi's API documentation and hold no recorded
+exchange data. The snapshot with its candle series and the corpus are not committed: they are
+rebuilt locally and ignored by git. Kalshi's data terms have not been checked yet. The one synthetic
+story in `single-origin-syndicated` uses made-up outlets on reserved `.example` domains.
 
 ## Educational use
 

@@ -69,15 +69,15 @@ What each step does, in the code's terms:
 
 | Step | Who | What happens | Exits |
 | --- | --- | --- | --- |
-| trigger | code | Saves a new episode record. The trigger's time becomes the *as-of time*. | |
+| trigger | code | Saves a new episode record. The trigger's time becomes the *as-of time* (in a backtest's trading pass, an episode that starts late runs on the trigger re-dated to its start). | |
 | match | Monitor, or code | A *new-document* trigger: code searches the events index for the top 5 open events, and the Monitor picks one or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
 | research | Researcher, then code | The Researcher writes one query for and one against. Code retrieves the top 8 passages as of the as-of time; for a price-move trigger, only passages published after the event's last forecast count, so a price move with no new evidence since then ends in `no_evidence`. The Researcher drops passages that do not bear on the event. Code resolves *origins*, merging documents whose text is a copy of another's, and applies the origin rule. | `no_evidence`, `insufficient_origins` |
-| forecast | Generator, Critic, code | Reads every open market's book and keeps each market's YES mid as the forecast-time price. Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
+| forecast | Generator, Critic, code | Reads every open market's book and keeps each market's YES mid as the forecast-time price: the midpoint of the YES bid and ask when both sides are quoted, else the last trade. Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
 | size | code | Picks the one market and side with the best fee-adjusted *edge* that meets the liquidity floor, sizes it at quarter-Kelly times confidence, and proposes the difference from the current holding. | `no_edge` |
 | gate | code | Runs the self-halt conditions, then re-verifies every limit with its own arithmetic. | `gate_rejected`, `halted` |
 | route | code | Scores the risk and assigns the *routing tier*: auto, approve or halt. The price move it scores is measured from the forecast-time price, so a recompute cannot re-base it. | `halted` |
 | pause, review | human | The graph stops and waits ([below](#the-human-approval-pause)). | `rejected_by_human`, `expired` |
-| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. | `executed`, `stale_price`, `halted`, `error` |
+| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. When the exchange fails while the order is sent and the lookup by client order id finds nothing or fails itself, the outcome is unknown: the episode ends `error`, the proposal keeps its approval and no rejection is recorded. | `executed`, `stale_price`, `halted`, `error` |
 | record | code | Writes the forecast and one *ledger* entry per market, with the forecast-time price, and closes the episode record. | |
 
 ## The parts: roles, code, gateway, state, ports
@@ -137,9 +137,11 @@ flowchart LR
 - **Code-only parts** are ordinary functions. The decision core
   ([decision/](../src/pmfa/decision/)) does no I/O and calls no model.
 - **The state store** is one SQLite database. The controller writes the roles' shared state (tree
-  nodes, critic rejections) through the MCP state server, in process; everything else goes to the
-  store directly. A reviewer can attach any MCP client to the same server to browse episodes and
-  traces: `python -m pmfa.state --db PATH` (or `pmfa state-server`) serves a database over stdio.
+  nodes, critic rejections) through the MCP state server, in process, except in backtests, which
+  call the same state service directly for throughput
+  ([decision 0031](decisions/0031-state-transport.md)); everything else goes to the store directly.
+  A reviewer can attach any MCP client to the same server to browse episodes and traces:
+  `python -m pmfa.state --db PATH` (or `pmfa state-server`) serves a database over stdio.
 - **Ports** ([ports.py](../src/pmfa/ports.py)) are the only way out: `Exchange` (market data),
   `Executor` (orders and holdings), `Evidence` (documents and the release calendar), `Knowledge`
   (the retrieval indexes), `Models` (the gateway or a stand-in), `Clock`, and `StateStore`. A
@@ -154,7 +156,7 @@ The pipeline code is identical in every mode. Only what sits behind the ports ch
 | Exchange | One recorded JSON file ([recorded.py](../src/pmfa/world/recorded.py)) | Frozen snapshot read as of the clock ([snapshot/reader.py](../src/pmfa/world/snapshot/reader.py)) | Kalshi production, public data only, no credentials ([kalshi/production.py](../src/pmfa/world/kalshi/production.py)) | Kalshi demo exchange ([kalshi/demo.py](../src/pmfa/world/kalshi/demo.py)) |
 | Evidence | Documents in the recorded file | Frozen corpus read as of the clock ([evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)) | Live Federal Reserve and BLS sources, plus any RSS or Atom feeds listed in `sources.feeds` (none by default) ([evidence/live.py](../src/pmfa/world/evidence/live.py)) | The same as shadow |
 | Models | Cassettes ([cassette.py](../src/pmfa/models/cassette.py)) | Claude API through the gateway, with the response cache | Claude API | Claude API |
-| Executor | Paper. Decisions read the recorded execution-time books; orders fill against the recorded fill books where the recording has them | Paper. Decisions read the as-of book; orders fill against a book built from the first one-minute candle after the as-of time plus the latency, which no decision sees | Paper, against the live order book | Demo exchange: real orders, mock funds |
+| Executor | Paper. Decisions read the recorded execution-time books; orders fill against the recorded fill books where the recording has them | Paper. Decisions read the as-of book; orders fill against a book built from the one-minute candle, else the hourly candle, that holds the order's arrival time (the as-of time plus the latency), which no decision sees, and the fill counts only from that candle's end | Paper, against the live order book | Demo exchange: real orders, mock funds |
 | Who approves | The recorded review, if any | Nobody: approve-tier trades are filled and tagged | Nobody by default (filled and tagged), or a human when review is turned on | A human, for every order: demo mode always runs at the approval stage |
 | Clock | Simulated | Simulated | System | System |
 
@@ -248,9 +250,9 @@ children were all deleted or rejected. For each outcome,
 `P(outcome) = sum(path mass x scenario's P(outcome)) / total mass`, and a market's probability is the
 sum over its outcomes. *Coverage* is the total mass. Below 0.6 the episode exits `low_coverage`.
 
-**Confidence** is `coverage x min(1, independent origins / 3)`, halved when the call budget ran out
-during the search. Only origins cited by the scenarios in the forecast count. Confidence multiplies
-the Kelly size, so it can only make an order smaller.
+**Confidence** is `coverage x min(1, independent origins / 3)`, halved when an episode cap (calls,
+dollars or seconds) ended the search. Only origins cited by the scenarios in the forecast count.
+Confidence multiplies the Kelly size, so it can only make an order smaller.
 
 **Ladders.** For a ladder, the Critic gives the 5th, 25th, 50th, 75th and 95th percentiles. Code
 draws a continuous distribution through them, linear between quantiles, with exponential tails that
@@ -298,8 +300,14 @@ cut 0.05), A2a with P = 0.8 (mass 0.168; hold 0.80, cut 0.20), B1a with P = 1.0 
 Dropping the frozen B2 instead of keeping it would give P(cut 25) = 0.1025 / 0.671 = 0.153: the
 forecast would drift toward the likeliest path. That is why frozen scenarios stay in.
 
-The search made 6 Generator and 6 Critic calls (1, 2 and 3 parents). A full depth-3 tree makes at
-most 9 of each: 1 parent, then the beam plus the protected slot at each of the next two levels.
+The search made 6 Generator and 6 Critic calls (1, 2 and 3 parents). A full depth-3 tree has at
+most 9 parents: 1, then the beam plus the protected slot at each of the next two levels. Each
+parent takes one Generator and one Critic call, so 9 of each. Evidence follow-ups come on top: at
+most 3 per episode, each with at most one Researcher call to filter its results, and a parent whose
+follow-ups added passages has its children scored once more, so the Critic gives at most 12
+answers. Each count is of answers: an answer that fails validation gets one repair retry, which is
+one more call. `full_tree_calls` in [config.py](../src/pmfa/config.py) counts the 18 answers without
+the follow-ups or the retries.
 
 ## From forecast to order: one example
 
@@ -344,7 +352,9 @@ An approve-tier proposal is decided by a person, possibly in another process and
 6. `execute` is a separate node. It looks the order up by its deterministic client order id (in
    the store, then on the executor), checks the halt flag, re-reads the book, checks the flag again,
    and places the order. An order already placed under that id is recorded, not sent again, so a
-   second resume cannot double it.
+   second resume cannot double it. When the exchange fails while the order is sent, the order is
+   looked up again; when none is found or the lookup fails, the episode ends `error` with the
+   outcome unknown, and the proposal keeps its approval.
 
 If the process stops at `execute` (a crash, or an error that escaped after the approval),
 `run`, `resume` and `expire` all continue the episode at that node, and a continued episode only
@@ -370,12 +380,17 @@ For each episode the state database ([state/store.py](../src/pmfa/state/store.py
   leaf) and the reason for it.
 - **Critic rejections** per event, shown to the Generator in later episodes.
 - **Proposals and their status history, reviews, orders and fills.** The paper account's balance and
-  positions are rebuilt from the stored fills and settlements.
+  positions are rebuilt from the stored fills and settlements, as of the clock's time. A backtest
+  order carries its *outcome time* (`outcome_at`): the end of the candle that priced its fill book,
+  an hour after its arrival when no candle was found, or its arrival when the market had closed
+  ([glossary](glossary.md)). Its fills are stamped with it, so the account counts them only from then.
 - **Equity points.** The paper executor records a *marked equity* point at every fill and
-  settlement, and the live loop records one at the end of every pass. The daily loss stop and the
-  drawdown halt read these points, so both count unrealized losses.
+  settlement, and the live loop records one at the end of every pass. Each point values the account
+  as of its own time, and a backtest fill's point is written at the fill's outcome time. The daily
+  loss stop and the drawdown halt read these points, so both count unrealized losses.
 - **Ledger entries**: one per market of the forecast event, with the probability, the YES mid read
-  when the forecast started (a later recompute does not change it), whether it traded, its tier,
+  when the forecast started (the midpoint of the YES bid and ask when both sides are quoted, else
+  the last trade; a later recompute does not change it), whether it traded, its tier,
   and any override. The outcome and Brier scores are written
   later, when the market resolves.
 - **Content hashes** of every cited document, so a later change behind an open position can halt
@@ -384,6 +399,16 @@ For each episode the state database ([state/store.py](../src/pmfa/state/store.py
 
 When the gateway records, each episode also gets a cassette: every model call in order, with its
 input record, output record, model, effort, tokens, cost and latency.
+
+A recording ([recording.py](../src/pmfa/world/recording.py)) captures what an episode read as one
+recorded world file, which replays the episode offline. Its starting state is read from the store as of the
+clock's time when the recording starts and holds nothing dated later: the prior orders whose
+outcome was known, in the order they were sent, with their fills up to then; the settlements and
+equity points; the resolved ledger entries; the stage and the halt flag; and, for each event the
+episode reads, its prior critic rejections and the time of its last forecast. A world rebuilt from
+the file ([recorded.py](../src/pmfa/world/recorded.py)) answers the balance, the positions, the
+risk state and the daily loss, drawdown, fill-failure and calibration stops as the recorded world
+did. The source-change stops are not carried, so they cannot fire in a rebuilt world.
 
 ### Reading a trace
 

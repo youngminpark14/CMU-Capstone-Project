@@ -46,3 +46,4 @@ Each record says what was decided, why, what follows from it, and where it came 
 | [0040](0040-snapshot-content-digest.md) | The snapshot has a content digest | build, November 2026 |
 | [0041](0041-backtest-stops.md) | A backtest applies the same stops as the live modes, and the report says when one tripped | build, November 2026 |
 | [0042](0042-config-fields-have-readers.md) | Every configuration field has a reader | build, November 2026 |
+| [0043](0043-trace-starting-state.md) | A saved trace's starting state is complete and as of the clock | build, November 2026 |

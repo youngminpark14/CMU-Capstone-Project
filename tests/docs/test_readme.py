@@ -125,7 +125,9 @@ def test_the_readme_says_the_canary_guarded_the_published_run_only_if_an_index_w
     results = " ".join(section(_readme(), "Results").split())
     assert "canary" in results
     claims_guarded = re.search(
-        r"canary (?:guarded|checked|was exercised|aborted)(?! nothing)", results
+        r"canary (?:(?:was|were|is|has been|had been|has|had) )?"
+        r"(?:guarded|checked|exercised|aborted|tripped|caught)\b(?! nothing)",
+        results,
     )
     if checks["index_built"] and checks["retrievals_checked"] > 0:
         assert "built no retrieval index" not in results

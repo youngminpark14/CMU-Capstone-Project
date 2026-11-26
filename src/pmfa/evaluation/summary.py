@@ -55,8 +55,11 @@ class SelfHalt(Record):
     """The first episode of a pass that ended ``halted``, and how the pass went from then on.
 
     Nobody resumes a halt in a backtest, so once a stop condition trips, every
-    later episode still forecasts but ends ``halted`` at the gate and sends no
-    order. A report needs this said, not only counted.
+    later episode that reaches the gate has already forecast, ends ``halted``
+    there and sends no order. An episode that ends earlier (``no_match``,
+    ``no_edge`` and the like) never reads the halt and keeps its exit, which is
+    why ``n_halted_from_then`` can be smaller than ``n_from_then``. A report
+    needs this said, not only counted.
     """
 
     first_episode_id: str

@@ -2,8 +2,10 @@
 
 The risk score is the number of auto conditions that failed. Any stop
 condition halts. Auto is honored only at the autonomous stage; below it, a
-proposal that would have gone auto is sent to review and flagged as such, so
-the stage ladder can count how often review agreed.
+proposal that would have gone auto is sent to review and flagged as such. The
+flag shows on the review card, in the trace and in the reports, so a reader can
+see which reviewed trades code alone would have placed. The approval benchmark
+does not read it: it counts every human review alike.
 """
 
 from __future__ import annotations

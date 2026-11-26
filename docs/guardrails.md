@@ -17,29 +17,32 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | --- | --- | --- | --- |
 | Roles have no tools: one input record in, one output record out | Code | [crewai_runner.py](../src/pmfa/models/roles/crewai_runner.py), [gateway.py](../src/pmfa/models/gateway.py) | `test_one_llm_call_per_kickoff_and_the_record_comes_back_unchanged` in [test_crewai.py](../tests/models/test_crewai.py) |
 | Evidence text reaches a model only inside delimited blocks, outside the input JSON | Code | [prompts.py](../src/pmfa/models/roles/prompts.py) | `test_passage_text_is_outside_the_json_inside_delimited_blocks`, `test_the_trigger_excerpt_is_delimited_too` in [test_prompts.py](../tests/models/test_prompts.py) |
-| No role sees the price of the market being forecast | Code | [outcomes.py](../src/pmfa/forecast/outcomes.py) (`event_brief`), [pipeline.py](../src/pmfa/episode/pipeline.py) (`trigger_brief`) | `test_event_brief_carries_shared_rules_and_no_prices` in [test_outcomes.py](../tests/forecast/test_outcomes.py) |
+| No role sees the price of the market being forecast | Code | [outcomes.py](../src/pmfa/forecast/outcomes.py) (`event_brief`), [pipeline.py](../src/pmfa/episode/pipeline.py) (`trigger_brief`) | `test_event_brief_carries_shared_rules_and_no_prices` in [test_outcomes.py](../tests/forecast/test_outcomes.py); `test_a_price_move_brief_carries_none_of_the_prices_in_its_trigger`, `test_a_scheduled_re_check_brief_carries_nothing_from_its_trigger_detail`, `test_no_role_in_a_price_move_episode_is_shown_the_prices_in_its_trigger` in [test_briefs.py](../tests/episodes/test_briefs.py) |
 | The Critic never sees the Generator's rationale | Code | [tree.py](../src/pmfa/forecast/tree.py) (`scenario_brief`) | `test_the_critic_input_never_contains_the_generators_rationale` in [test_engine.py](../tests/forecast/test_engine.py) |
 | Every model answer is validated; one repair retry, then exit `error` with no order | Code | [gateway.py](../src/pmfa/models/gateway.py), [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_malformed_twice_is_a_model_output_error` in [test_gateway.py](../tests/models/test_gateway.py); `test_15_malformed_model_output_exits_error_with_no_order` in [test_scenarios.py](../tests/episodes/test_scenarios.py) |
-| Nothing published or priced after the as-of time is read | Code | [knowledge/index.py](../src/pmfa/knowledge/index.py), [world/recorded.py](../src/pmfa/world/recorded.py), [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py) | `test_canary_after_as_of_is_never_retrieved`, `test_fractional_second_after_as_of_is_excluded` in [test_retriever.py](../tests/knowledge/test_retriever.py); `test_13_a_canary_document_dated_after_the_as_of_time_is_never_retrieved` |
+| Nothing published or priced after the as-of time is read, except the candle that prices a backtest fill | Code | [knowledge/index.py](../src/pmfa/knowledge/index.py), [world/recorded.py](../src/pmfa/world/recorded.py), [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py) | `test_canary_after_as_of_is_never_retrieved`, `test_fractional_second_after_as_of_is_excluded`, `test_an_as_of_time_with_a_fraction_of_a_second_reads_its_second_and_not_the_next`, `test_a_passage_published_later_in_the_as_of_times_own_second_is_not_read` in [test_retriever.py](../tests/knowledge/test_retriever.py); `test_13_a_canary_document_dated_after_the_as_of_time_is_never_retrieved` in [test_scenarios.py](../tests/episodes/test_scenarios.py) |
+| A backtest fill counts only from the end of the candle that priced it: the paper account, the equity points and the stops that read orders count an order only from its outcome time, and the trading pass starts no episode before the latest order's outcome time | Code | [snapshot/book.py](../src/pmfa/world/snapshot/book.py), [paper.py](../src/pmfa/execution/paper.py), [halt.py](../src/pmfa/execution/halt.py), `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) | `test_the_fill_is_timed_at_the_end_of_its_candle_and_not_seen_before_then` in [test_fill_prices.py](../tests/evaluation/backtest/test_fill_prices.py); `test_a_fill_from_a_later_book_counts_only_from_that_books_time` in [test_paper.py](../tests/execution/test_paper.py); `test_fill_failures_count_an_order_only_once_its_outcome_is_known`, `test_a_source_is_rechecked_only_for_orders_whose_outcome_is_known`, `test_equity_points_after_now_alone_are_nothing_to_measure_a_stop_from` in [test_halt.py](../tests/execution/test_halt.py); `test_the_second_episode_starts_once_the_first_fill_was_priced` in [test_trading_pass.py](../tests/evaluation/backtest/test_trading_pass.py); `test_a_second_decision_at_the_same_instant_reads_nothing_of_the_first_order` in [test_scoring_same_instant.py](../tests/evaluation/backtest/test_scoring_same_instant.py); `test_the_second_trace_at_a_shared_instant_holds_nothing_after_its_as_of_time_and_replays` in [test_trace_same_instant.py](../tests/evaluation/backtest/test_trace_same_instant.py) |
 | Cached answers cannot carry later knowledge (the as-of time is in the cache key) | Code | [cache.py](../src/pmfa/models/cache.py) | `test_as_of_is_part_of_the_cache_key` in [test_gateway.py](../tests/models/test_gateway.py) |
 | A trade needs one primary origin or two independent secondary origins | Code | [confidence.py](../src/pmfa/decision/confidence.py), checked in research and again in the gate | `test_02_one_secondary_origin_syndicated_twice_is_insufficient_origins` |
 | Scenarios citing missing, late or uncounted passages are deleted | Code | [checks.py](../src/pmfa/forecast/checks.py) | `test_evidence_check` in [test_levels_and_checks.py](../tests/forecast/test_levels_and_checks.py) |
 | Size never exceeds a cap; zero below the minimum edge; never grows when confidence falls | Code | [sizing.py](../src/pmfa/decision/sizing.py) | property tests in [test_sizing_properties.py](../tests/decision/test_sizing_properties.py) |
-| The gate re-verifies every limit and lists every failed check | Code | [gate.py](../src/pmfa/decision/gate.py) | `test_each_check_fails_alone` in [test_gate.py](../tests/decision/test_gate.py); `test_07_a_proposal_over_a_cap_is_gate_rejected_with_no_retry` |
-| The gate never returns or changes an order | Code | [gate.py](../src/pmfa/decision/gate.py), [records/decision.py](../src/pmfa/records/decision.py) | `test_the_gate_never_returns_a_modified_order` |
+| A re-forecast of an event already held sizes against the holding and trades only the difference to its new target; the same forecast trades nothing | Code | `size_event` in [sizing.py](../src/pmfa/decision/sizing.py), holdings read by `_sizing_inputs` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_a_re_forecast_of_a_held_event_with_the_same_forecast_sends_no_second_order`, `test_a_re_forecast_of_a_held_event_buys_only_the_difference_to_its_new_target` |
+| The gate re-verifies every limit and lists every failed check | Code | [gate.py](../src/pmfa/decision/gate.py) | `test_each_check_fails_alone` in [test_gate.py](../tests/decision/test_gate.py); `test_07_a_proposal_over_a_cap_is_gate_rejected_with_no_retry` in [test_scenarios.py](../tests/episodes/test_scenarios.py) |
+| The gate never returns or changes an order | Code | [gate.py](../src/pmfa/decision/gate.py), [records/decision.py](../src/pmfa/records/decision.py) | `test_the_gate_never_returns_a_modified_order` in [test_gate.py](../tests/decision/test_gate.py) |
 | The caps agree with each other; the per-order cap stays below the order group's limit | Code | [config.py](../src/pmfa/config.py) | `test_per_order_cap_must_stay_below_the_exchange_breaker` in [test_contracts.py](../tests/test_contracts.py) |
-| Limit orders only, immediate-or-cancel only, at valid ticks | Code | [records/decision.py](../src/pmfa/records/decision.py), [gate.py](../src/pmfa/decision/gate.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `limit_order`, `immediate_or_cancel` and `valid_tick` cases of `test_each_check_fails_alone`; `test_buying_yes_is_a_bid_at_the_limit_price` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| Every setting has a reader, and a removed setting is refused | Code | `REMOVED_KEYS` in [config.py](../src/pmfa/config.py) | `test_every_configuration_field_is_read_somewhere` in [test_config_fields.py](../tests/test_config_fields.py); `test_removed_configuration_keys_are_refused_not_ignored` in [test_contracts.py](../tests/test_contracts.py) |
+| Limit orders only, immediate-or-cancel only, at valid ticks | Code | [records/decision.py](../src/pmfa/records/decision.py), [gate.py](../src/pmfa/decision/gate.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `limit_order`, `immediate_or_cancel` and `valid_tick` cases of `test_each_check_fails_alone` in [test_gate.py](../tests/decision/test_gate.py); `test_buying_yes_is_a_bid_at_the_limit_price` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The price is re-read before sending; nothing offered at the limit means no order | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`execute`) | `test_08_the_price_moves_past_the_edge_before_execution_and_no_order_is_sent`, `test_08_after_approval_a_price_above_the_limit_exits_stale_price` |
-| A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order`, `test_a_first_run_finds_an_order_already_placed_under_its_client_order_id_and_sends_no_other` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | An episode continued after a crash or an exchange error looks its order up by client order id and never places one | Code | [controller.py](../src/pmfa/episode/controller.py), `_reconcile` in [pipeline.py](../src/pmfa/episode/pipeline.py), `find_order` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_a_continued_episode_that_died_before_sending_sends_nothing`, `test_a_continued_episode_that_died_after_sending_records_its_order_and_sends_no_other`, `test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_other`, `test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outcome_is_unknown` in [test_controller.py](../tests/episodes/test_controller.py) |
-| An order the exchange rejects ends the episode `error`, not `executed` | Code | `_order_outcome` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled` |
-| The halt flag blocks every order, in every mode | Code | the gate; `execute` at its start and again immediately before sending; [paper.py](../src/pmfa/execution/paper.py); [demo.py](../src/pmfa/world/kalshi/demo.py) before the order and again before it is sent | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`, `test_10_b_a_halt_set_after_the_gate_approved_stops_the_order_before_it_is_sent`, `test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order`; `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `test_a_halted_executor_sends_no_order`, `test_the_halt_flag_is_read_again_right_before_the_order_is_sent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| An order the exchange rejects ends the episode `error`, not `executed`; an order whose outcome stays unknown (the exchange failed while sending, and the lookup by client order id fails or finds nothing) ends it `error` with the proposal still approved and no rejection recorded; an unknown outcome that the demo exchange answers has no such order is a rejection | Code | `_order_outcome` and `execute` in [pipeline.py](../src/pmfa/episode/pipeline.py), `place` in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled`, `test_an_exchange_error_while_sending_with_no_order_found_ends_in_error_and_is_recorded` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_an_unknown_outcome_whose_lookup_fails_raises_instead_of_rejecting`, `test_a_duplicate_client_order_id_whose_lookup_fails_raises_instead_of_rejecting`, `test_an_unknown_outcome_whose_lookup_answers_with_no_order_is_rejected` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| The halt flag blocks every order, in every mode | Code | the gate; `execute` at its start and again immediately before sending; [paper.py](../src/pmfa/execution/paper.py); [demo.py](../src/pmfa/world/kalshi/demo.py) before the order and again before it is sent | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`, `test_10_b_a_halt_set_after_the_gate_approved_stops_the_order_before_it_is_sent`, `test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order`, `test_10_d_a_halt_set_between_the_gate_and_execute_stops_before_the_book_is_read` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `test_a_halted_executor_sends_no_order`, `test_the_halt_flag_is_read_again_right_before_the_order_is_sent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | `pmfa halt` with no `--mode` halts every live mode, setting every flag before it contacts any exchange | Code | [cli/oversight.py](../src/pmfa/cli/oversight.py) | `test_halt_without_a_mode_stops_every_live_mode`, `test_a_halt_sets_every_flag_before_any_exchange_and_survives_missing_demo_keys` in [test_operations.py](../tests/cli/test_operations.py) |
-| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate and on every live pass | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing`; a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py); rejected demo orders count as fill failures: `test_repeated_demo_rejections_trip_the_fill_failure_halt` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate and on every live pass | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing` in [test_scenarios.py](../tests/episodes/test_scenarios.py); a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py); rejected demo orders count as fill failures: `test_repeated_demo_rejections_trip_the_fill_failure_halt` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The daily loss stop and the drawdown halt count unrealized losses (equity is marked at the bid) | Code | `marked_equity` in [portfolio.py](../src/pmfa/execution/portfolio.py), `mark` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py), [live/loop.py](../src/pmfa/live/loop.py) | `test_equity_marks_value_holdings_at_their_own_bid`, `test_the_drawdown_halt_sees_an_unrealized_loss` in [test_paper.py](../tests/execution/test_paper.py); `test_mark_values_positions_at_their_own_sides_bid_and_records_the_point` in [test_demo.py](../tests/world/kalshi/test_demo.py); `test_a_pass_ends_with_a_marked_equity_point_not_one_at_cost` in [test_loop.py](../tests/live/test_loop.py) |
-| The daily loss stop is a fraction of the day's starting equity; the dollar caps use the current equity, as sizing does | Code | [risk.py](../src/pmfa/decision/risk.py), [gate.py](../src/pmfa/decision/gate.py) | `test_the_caps_use_the_current_equity_and_the_loss_stop_the_day_start_equity` in [test_gate.py](../tests/decision/test_gate.py); `test_an_explicit_bankroll_is_the_caps_base_and_does_not_move_the_stop` in [test_risk.py](../tests/decision/test_risk.py); `test_the_daily_loss_stop_is_a_fraction_of_the_day_start_equity` |
+| The daily loss stop is a fraction of the day's starting equity; the dollar caps use the current equity, as sizing does | Code | [risk.py](../src/pmfa/decision/risk.py), [gate.py](../src/pmfa/decision/gate.py) | `test_the_caps_use_the_current_equity_and_the_loss_stop_the_day_start_equity` in [test_gate.py](../tests/decision/test_gate.py); `test_an_explicit_bankroll_is_the_caps_base_and_does_not_move_the_stop` in [test_risk.py](../tests/decision/test_risk.py); `test_the_daily_loss_stop_is_a_fraction_of_the_day_start_equity` in [test_scenarios.py](../tests/episodes/test_scenarios.py) |
 | A tripped daily loss stop stays tripped until the next trading day | Code | [risk.py](../src/pmfa/decision/risk.py) | `test_a_tripped_loss_stop_stays_tripped_for_the_day` in [test_risk.py](../tests/decision/test_risk.py) |
-| Blocklisted and unfollowed series are never traded | Code | gate; the protected slot ignores blocked markets | `blocklist` and `followed_series` cases of `test_each_check_fails_alone` |
+| Blocklisted and unfollowed series are never traded | Code | gate; the protected slot ignores blocked markets | `blocklist` and `followed_series` cases of `test_each_check_fails_alone` in [test_gate.py](../tests/decision/test_gate.py) |
 | Trades go to a human unless every auto condition holds at the autonomous stage | Code, then human | [routing.py](../src/pmfa/decision/routing.py) | `test_would_be_auto_goes_to_review_below_the_autonomous_stage` in [test_routing.py](../tests/decision/test_routing.py) |
 | The human approves, resizes smaller, or rejects with a reason code | Human, checked by code | [review.py](../src/pmfa/execution/review.py) | `test_resize_only_smaller`, `test_reject_needs_a_reason_code` in [test_review.py](../tests/execution/test_review.py) |
 | A stale proposal (10 minutes, or price past its edge bound) never executes | Code | [review.py](../src/pmfa/execution/review.py), [controller.py](../src/pmfa/episode/controller.py) | `test_09_a_proposal_expired_by_time_never_executes`, `test_09_a_proposal_expired_by_price_never_executes` |
@@ -47,16 +50,17 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | Real orders need at least the approval stage; demo mode always runs at the approval stage, so a person approves every demo order | Code | gate `stage` check; `_stage` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_real_orders_outside_demo_mode_need_the_stored_approval_stage`, `test_demo_mode_runs_at_the_approval_stage_whatever_the_stored_stage`, `test_every_demo_order_waits_for_a_human_whatever_the_stored_stage` |
 | A stage advances only on its benchmark and drops after two loss stops in a week; every pass of the live loop applies the drop | Code | [stages.py](../src/pmfa/execution/stages.py), [benchmarks.py](../src/pmfa/evaluation/benchmarks.py), [live/loop.py](../src/pmfa/live/loop.py) | [test_stages.py](../tests/execution/test_stages.py); `test_a_pass_applies_the_stage_demotion_check` in [test_loop.py](../tests/live/test_loop.py) |
 | The production adapter cannot trade | Code | [production.py](../src/pmfa/world/kalshi/production.py) | [test_production.py](../tests/world/kalshi/test_production.py) |
-| The demo executor talks only to the demo host, with signed requests | Code | [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_it_refuses_any_host_but_the_demo_one`, `test_the_factory_refuses_a_production_url_in_the_configuration` |
-| Orders, balance and positions are scoped to one numbered subaccount | Code and exchange | [demo.py](../src/pmfa/world/kalshi/demo.py); the key's restriction is set on Kalshi | `test_balance_and_positions_are_for_the_configured_subaccount` (code side only) |
+| The demo executor talks only to the demo host, with signed requests | Code | [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_it_refuses_any_host_but_the_demo_one`, `test_the_factory_refuses_a_production_url_in_the_configuration` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| Orders, balance and positions are scoped to one numbered subaccount | Code and exchange | [demo.py](../src/pmfa/world/kalshi/demo.py); the key's restriction is set on Kalshi | `test_balance_and_positions_are_for_the_configured_subaccount` in [test_demo.py](../tests/world/kalshi/test_demo.py) (code side only) |
 | The key cannot transfer funds or manage subaccounts | Exchange | a subaccount-restricted key, created on Kalshi | not tested here |
-| More than 50 contracts in 15 seconds cancels the group's orders and blocks new ones | Exchange | order group joined in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_group_is_created_once_when_missing` (code side only) |
+| More than 50 contracts in 15 seconds cancels the group's orders and blocks new ones | Exchange | order group joined in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_group_is_created_once_when_missing` in [test_demo.py](../tests/world/kalshi/test_demo.py) (code side only) |
 | Each episode is capped in calls, dollars and seconds; each run in dollars. The dollar caps are ceilings: a call whose worst case would pass one is not sent | Code | [meter.py](../src/pmfa/models/meter.py), [gateway.py](../src/pmfa/models/gateway.py) | `test_the_call_cap_stops_before_calling`, `test_the_episode_dollar_cap_is_a_ceiling`, `test_a_repair_retry_also_needs_dollar_budget_for_its_worst_case`, `test_an_enforced_seconds_cap_bounds_each_calls_timeout_by_the_time_left`, `test_the_run_dollar_cap_raises_run_budget_exhausted` in [test_gateway.py](../tests/models/test_gateway.py) |
 | Every episode ends in exactly one exit, `error` for any project error a node raises; a read past the as-of time aborts the run instead | Code | `_guarded` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_every_exit_writes_exactly_one_episode_record`, `test_an_unknown_fee_type_ends_the_episode_in_error_with_no_order`, `test_13_an_as_of_violation_from_a_port_aborts_the_run_instead_of_ending_the_episode` |
-| Secrets come from the environment only and are never logged or stored | Code | [backend.py](../src/pmfa/models/backend.py), [signing.py](../src/pmfa/world/kalshi/signing.py) | `test_the_key_is_read_from_the_environment_at_call_time` in [test_backend.py](../tests/models/test_backend.py); `test_it_never_reads_the_credential_variables` |
+| Secrets come from the environment only and are never logged or stored | Code | [backend.py](../src/pmfa/models/backend.py), [signing.py](../src/pmfa/world/kalshi/signing.py) | `test_the_key_is_read_from_the_environment_at_call_time` in [test_backend.py](../tests/models/test_backend.py); `test_it_never_reads_the_credential_variables` in [test_production.py](../tests/world/kalshi/test_production.py) |
 | Money is decimal, never float | Code | [records/base.py](../src/pmfa/records/base.py), [fees.py](../src/pmfa/decision/fees.py) | `test_money_is_never_a_float` in [test_fees.py](../tests/decision/test_fees.py) |
 
-Tests named without a file are in [tests/episodes/test_scenarios.py](../tests/episodes/test_scenarios.py).
+A cell that links no test file names tests in
+[tests/episodes/test_scenarios.py](../tests/episodes/test_scenarios.py).
 
 ## Why no role can move money
 
@@ -125,7 +129,9 @@ at a cap what sizing put exactly at it. Equity for the daily loss stop and the d
 *marked*: cash plus each open holding at the current best bid on its own side (what it could be
 sold for now), or at cost when that side has no bid, so both stops count unrealized losses as well
 as fees and settled losses. The paper executor records a marked equity point at every fill and
-settlement, and the live loop records one at the end of every pass. The daily loss stop is a
+settlement, and the live loop records one at the end of every pass. Each point values the account
+as of its own time, and a backtest fill's point is written at the fill's outcome time, the end of
+the candle that priced it. The daily loss stop is a
 fraction of the day's starting equity (the last equity point before the trading day began, else the
 day's first point), so one day has one stop level however equity moves during it.
 
@@ -214,7 +220,12 @@ then on the executor with `find_order`), so a retry finds the order instead of s
   and the proposal is cancelled. An order the exchange accepted ends it `executed`, whether it
   filled fully, partly or not at all.
 - **Exchange failure while sending.** The order is looked up by its client order id. When it is
-  found it is recorded; when it is not, the episode ends `error` and says the outcome is unknown.
+  found it is recorded; when it is not, or the lookup itself fails, the episode ends `error` and
+  says the outcome is unknown. The proposal keeps its approval and no rejection is recorded,
+  because an order may stand on the exchange. The demo executor makes the same lookup when an
+  order's outcome is unknown (no response, a 408 or a 5xx) or the exchange answers
+  `order_already_exists`: it records an order it finds, returns `REJECTED` when the exchange
+  answers that none exists, and raises when the lookup fails, so the episode ends as above.
 - **Continued episodes.** When the process stopped at `execute` (a crash, or an error that escaped
   after the approval), the controller continues the episode at that node, and a continued episode
   only reconciles: it looks the order up by its client order id and records what it finds, and it
@@ -249,23 +260,38 @@ resolved outcomes and expired due proposals and before it detects triggers
 - **Drawdown:** marked equity is 10% or more below its peak.
 - **Fill failures:** once 10 orders exist, more than one in ten of the last 10 did not fill or was
   rejected (two or more of ten). Each order the demo exchange refuses is stored under its own id,
-  so repeated rejections count.
+  so repeated rejections count. An order counts only once its outcome is known (in a backtest,
+  from its *outcome time*: the end of the candle the order met, an hour after its arrival when no
+  candle was found, or its arrival when the market had closed; see the [glossary](glossary.md)).
 - **Source changed or withdrawn:** a document cited by an episode that still holds an open position
   now has a different content hash, or is gone. In shadow and demo the stored copy of a document
   never changes, so the check fetches the cited page again from its source (at most once per poll
   interval per document); a 404 or 410 is a withdrawal, and a source that cannot be reached right
-  now is not a change.
-- **Calibration:** for a category with at least 30 resolved forecasts, calibration error is above 0.10
-  now, one week ago, and two weeks ago.
+  now is not a change. As for fill failures, an order counts only once its outcome is known.
+- **Calibration:** for a category, the calibration error of the pipeline's resolved ledger entries
+  (one per market per forecast) is above 0.10 now, one week ago and two weeks ago, and each of those
+  three checkpoints holds at least 30 entries.
 
 Routing also sends a proposal to the halt tier when the halt flag, the loss stop or the drawdown
 holds; it sets the flag if it is not set yet, and the episode ends `halted`.
+
+A backtest applies the same stops, and nobody resumes a halt there: once one trips, every later
+episode of that pass that reaches the gate ends `halted` and sends no order, and the report says
+when each pass halted. The fill-failure and calibration stops are both likely to trip early in a
+backtest's trading pass: [evaluation.md](evaluation.md#fill-assumptions-and-their-limits) counts
+how many liquid market sides at the trading pass's news triggers had nothing to fill against in the
+candle an order would meet (86 of 204, 42%), and the market's own prices for the June 2026 CPI
+release have a calibration error of 0.140 over its 63 scored rows, so a pipeline no better
+calibrated would trip the calibration stop about two weeks after that release closed. No backtest
+with a model has run, so both are expectations.
 
 ## Stages and the autonomy ladder
 
 The stage is the autonomy level: backtest, shadow, approval, autonomous. It is stored in the state
 database ([stages.py](../src/pmfa/execution/stages.py)). A stage advances one step at a time, and
-only when the benchmark for the next stage holds, computed from the ledger
+only when the benchmark for the next stage holds, computed from the state store: the ledger's
+scored forecasts for backtest to shadow, shadow-mode fills and settlements for shadow to approval,
+and human reviews for approval to autonomous
 ([benchmarks.py](../src/pmfa/evaluation/benchmarks.py)):
 
 | From, to | Benchmark |
@@ -284,8 +310,11 @@ scored forecasts (`RUN_DIR/work/scoring.sqlite`) toward backtest to shadow.
 
 The stage changes behaviour in two places. The gate refuses real (non-simulated) orders below the
 approval stage. Routing honours the auto tier only at the autonomous stage; below it, a trade that
-meets every auto condition still goes to review and is flagged *would-be-auto*, so the approval
-benchmark can count how often the human agreed.
+meets every auto condition still goes to review and is flagged *would-be-auto*. The flag is shown on
+the review card and in the trace, and counted in the run reports and `pmfa report-status`, so a
+reader can see which reviewed trades code alone would have placed. The approval benchmark does not
+read it: it counts every human review since the stage was entered, and every resize or reject as an
+override.
 
 Demo mode always runs at the approval stage, whatever stage is stored: its funds are mock, so the
 stage does not have to be earned there, and below the autonomous stage routing never honours the
@@ -346,7 +375,13 @@ corpus and the caches are ignored by git, and `.env.example` lists the variables
   the caps.
 - **The rules check is structural.** Code verifies that a scenario asserts outcomes that exist; it
   cannot verify that the claim's wording reads the rules correctly. That is left to the Critic, which
-  can reject a scenario.
+  can reject a scenario. The rules text a role reads is built from the exchange's wording: the
+  words the markets' primary rules share, around a placeholder for the option, then each secondary
+  rules text as given. In the frozen snapshot, Kalshi's rules for the Fed decision markets of more
+  than 25 bp have three spaces where the ">" sign belongs ("a Hike of   25bps"), while their
+  subtitles carry it ("Hike >25bps"). A role meets this only in the October 2026 event's secondary
+  rules ("Hike   25 bps"). The options it chooses among are labelled by code from each market's
+  strike ("Hike more than 25 bp"), so they are not ambiguous.
 - **The exchange-side protections are documented, not verified here.** The subaccount restriction,
   the funds-transfer block, and the order group's breaker are Kalshi's behaviour as its documentation
   describes it. No test in this repository has exercised them against a live demo account yet.

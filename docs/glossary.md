@@ -16,7 +16,8 @@ ladder (CPI). Every market maps to the outcomes on which it resolves YES. `Outco
 [forecast/outcomes.py](../src/pmfa/forecast/outcomes.py).
 
 **Trigger.** What starts an episode: a new document, a price move, or a schedule tick. Its time is
-the episode's as-of time. A price-move or schedule trigger names its event. `Trigger` in
+the episode's as-of time; a backtest trading episode that has to wait for an earlier order's
+outcome runs on a copy re-dated to its start (see *Late start*). A price-move or schedule trigger names its event. `Trigger` in
 [records/evidence.py](../src/pmfa/records/evidence.py).
 
 **Episode.** One pass of the pipeline for one trigger and one event. Its id is deterministic, so
@@ -29,7 +30,9 @@ running the same trigger twice returns the first result. `EpisodeRecord` in
 `halted`, `stale_price`, `executed`, or `error`. `Exit` in [records/episode.py](../src/pmfa/records/episode.py).
 
 **As-of time.** The moment an episode runs "at". Nothing published or priced after it may be read;
-every retrieval and exchange read filters on it inside the call. `EpisodeRecord.as_of`.
+every retrieval and exchange read filters on it inside the call. The one exception is the candle
+that prices a backtest fill, which no decision reads and which counts only from the order's
+*outcome time*. `EpisodeRecord.as_of`.
 
 **Passage.** A chunk of about 250 words of an evidence document (50 words of overlap), tagged with
 its source, URL, publish time and origin. Its id is `{doc_id}#{n}`. `Passage` in
@@ -91,7 +94,7 @@ override. `LedgerEntry` in [records/episode.py](../src/pmfa/records/episode.py);
 [state/store.py](../src/pmfa/state/store.py).
 
 **Stage.** The autonomy level: backtest, shadow, approval, autonomous. It advances only when the
-ledger meets the next stage's benchmark. `Stage` in [records/base.py](../src/pmfa/records/base.py);
+next stage's benchmark holds (scored forecasts, shadow fills, or human reviews). `Stage` in [records/base.py](../src/pmfa/records/base.py);
 managed by [execution/stages.py](../src/pmfa/execution/stages.py).
 
 **World.** The set of ports an episode sees: clock, exchange, executor, evidence, knowledge,
@@ -127,7 +130,8 @@ left unassigned among siblings lowers it. Below 0.6 the episode exits `low_cover
 `Forecast.coverage`; [forecast/aggregate.py](../src/pmfa/forecast/aggregate.py).
 
 **Confidence.** Coverage times min(1, independent origins cited by the forecast's scenarios / 3),
-halved when the call budget ran out. It multiplies the Kelly size, so it can only shrink an order.
+halved when an episode cap (calls, dollars or seconds) ended the search. It multiplies the Kelly
+size, so it can only shrink an order.
 `Forecast.confidence`; [forecast/aggregate.py](../src/pmfa/forecast/aggregate.py).
 
 **Fast path.** The search for an event closing within 60 minutes: the resolution level alone,
@@ -140,21 +144,39 @@ episode record says so, so reports can separate these fills from human-approved 
 [records/decision.py](../src/pmfa/records/decision.py).
 
 **Would-be-auto.** A proposal that met every auto condition but was sent to review because the stage
-is below autonomous. It counts toward how often the human agreed. `Routing.would_be_auto`.
+is below autonomous. The flag shows on the review card and in the trace and is counted in the
+reports; the approval benchmark counts every human review alike, flagged or not.
+`Routing.would_be_auto`.
 
 **Execution book.** The order book the pipeline decides with when it is about to send: the price
 re-read before sending, the recompute when nothing is offered at the limit, the gate after a
 review, and routing's price move. It is the live book in shadow and demo mode, the recorded
 execution-time book in replay, and in a backtest the as-of book, so no decision reads a price from
-after the as-of time. `Executor.execution_book` in [ports.py](../src/pmfa/ports.py).
+after the as-of time. A backtest order then fills against the *fill book*, which is priced later
+and counts only from its *outcome time*. `Executor.execution_book` in
+[ports.py](../src/pmfa/ports.py).
 
 **Fill book.** The book an order actually fills against. In shadow and demo mode it is the
-execution book. In a backtest it is a book built from the first one-minute candle after the as-of
-time plus the latency (60 seconds), on the conservative side of that candle, else the hourly
-candle, else an empty book; no decision sees it. In replay it is the recorded fill book when the
-recording has one, else the execution book. `fill_books` on the paper executor
-([execution/paper.py](../src/pmfa/execution/paper.py));
+execution book. In a backtest it is a book built from the one-minute candle that holds the order's
+arrival time (the as-of time plus the latency, 60 seconds), on the conservative side of that
+candle, else the hourly candle, else an empty book; no decision sees it. In replay it is the
+recorded fill book when the recording has one, else the execution book. `fill_books` on the paper
+executor ([execution/paper.py](../src/pmfa/execution/paper.py));
 [world/snapshot/book.py](../src/pmfa/world/snapshot/book.py).
+
+**Outcome time.** When an order's outcome (its fills, or that it did not fill) is known. In a
+backtest it is the end of the candle that priced its fill book; an hour after the arrival time (the
+end of the hour searched) when no candle was found; the arrival time when the market had closed by
+then. The paper executor stamps the fills with it. The paper account, the equity points and the
+stops that read orders (fill failures, a changed source) count an order only from then, so no
+decision made earlier sees its price or outcome. `OrderResult.outcome_at`, set only when later than `placed_at`, in
+[records/decision.py](../src/pmfa/records/decision.py).
+
+**Late start.** A backtest trading episode that starts later than its trigger. Each episode of the
+trading pass starts at the latest of its trigger's time, the clock's time and the latest stored
+outcome time, so it waits for the outcome of every earlier order, and the time it starts at is its
+as-of time. `metrics.json` counts them under `late_starts`. `_trading_pass` in
+[evaluation/backtest.py](../src/pmfa/evaluation/backtest.py).
 
 **Marked equity.** Cash plus each open holding at the current best bid on its own side (what it
 could be sold for now), or at cost when that side has no bid. The equity points behind the daily
@@ -165,6 +187,12 @@ that sizing and the dollar caps use is cash plus holdings at cost. `marked_equit
 **Canary.** A document dated after every forecast, placed in the backtest's evidence index. Retrieving
 it means the as-of rule failed, and the run stops. `evaluation.canary_text` in
 [config.py](../src/pmfa/config.py); [world/backtest.py](../src/pmfa/world/backtest.py).
+
+**Content digest.** A SHA-256 over a snapshot's data rows alone (series, events, markets, candles
+and coverage, in a fixed order), so two builds that hold the same rows give the same digest while
+their file hashes differ. The snapshot manifest stores it as `content_sha256` and a run manifest as
+`snapshot_content_sha256`. `content_sha256` in
+[world/snapshot/store.py](../src/pmfa/world/snapshot/store.py).
 
 **Abstention.** An episode that ended without a forecast (an exit before or during the forecast
 step). In the evaluation its row has no probability; the stricter skill figure scores it as the
