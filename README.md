@@ -106,8 +106,9 @@ Nothing to install.
 4. **The evaluation report.** [evaluation/runs/2026-11-26-market-baseline/report.md](evaluation/runs/2026-11-26-market-baseline/report.md).
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
-5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 38 short
-   records, each with the capstone checkpoint or build step it came from.
+5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 42 short
+   records, each with its reasons and where it came from: a capstone checkpoint where the
+   specification names one, otherwise the item of the specification or the build.
 
 ## Replay an episode offline
 
@@ -122,8 +123,9 @@ uv run pmfa replay examples/episodes/fed-minutes-hawkish
 ```
 
 It prints the hand-made-fixture notice first, then the trigger and as-of time, the numbered trace
-(thought, action, observation), the forecast for each market next to the market price no role saw,
-the proposal, all nineteen gate checks, the routing tier, the review card, the simulated order and
+(thought, action, observation), the forecast for each market next to the market price no role saw
+(marked `*` where that price is the last trade because one side of the quote was empty), the
+proposal, all nineteen gate checks, the routing tier, the review card, the simulated order and
 its fill, and the exit. `--check` compares the replay with the committed `expected/` files and exits
 non-zero on any difference; `--verbose` prints each step's records; `--json` prints the episode
 record.
@@ -158,8 +160,9 @@ uv run pmfa replay fed-minutes-hawkish
 uv run pytest
 ```
 
-The suite is offline and deterministic. CI runs lint and the suite in both environments on every
-push ([ci.yml](.github/workflows/ci.yml)).
+The suite is offline and deterministic. On every push and pull request CI runs `ruff check`,
+`ruff format --check` and the suite in the default environment, and the suite alone in the MCP SDK
+2.x environment ([ci.yml](.github/workflows/ci.yml)).
 
 ### An Anthropic API key: rebuild the data, backtest, shadow mode
 
@@ -174,6 +177,15 @@ continues with the first market it had not finished.
 ```bash
 uv run pmfa data build
 ```
+
+To check a rebuilt snapshot against the published run, compare the content SHA-256 that
+`pmfa data build` prints with `snapshot_content_sha256` in the run's
+[manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json); the file's own hash differs on
+every rebuild. The digest covers the snapshot only, not the corpus. Both end their window at the
+build time, so a later rebuild can hold more: an event that has closed since, or a document
+published since. A rebuild from scratch on 2026-11-25 took 1,532 seconds (about 25 minutes), 1,408
+of them for the snapshot at two requests per second. Its snapshot gave the published content
+SHA-256; its corpus held 56 documents, one Federal Reserve speech more than the published 55.
 
 BLS pages may refuse automated clients. When a release is not fetched, save it from a browser into
 `data/manual/` as `bls-cpi-YYYY-MM.html` (the reference month, for example `bls-cpi-2026-10.html` for
@@ -254,8 +266,11 @@ warns that demo prices may not reflect real markets.
 
 In a backtest, every decision (sizing, the price re-read before sending, the recompute when
 nothing is offered at the limit, the gate and routing) reads the market as of the as-of time. Only
-the fill is priced later, against a book built from the first one-minute candle after the as-of
-time plus 60 seconds of latency, which no decision sees.
+the fill is priced later, from the candle that holds the order's arrival 60 seconds after the as-of
+time: the one-minute candle, else the hourly one. The fill is timed at the end of that candle, and
+the paper account, the equity points and the stops count it only from then. The next trading
+episode starts no earlier than that time, and one that starts after its trigger takes the later
+time as its as-of time.
 
 ## Commands
 
@@ -317,7 +332,7 @@ The most important defaults:
 | Liquidity floor | $500 resting within $0.02 of the touch |
 | Notional bankroll (backtest, shadow) | $1,000 |
 | Proposal expiry | 10 minutes |
-| Budget per episode | 30 model calls, $2.00, 90 seconds (live modes) |
+| Budget per episode | 30 model calls, $2.00, and in live modes 90 seconds spent waiting on model calls (other steps are not timed) |
 | Budget per run | $25.00 |
 | Backtest window start | 2026-07-01 |
 
@@ -330,7 +345,8 @@ Models read and judge; code acts. The main guardrails:
 | Roles have no tools: one validated record in, one out | Code |
 | Evidence text reaches a model only inside delimited blocks, as data | Code |
 | No role sees the price of the market it forecasts | Code |
-| Nothing published or priced after the as-of time is read | Code |
+| Nothing published or priced after the as-of time is read, except the candle that prices a backtest fill | Code |
+| A backtest fill counts only from the end of that candle | Code |
 | A trade needs one primary origin or two independent secondary origins | Code |
 | The gate re-verifies every cap, the edge and the limit price, and never changes an order | Code |
 | Limit orders only, immediate-or-cancel only | Code |
@@ -368,17 +384,28 @@ the agent's. They are the bar any later system has to clear: Brier skill is
 
 The Brier score is the mean squared error of a probability against the 0-or-1 outcome; lower is
 better. Intervals come from 2,000 bootstrap resamples of whole events. Seven events are the
-independent observations, not 104 markets, so the intervals are wide. Markets priced near 0.01 or
-0.99 dominate the rows and pull every score toward zero. The market's expected calibration error
-over all horizons is 0.0559. Prompt-only, single-pass and the full pipeline were not run, and there
-is no simulated P&L. The window holds no event for the October 2026 CPI release: the exchange
-listed no KXCPIYOY event for it.
+independent observations, not 104 markets, so the intervals are wide. Of the market's summed
+squared error over the 312 rows, the 185 rows priced below 0.10 carry 0.5%, the 45 rows from 0.10
+to 0.90 carry 45.6%, and the 82 rows above 0.90 carry 53.9%. One event, KXCPIYOY-26JUN, carries
+69.5%, and two of its markets carry 26.9% (T3.5) and 26.5% (T3.6): both were priced 0.975 to 0.99
+at all three horizons and resolved NO. So the market's score on this sample rests mostly on one
+release that surprised it
+([Where the error comes from](evaluation/runs/2026-11-26-market-baseline/report.md#where-the-error-comes-from)).
+The market's expected calibration error over all horizons is 0.0559. Prompt-only, single-pass and
+the full pipeline were not run, and there is no simulated P&L. The window holds no event for the
+October 2026 CPI release: the exchange listed no KXCPIYOY event for it.
 
 Look-ahead is prevented inside the ports, not by the caller: every exchange read and retrieval
 filters on the as-of time inside the call; a canary document dated after the window sits in the
 retrieval index and aborts the run if any query returns it; the backtest world has no web access;
 and a run refuses to start if any assigned model's knowledge cutoff falls on or after the window
-start. Method and controls: [docs/evaluation.md](docs/evaluation.md). The notebook
+start. The published run is market-only: it built no retrieval index and made no retrieval
+(`leakage_checks` in its [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json)), so
+the canary guarded nothing in that run; there the as-of rule applied to the snapshot's price reads.
+The tests exercise the canary, for example
+[tests/evaluation/backtest/test_backtest.py](tests/evaluation/backtest/test_backtest.py), where a
+canary in a retrieval result aborts the run. Method and controls:
+[docs/evaluation.md](docs/evaluation.md). The notebook
 [notebooks/evaluation.ipynb](notebooks/evaluation.ipynb) reproduces the report's figures and tables
 from the committed files.
 
@@ -396,6 +423,14 @@ from the committed files.
 - **Backtest fills are simulated from candles.** Kalshi's history has no order-book depth, so
   liquidity is a candle-volume proxy, and a fill falls back to the hourly candle when no one-minute
   candle covers its arrival time.
+- **A backtest's trading simulation is likely to halt itself early.** It applies the same stops as
+  the live modes, nobody resumes a halt in a backtest, and the report says when and why each pass
+  halted. On the frozen data, [scripts/fill_coverage.py](scripts/fill_coverage.py) finds that of the
+  204 market sides that pass the liquidity floor at the 55 news triggers, 86 (42%) had nothing to
+  fill against in the candle an order would meet, while the fill-failure stop trips when two or more
+  of the last ten orders did not fill (`oversight.fill_failure_window = 0` turns that stop off). No
+  backtest with model forecasts has run yet, so this is an expectation from the data, not a result
+  ([Fill assumptions and their limits](docs/evaluation.md#fill-assumptions-and-their-limits)).
 - **Sample episodes are hand-made.** Their model records were written by a person who knew the
   outcomes.
 - **Exchange-side protections are documented, not verified.** The subaccount restriction, the
@@ -430,8 +465,17 @@ Evidence text comes from the Board of Governors of the Federal Reserve System
 Statistics ([bls.gov](https://www.bls.gov/bls/linksite.htm)). Both agencies place their text in the
 public domain and ask to be credited as the source; this project credits them here, and each
 example's README names its sources and URLs. Market data comes from Kalshi's public API. The
-exchange data committed in this repository is kept small (one event and a handful of markets per example, no candle series) until
-Kalshi's data terms are checked; the full snapshot and corpus are rebuilt locally and ignored by git.
+exchange data committed here is: the examples' `world.json` files (one event and a handful of
+markets per example, one book level per side, no candle series), some of whose prices the
+`expected/` outputs repeat; test fixtures under
+[tests/world/kalshi/fixtures/](tests/world/kalshi/fixtures/) and
+[tests/forecast/fixtures/](tests/forecast/fixtures/), API responses and events cut down to a few
+items each; and the published run's `forecasts.csv` (312 rows: the market price of 104 markets in 7
+events at three horizons, each with its outcome), `manifest.json`, which names the 12 events the
+snapshot builder did not store, with their close times, and `metrics.json`, `report.md` and
+`figures/`, which summarize those rows by event and market. The snapshot with its candle series and the
+corpus are not committed: they are rebuilt locally and ignored by git. Kalshi's data terms have not
+been checked yet.
 The one synthetic story in `single-origin-syndicated` uses made-up outlets on reserved `.example`
 domains.
 

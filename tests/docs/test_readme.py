@@ -77,6 +77,78 @@ def test_the_calibration_error_quoted_in_results_equals_metrics_json() -> None:
     assert quoted.group(1) == f"{metrics['reliability']['market']['answered']['ece']:.4f}"
 
 
+BAND_WORDING = {
+    "below 0.10": "priced below 0.10",
+    "0.10 to 0.90": "from 0.10 to 0.90",
+    "above 0.90": "above 0.90",
+}
+
+
+def _percent(share: float, quoted: str) -> str:
+    """A share as a percentage, at the number of decimals the README quotes it with."""
+    return f"{share * 100:.{len(quoted.partition('.')[2])}f}"
+
+
+def test_the_error_shares_quoted_in_results_equal_metrics_json() -> None:
+    """Each share is checked where the README attaches it: to its band, event or market."""
+    metrics = json.loads((RUN_DIR / "metrics.json").read_text(encoding="utf-8"))
+    found = metrics["systems"]["market"]["error_concentration"]
+    results = " ".join(section(_readme(), "Results").split())
+    assert f"over the {found['n_rows']} rows" in results
+    checked: list[str] = []
+    for band in found["bands"]:
+        phrase = BAND_WORDING[band["name"]]
+        quoted = re.search(rf"(\d+) rows {re.escape(phrase)} carry (\d+\.\d+)%", results)
+        assert quoted, f"Results quotes no share for the band {band['name']}"
+        assert int(quoted.group(1)) == band["n_rows"], band["name"]
+        assert quoted.group(2) == _percent(band["share"], quoted.group(2)), band["name"]
+        checked.append(quoted.group(2))
+    event = found["top_event"]
+    quoted = re.search(rf"{re.escape(event['name'])}, carries (\d+\.\d+)%", results)
+    assert quoted, f"Results quotes no share for {event['name']}"
+    assert quoted.group(1) == _percent(event["share"], quoted.group(1))
+    checked.append(quoted.group(1))
+    for market in found["top_markets"][:2]:
+        suffix = market["name"].removeprefix(event["name"] + "-")
+        quoted = re.search(rf"(\d+\.\d+)% \({re.escape(suffix)}\)", results)
+        assert quoted, f"Results quotes no share for {market['name']}"
+        assert quoted.group(1) == _percent(market["share"], quoted.group(1)), market["name"]
+        checked.append(quoted.group(1))
+    assert sorted(re.findall(r"(\d+\.\d+)%", results)) == sorted(checked), (
+        "Results quotes a percentage that is not tied to a band, event or market"
+    )
+
+
+def test_the_readme_says_the_canary_guarded_the_published_run_only_if_an_index_was_built() -> None:
+    manifest = json.loads((RUN_DIR / "manifest.json").read_text(encoding="utf-8"))
+    checks = manifest["leakage_checks"]
+    results = " ".join(section(_readme(), "Results").split())
+    assert "canary" in results
+    claims_guarded = re.search(
+        r"canary (?:guarded|checked|was exercised|aborted)(?! nothing)", results
+    )
+    if checks["index_built"] and checks["retrievals_checked"] > 0:
+        assert "built no retrieval index" not in results
+        assert "canary guarded nothing" not in results
+    else:
+        assert "built no retrieval index" in results
+        assert "canary guarded nothing" in results
+        assert claims_guarded is None, f"Results says {claims_guarded.group(0)!r}"
+
+
+DECISION_RECORDS = sorted((ROOT / "docs" / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md"))
+
+
+def test_every_count_of_decision_records_equals_the_record_files() -> None:
+    text = " ".join(_readme().split())
+    stated = re.findall(r"(\d+) (?:short |decision )*records\b", text)
+    assert stated, "the README states no number of decision records"
+    for number in stated:
+        assert int(number) == len(DECISION_RECORDS), (
+            f"the README says {number} records; docs/decisions holds {len(DECISION_RECORDS)}"
+        )
+
+
 def _named_examples() -> list[str]:
     return sorted(set(re.findall(r"examples/episodes/([a-z0-9-]+)", _readme())))
 

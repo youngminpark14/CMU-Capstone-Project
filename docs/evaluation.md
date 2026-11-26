@@ -38,6 +38,31 @@ uv run pmfa data build
 bls.gov). The snapshot build is resumable: a range already stored is skipped, so a second run
 continues where the first stopped.
 
+A snapshot has two hashes. Its content digest (`content_sha256` in
+[store.py](../src/pmfa/world/snapshot/store.py)) is a SHA-256 over its data rows alone: series,
+events, markets, candles and coverage, keyed by ticker in a fixed order, so it does not depend on
+insertion order, internal row ids or the file's layout. The file hash is the SHA-256 of the file's
+bytes. It differs on every rebuild, because the file also holds the build manifest and its page
+layout depends on the build. `pmfa data build` prints the content digest
+(`snapshot: content SHA-256 ...`) and records it in the snapshot manifest as `content_sha256`. A
+build clears the recorded digest before it changes any row, so a build that stops part way leaves
+none, and a run then computes the digest from the rows. To check that a rebuild holds the data a
+published run read, compare the digest the build prints with the run manifest's
+`snapshot_content_sha256`, which the report prints first on its Data line. A published run names
+its corpus by one digest of the per-document content hashes (`corpus_hashes_digest`, computed by
+`hashes_digest` in [manifest.py](../src/pmfa/evaluation/manifest.py)), which the report prints as
+the corpus texts digest on the same Data line. `pmfa data status` prints the per-document hashes but
+not that digest, so to compare a rebuilt corpus, compute `hashes_digest` over them.
+
+A from-scratch rebuild on 2026-11-25 took 1,532 seconds (about 25.5 minutes): about 2 minutes for
+the corpus and 1,408 seconds for the snapshot at 2 requests per second. It reproduced every table of
+the snapshot (2 series, 7 events, 104 markets, 840,841 candles, 208 coverage rows). Both snapshot
+files give the content digest `15d471e2b2b6700e7bb137355c241c65df1d67ff0cca68fd2355464682992638`,
+while their file hashes differ (`a9c3334d...` for the data the published run read, `a5155b3f...` for
+the rebuild). The rebuilt corpus held 56 documents, one more than the 55 the published run read:
+`fed:bowman20261125a`, published after the first corpus was built, so its corpus digest differs
+(`1372da3f...` against `22e5b366...`).
+
 ### The window and the knowledge-cutoff guard
 
 The window starts on 2026-07-01 (`evaluation.window_start`), the day after the June 2026 knowledge
@@ -55,7 +80,7 @@ and the corpus:
 | Schedule | What it is | Used for |
 | --- | --- | --- |
 | Scoring points | Every settled event closing in the window, at fixed horizons of 7, 3 and 1 days before close. A point before the window start or before the event opened is skipped, with the reason recorded. | The forecast metrics. Every system forecasts every listed market of the event as of the point. |
-| Trading triggers | Every corpus document published in the window, in time order, as a new-document trigger at its publish time. | The trading simulation. The full pipeline runs on one continuous simulated clock, so holdings, the ledger and the bankroll carry forward. The outcome resolver settles what had settled before each trigger, and the rest at the end. |
+| Trading triggers | Every corpus document published in the window, in time order, as a new-document trigger at its publish time. | The trading simulation. The full pipeline runs on one continuous simulated clock, so holdings, the ledger and the bankroll carry forward. The outcome resolver settles what had settled before each episode starts (at its trigger's time, or later after a late start; see "Leakage controls"), and the rest at the end. |
 
 The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trading triggers.
 
@@ -90,8 +115,12 @@ need one are recorded as "not run: no API key" and produce no rows.
 - **Simulated P&L after fees** of the trading pass, against not trading (which earns zero); the
   equity curve; maximum drawdown; P&L split by routing tier (auto, approve-tier fills tagged as
   would-be-auto, other approve-tier fills).
+- **Where the error comes from**: each system's summed squared error split by forecast
+  probability (below 0.10, 0.10 to 0.90, above 0.90), with the share of its largest event and of
+  its three largest markets.
 - **Episode tallies**: exits by reason, gate rejections by reason, routing tiers, and cost, model
-  calls and latency per episode.
+  calls and latency per episode; for each pass, the first episode that ended `halted` and how many
+  ended halted from then on.
 - **Pruning audit**: how much posterior mass fell on scenarios the search had frozen, and how often
   the most likely path at resolution ran through a frozen one
   ([decision 0025](decisions/0025-pruning-audit.md)).
@@ -127,6 +156,8 @@ harness is the deliverable; its numbers are a pilot.
 | --- | --- |
 | The as-of rule is inside the ports. The snapshot exchange shows quotes, listings and results only up to the simulated clock; the frozen evidence port returns only documents published at or before the as-of time; every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search. | [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py), [evidence/corpus.py](../src/pmfa/world/evidence/corpus.py), [knowledge/index.py](../src/pmfa/knowledge/index.py) |
 | A canary document dated one day after the window, containing `evaluation.canary_text` and the words every query uses, sits in the evidence index but not in the corpus. A guard on the knowledge port raises `LeakageDetected` the moment any retrieval returns it, and every finished episode is scanned for it. One hit aborts the run and marks it aborted. The manifest's `leakage_checks` counts the retrievals and episodes checked, and the report says so; a market-only run builds no index, so its canary is not exercised. Dated after every as-of time, the canary catches a missing as-of filter, not one that lets documents through hours or days late. | `CanaryGuard`, `assert_episode_clean` in [world/backtest.py](../src/pmfa/world/backtest.py) |
+| Every decision reads the order book as of the as-of time; only the paper fill is priced from a later candle, and no role or decision sees that book (see "Fill assumptions and their limits" below). The order's outcome has a time, the end of the candle that priced it: the fills are stamped with it and the order carries it as `outcome_at`. The paper account's balance and positions are read as of the clock, each equity point values the account as of its own time, and the stops that read orders (fill failures, a changed source) count an order only from its outcome time on. So no decision made before that time sees the order's price or outcome, not even a second episode at the same clock time. | [snapshot/book.py](../src/pmfa/world/snapshot/book.py), [execution/paper.py](../src/pmfa/execution/paper.py), [execution/halt.py](../src/pmfa/execution/halt.py) |
+| In the trading pass an episode starts at the latest of its trigger's time, the clock's time and the latest stored order outcome. An episode that starts later than its trigger runs with that later time as its as-of time, and the report counts these late starts. The scoring pass keeps its fixed as-of times and relies on the time filter of the row above. | `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
 | No web access: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and no port holds an HTTP client. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | The response cache key includes the as-of time, which every role input carries, so a question asked at a later time is a different entry. | [models/cache.py](../src/pmfa/models/cache.py) |
 | The knowledge-cutoff guard described above. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
@@ -178,6 +209,16 @@ The fill book:
   paid on every fill.
 - The liquidity floor is a proxy: dollars traded in the trailing 60 minutes instead of dollars
   resting near the touch.
+- The fill book is dated at the end of the candle that priced it: up to a minute after the arrival
+  time on a one-minute candle, up to an hour on the hourly fallback. When no candle is found it is
+  dated at the end of the hour searched, and when the market had closed by the arrival time, at the
+  arrival time. That date is the order's outcome time: the paper account, the equity points and
+  the stops that read orders (fill failures, a changed source) count the order only from then (see
+  "Leakage controls").
+- In the trading pass the next episode does not start before that time, so an episode can start
+  later than its trigger, with the later time as its as-of time. `metrics.json` counts these late
+  starts and the report prints the count in "How each fill was priced". The scoring pass keeps its
+  fixed as-of times and relies on the time filter.
 
 The limits: Kalshi's history has no order-book depth, so liquidity is inferred from candle volume.
 One-minute candles exist only for minutes in which a quote or trade changed, so they are sparse; when
@@ -186,16 +227,48 @@ none exists or the candle had no volume, the book is empty and nothing fills. Ea
 every order was priced. Simulated P&L is not evidence of tradable edge. With no human present,
 approve-tier proposals are filled and tagged, and reported apart from auto-tier ones.
 
+What the sparse candles mean for a trading simulation was measured with
+[scripts/fill_coverage.py](../scripts/fill_coverage.py) on the 2026-11-25 data. At the 55 news
+triggers of the trading pass there are 4,086 open market sides; 204 of them (5%) pass the $500
+liquidity floor (`caps.liquidity_floor_dollars`). Of those 204, 118 (58%) had contracts on their
+side in the candle an order would meet and 86 (42%) had none. That candle was a one-minute candle
+129 times, the hourly fallback 73 times, and missing twice. 35 of the 55 triggers had at least one
+liquid side with contracts to fill against. The script counts contracts at any price, so an order
+whose limit does not meet the candle's touch still fills nothing.
+
+The fill-failure stop trips when more than `oversight.fill_failure_halt_fraction` (0.10) of the
+last `oversight.fill_failure_window` (10) orders did not fill, that is two or more in ten, once ten
+orders exist ([execution/halt.py](../src/pmfa/execution/halt.py)). A backtest applies the same stops
+as the live modes, so with real model forecasts the trading simulation is likely to halt itself on
+fill failures early. Nobody resumes a halt in a backtest: once a stop trips, later episodes of that
+pass still run up to the gate, forecasting and spending model calls on the way, and every one that
+reaches the gate ends `halted` there and sends no order. An episode that exits earlier, such as
+`no_match` or `no_edge`, keeps that exit; `self_halts` in `metrics.json` counts how many ended
+halted from then on. The report states each pass's halt under "Exits by reason", and under
+"Simulated trading after fees" says that the trading figures describe the run only up to the halt.
+A halt in the scoring pass does not change the scores, because the forecast is made before the
+gate. Setting
+`oversight.fill_failure_window = 0` in the configuration a run reads turns that one stop off.
+Whether the stop should apply inside a backtest is an open question. No agent backtest has been run
+yet, so this is an expectation from the data, not an observed result.
+
 ### What a run writes and what is committed
 
 `pmfa backtest` writes a run directory under `runs/` (ignored by git), named
 `<date>-<run name>`: `manifest.json` (configuration, model ids, effort levels and listed cutoffs,
 window, commit and, when the working tree was dirty, the changed and untracked paths, snapshot and
-corpus manifests with the snapshot file's SHA-256 and a digest of the corpus content hashes, plan,
-progress, usage, the canary checks, and the leakage, cost and fill statements), `forecasts.csv` (one row per system, market and
+corpus manifests, the snapshot's content digest (`snapshot_content_sha256`) and file hash
+(`snapshot_sha256`), a digest of the corpus content hashes, plan, progress, usage, the canary
+checks, and the leakage, cost and fill statements), `forecasts.csv` (one row per system, market and
 as-of time, with the outcome, the market price and any abstention note), `trades.csv`,
 `episodes.jsonl`, `metrics.json`, and `traces/` (up to three full pipeline episodes saved as
-replayable examples, each checked by replaying it). `pmfa report RUN_DIR` adds `report.md` and
+replayable examples, each checked by replaying it). Besides the scores, `metrics.json` holds each
+system's `error_concentration` (its summed squared error by price band, largest event and three
+largest markets, which the report prints as "Where the error comes from"), `self_halts` (for the
+scoring and the trading pass, null or the first halted episode with its trigger, start time and
+reason, and how many episodes ended halted from then on), and, when a trading pass ran,
+`late_starts` (how many trading episodes started later than their trigger, of how many, and the
+longest wait in seconds). `pmfa report RUN_DIR` adds `report.md` and
 `figures/` from the manifest and metrics alone ([report.py](../src/pmfa/evaluation/report.py)).
 `--publish NAME` copies `manifest.json`, `forecasts.csv`, `metrics.json`, `report.md`, `figures/` and
 `traces/` to `evaluation/runs/NAME/`, and the published manifest's `outputs` lists exactly those
@@ -224,9 +297,17 @@ What these numbers mean:
 - They describe the market, not the agent. They are the bar: a system has positive skill only if
   its Brier score on the same rows is below these. The market's skill against itself is 0 by
   definition.
-- The scores are low because most rows are easy. 185 of 312 prices sat below 0.10 and 82 above 0.90,
-  mostly far strikes of CPI ladders; those rows contribute almost nothing to any system's error, so
-  the comparison will be decided by the few rows priced in between.
+- The scores are low because most rows are priced near 0 or 1: 185 of 312 prices sat below 0.10
+  and 82 above 0.90, mostly far strikes of CPI ladders. Those rows are not all easy. Of the market's
+  summed squared error, 10.7661, the rows below 0.10 carry 0.5%, the 45 rows from 0.10 to 0.90
+  carry 45.6%, and the rows above 0.90 carry 53.9%. Six of those 82 rows carry 53.4% on their own:
+  KXCPIYOY-26JUN-T3.5 and T3.6, priced 0.975 to 0.99 at all three horizons, both resolved NO. The
+  event KXCPIYOY-26JUN carries 69.5% of the error (63 rows), its markets T3.5, T3.6 and T3.7 26.9%,
+  26.5% and 14.2% (three rows each; T3.7 was priced 0.705 to 0.725 and also resolved NO). So the
+  market's score on this sample rests mostly on one release that surprised it. Since most of the
+  market's error sits in a handful of rows of that one event, a system's skill against the market
+  is likely to be decided mostly there. The report shows the
+  split under "Where the error comes from".
 - The market sharpens slightly toward the close (0.0376 at 7 days, 0.0329 at 1 day), but the
   intervals overlap almost entirely.
 - Expected calibration error is 0.0559 over all horizons.
@@ -305,7 +386,9 @@ uv run pmfa report runs/YYYY-MM-DD-pilot
 ```
 
 **3. The full run**, with a cap chosen from the pilot's measured cost and a fresh dry run (which now
-prices calls from the cache). Cached answers from the pilot cost nothing again.
+prices calls from the cache). Cached answers from the pilot cost nothing again. Its trading pass is
+likely to halt itself on fill failures (see "Fill assumptions and their limits"); for a run without
+that stop, pass `--config` a copy of `pmfa.toml` with `oversight.fill_failure_window = 0`.
 
 ```bash
 uv run pmfa backtest --dry-run --systems market,prompt_only,single_pass,single_pass_similarity,pipeline

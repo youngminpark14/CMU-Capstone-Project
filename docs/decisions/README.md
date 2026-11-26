@@ -42,3 +42,7 @@ Each record says what was decided, why, what follows from it, and where it came 
 | [0036](0036-dollar-caps-are-ceilings.md) | The dollar caps are ceilings, checked against each call's worst case | build, November 2026 |
 | [0037](0037-price-move-triggers-anchored.md) | Price-move triggers are anchored to the event's last trigger | build, November 2026 |
 | [0038](0038-origins-by-text-overlap.md) | Origins are merged by text overlap, not vector similarity | build, November 2026 |
+| [0039](0039-order-outcome-time.md) | A backtest order's outcome has a time | build, November 2026 |
+| [0040](0040-snapshot-content-digest.md) | The snapshot has a content digest | build, November 2026 |
+| [0041](0041-backtest-stops.md) | A backtest applies the same stops as the live modes, and the report says when one tripped | build, November 2026 |
+| [0042](0042-config-fields-have-readers.md) | Every configuration field has a reader | build, November 2026 |

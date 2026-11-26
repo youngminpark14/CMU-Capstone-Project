@@ -16,6 +16,9 @@ NAMES_A_CHECKPOINT = re.compile(r"[Cc]heckpoints? \d\.\d")
 SAYS_NONE_NAMED = "does not name the checkpoint"
 
 
+INDEX_ROW = re.compile(r"^\| \[(\d{4})\]\(([^)]+)\) \| (.+?) \| [^|]+ \|$", re.M)
+
+
 def origin(path) -> str:
     match = re.search(
         r"^## Origin\n(.*?)(?=^## |\Z)", path.read_text(encoding="utf-8"), re.M | re.S
@@ -45,3 +48,13 @@ def test_the_index_origin_column_matches_the_record(path) -> None:
         assert "checkpoint" in origin_cell
     else:
         assert "checkpoint not named" in origin_cell
+
+
+def test_the_index_lists_every_record_once_in_order_with_its_own_title() -> None:
+    index = (DECISIONS / "README.md").read_text(encoding="utf-8")
+    rows = INDEX_ROW.findall(index)
+    assert [file for _, file, _ in rows] == [p.name for p in RECORDS]
+    for number, file, title in rows:
+        assert file.startswith(f"{number}-"), file
+        first_line = (DECISIONS / file).read_text(encoding="utf-8").splitlines()[0]
+        assert first_line == f"# {number}. {title}"
