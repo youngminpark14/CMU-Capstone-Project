@@ -81,7 +81,10 @@ def stop_reasons(
     now = clock.now()
     reasons: list[str] = []
 
-    series = store.equity_series()
+    # A point dated after now belongs to an order whose outcome is not known yet (a backtest
+    # fill is timed at the end of its candle). With no point at or before now there is no
+    # equity to measure a stop from.
+    series = [(t, e) for t, e in store.equity_series() if t <= now]
     if series:
         risk = risk_state(series, now, config, bankroll=bankroll)
         if risk.loss_stop_tripped:

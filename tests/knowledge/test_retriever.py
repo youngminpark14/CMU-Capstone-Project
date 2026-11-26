@@ -92,6 +92,45 @@ def test_fractional_second_after_as_of_is_excluded(knowledge: ChromaKnowledge) -
     assert knowledge.get_passages(["edge#0"], as_of=AS_OF) == []
 
 
+def _found(knowledge: ChromaKnowledge, as_of: datetime) -> tuple[set[str], set[str]]:
+    """The documents that a search and a lookup by passage id return at ``as_of``.
+
+    Decision 0026: publish times are rounded up to the second and as-of times down,
+    so nothing published after the as-of time can share its second and be read.
+    """
+    hits = knowledge.search_evidence(
+        [FED_SPEECH, FED_STATEMENT], as_of=as_of, category="fed_decision", k=50
+    )
+    passages = knowledge.get_passages(["on-the-second#0", "later#0"], as_of=as_of)
+    return {h.passage.doc_id for h in hits}, {p.doc_id for p in passages}
+
+
+def test_an_as_of_time_with_a_fraction_of_a_second_reads_its_second_and_not_the_next(
+    knowledge: ChromaKnowledge,
+) -> None:
+    knowledge.index_documents(
+        [
+            doc("on-the-second", FED_SPEECH, published_at=AS_OF),
+            doc("later", FED_STATEMENT, published_at=AS_OF + timedelta(seconds=1)),
+        ]
+    )
+    found = _found(knowledge, AS_OF + timedelta(milliseconds=900))
+    assert found == ({"on-the-second"}, {"on-the-second"})
+
+
+def test_a_passage_published_later_in_the_as_of_times_own_second_is_not_read(
+    knowledge: ChromaKnowledge,
+) -> None:
+    knowledge.index_documents(
+        [
+            doc("on-the-second", FED_SPEECH, published_at=AS_OF),
+            doc("later", FED_STATEMENT, published_at=AS_OF + timedelta(milliseconds=500)),
+        ]
+    )
+    found = _found(knowledge, AS_OF + timedelta(milliseconds=200))
+    assert found == ({"on-the-second"}, {"on-the-second"})
+
+
 def test_published_after_keeps_only_newer_passages(knowledge: ChromaKnowledge) -> None:
     knowledge.index_documents(corpus())
     hits = knowledge.search_evidence(

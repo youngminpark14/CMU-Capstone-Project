@@ -386,6 +386,8 @@ def build_backtest_world(
       time (the first one-minute candle after the as-of time plus the latency,
       on the conservative side, else the hourly fallback, else empty), which no
       decision sees. A limit that candle does not meet leaves the order unfilled.
+      That fill book is dated at the end of its candle, so the order's outcome
+      counts in the account only from then, not from the clock's time.
     - Review policy ``FILL_TAGGED``: with no human present, approve-tier
       proposals are filled and tagged, so reports can separate them.
     - ``state.transport`` is forced to ``direct`` for throughput (see ``backtest_config``).

@@ -12,13 +12,16 @@
    episode from a schedule trigger. One simulated clock and one state store.
 5. **Trading pass** (pipeline only). Every corpus document in the window, in
    time order, triggers an episode on one continuous clock and a second store,
-   so holdings, the ledger and the bankroll carry forward. Before each trigger
-   the outcome resolver settles what had settled by then; at the end it
-   settles the rest.
+   so holdings, the ledger and the bankroll carry forward. An episode starts no
+   earlier than the latest outcome of an earlier order, which can be later than
+   its trigger. Before each episode the outcome resolver settles what had
+   settled by then; at the end, once the last order's outcome has passed too,
+   it settles the rest.
 6. **Outputs** under ``run_dir``: ``manifest.json``, ``forecasts.csv``,
    ``trades.csv``, ``episodes.jsonl`` (one ``EpisodeRecord`` per line, traces
-   left out), ``traces/`` (a few full episodes saved as replayable examples),
-   and ``metrics.json``.
+   left out, in the order the run made them: the scoring pass, then the
+   trading pass), ``traces/`` (a few full episodes saved as replayable
+   examples), and ``metrics.json``.
 
 Leakage: the as-of rule lives inside the ports; every retrieval passes a
 canary guard and every finished episode is scanned for the canary, and a hit
@@ -381,6 +384,14 @@ class _Run:
         self.rows: list[tuple[ForecastRow, RowNote]] = []
         self.recordings: dict[str, tuple[Any, Trigger, str]] = {}
         """Episode id -> (recording, trigger, description) for every pipeline episode."""
+        self.ran: list[str] = []
+        """The id of every pipeline episode in the order it ran, scoring pass first.
+
+        It includes an episode the run's dollar cap stopped, which the store
+        holds but ``exits`` does not. The stored records cannot give this order:
+        two late trading episodes can share their start and as-of times, and an
+        id is a hash.
+        """
         self.exits: dict[str, EpisodeRecord] = {}
         """Episode id -> the episode as it stood at its exit, before the resolver added to it.
 
@@ -420,9 +431,10 @@ class _Run:
             episode = controller.run(trigger)
         finally:
             controller.close()
-            self.recordings.setdefault(
-                _episode_id(world, trigger), (recording, trigger, description)
-            )
+            ran = _episode_id(world, trigger)
+            if ran not in self.recordings:
+                self.ran.append(ran)
+            self.recordings.setdefault(ran, (recording, trigger, description))
         self.exits.setdefault(episode.episode_id, episode)
         self.canary_check(episode)
         return episode
@@ -480,6 +492,8 @@ def _scoring_pass(
         knowledge=knowledge if knowledge is not None else data.guard(_NoKnowledge()),
     )
     run.worlds.append(world)
+    # The stops measure from the bankroll at the window's start, as in the trading pass.
+    world.executor.mark(schedule.window_start)  # type: ignore[attr-defined]
     pending = [(p, s) for p in points for s in running]
     done = 0
     for point in points:
@@ -719,6 +733,17 @@ def _episodes(world: World | None) -> list[EpisodeRecord]:
         return []
     found = world.store.list_episodes(limit=1_000_000)
     return sorted(found, key=lambda e: (e.as_of, e.episode_id))
+
+
+def _in_run_order(world: World | None, ran: Sequence[str]) -> list[EpisodeRecord]:
+    """One pass's stored episodes in the order the run made them (``_Run.ran``).
+
+    The stored records are the ones to write, since the resolver has added to
+    them; only the run knows their order. An episode the run did not record as
+    run goes last, by as-of time; none is expected.
+    """
+    rank = {episode_id: i for i, episode_id in enumerate(ran)}
+    return sorted(_episodes(world), key=lambda e: (rank.get(e.episode_id, len(rank)), e.as_of))
 
 
 def _trades(
@@ -1054,7 +1079,11 @@ def run_backtest(
                 trading_world = _trading_pass(run, schedule, tap, run_dir.name)
         for world in (scoring_world, trading_world):
             if world is not None and PIPELINE in running:
-                world.clock.set(max(world.clock.now(), data.window_end))  # type: ignore[attr-defined]
+                # Settle the rest once every order's outcome has passed, so the
+                # account the last settlements are marked from holds them all.
+                store = world.store
+                outcomes = [o.outcome_at for o in store.list_orders() if o.outcome_at is not None]
+                world.clock.set(max([world.clock.now(), data.window_end, *outcomes]))  # type: ignore[attr-defined]
                 run.audits.extend(resolve_outcomes(world, now=world.clock.now()).audits)
     except LeakageDetected as exc:
         aborted = manifest.model_copy(
@@ -1071,7 +1100,8 @@ def run_backtest(
         raise
 
     # -- outputs
-    episodes = _episodes(scoring_world) + _episodes(trading_world)
+    # Run order, which the self-halt of each pass depends on; the other uses of the list do not.
+    episodes = _in_run_order(scoring_world, run.ran) + _in_run_order(trading_world, run.ran)
     trades, pricing = _trades(data, trading_world, _episodes(trading_world))
     _write_forecasts(run_dir / FORECASTS_FILE, run.rows)
     _write_trades(run_dir / TRADES_FILE, trades)

@@ -166,7 +166,11 @@ def compute_metrics(
     systems: dict[str, str],
     config: Config,
 ) -> dict[str, Any]:
-    """Every number the report shows, as plain JSON. ``notes`` is the abstention note of each row."""
+    """Every number the report shows, as plain JSON. ``notes`` is the abstention note of each row.
+
+    ``episodes`` must be in the order the run made them, each pass in the order
+    it ran: the self-halt of a pass is its first halted episode in that order.
+    """
     if len(notes) != len(rows):
         raise ValueError("one note per row")
     out: dict[str, Any] = {"systems": {}, "news": {}, "reliability": {}, "abstentions": {}}

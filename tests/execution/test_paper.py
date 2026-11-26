@@ -349,3 +349,20 @@ def test_a_later_outcome_before_a_future_point_is_counted_in_that_point() -> Non
     clock.set(AS_OF + timedelta(hours=2))
     current = risk_state(store.equity_series(), clock.now(), CONFIG).bankroll
     assert current == both == portfolio.marked_equity(executor.account(), executor._bid)
+
+
+def test_a_mark_dated_in_the_past_leaves_a_point_the_clock_has_passed_alone() -> None:
+    # The point at AS_OF + 1h was written for an order priced off an hourly book. Once the
+    # clock is past it, a decision may have read it, so a mark dated earlier must not value
+    # it again at a later bid.
+    hourly = AS_OF + timedelta(hours=1)
+    books = {HOLD: book()}  # YES bid 0.60
+    executor, store, clock = _executor_on(books, fill_books={HOLD: book(at=hourly)})
+    assert executor.place(intent(10, "0.62")).outcome_at == hourly
+    written = dict(store.equity_series())[hourly]
+    assert written == Decimal("993.63") + Decimal("6.00")
+
+    clock.set(AS_OF + timedelta(hours=2))
+    books[HOLD] = book(yes_bids=(("0.02", "50"),))
+    executor.mark(AS_OF)
+    assert dict(store.equity_series())[hourly] == written

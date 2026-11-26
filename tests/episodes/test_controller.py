@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from pmfa.episode import EpisodeController, episode_id_for, mermaid, open_checkpointer
+from pmfa.episode.pipeline import client_order_id
 from pmfa.errors import ExchangeError
 from pmfa.records.decision import (
     ProposalStatus,
@@ -335,6 +336,69 @@ def test_a_failed_lookup_does_not_cancel_the_proposal_as_never_sent(then):
     status = world.store.get_proposal(paused.proposal.proposal_id)[1]
     assert status is not ProposalStatus.CANCELLED
     assert world.store.list_orders() == []
+
+
+class Recording:
+    """An executor that keeps every intent it is asked to place. ``find_order`` asks
+    ``exchange``, a separate account standing in for the exchange's own record."""
+
+    def __init__(self, inner, exchange) -> None:
+        self._inner = inner
+        self.exchange = exchange
+        self.placed: list = []
+
+    def place(self, intent):
+        self.placed.append(intent)
+        return self._inner.place(intent)
+
+    def find_order(self, intent):
+        return self.exchange.find_order(intent)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def recording_world():
+    from pmfa.execution.paper import PaperExecutor
+    from pmfa.state.store import MEMORY, SqliteStore
+    from pmfa.world.recorded import RecordedBooks
+
+    world = make_world(fed_file(), hawkish_script())  # fill_tagged: no pause before execute
+    exchange = PaperExecutor(
+        SqliteStore(MEMORY), world.clock, world.config, world.exchange, RecordedBooks(world.file)
+    )
+    return dataclasses.replace(world, executor=Recording(world.executor, exchange))
+
+
+def test_a_first_run_finds_an_order_already_placed_under_its_client_order_id_and_sends_no_other():
+    """The client order id is a function of the episode and its proposal, so the same
+    trigger always builds the same one. When the exchange already holds an order under
+    it (a run that sent the order and lost every local trace of it), a first run of
+    execute records that order instead of sending another."""
+    first_world = recording_world()
+    with EpisodeController(first_world) as controller:
+        first = controller.run(first_world.file.trigger)
+    assert first.exit is Exit.EXECUTED and first.proposal is not None
+    [sent] = first_world.executor.placed
+    assert sent.client_order_id == client_order_id(first.episode_id, first.proposal)
+
+    # The same trigger in a fresh world builds the same client order id.
+    again_world = recording_world()
+    with EpisodeController(again_world) as controller:
+        controller.run(again_world.file.trigger)
+    [resent] = again_world.executor.placed
+    assert resent.client_order_id == sent.client_order_id
+
+    # A fresh world whose exchange already holds that order: nothing new is sent.
+    world = recording_world()
+    standing = world.executor.exchange.place(sent)
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    check_trace(record)
+    assert world.executor.placed == []
+    assert record.exit is Exit.EXECUTED and record.status is EpisodeStatus.DONE
+    assert world.store.list_orders() == [standing] and record.orders == [standing]
+    assert world.store.get_proposal(record.proposal.proposal_id)[1] is ProposalStatus.EXECUTED
 
 
 @pytest.mark.parametrize("after_placing", [True, False])

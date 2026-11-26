@@ -235,3 +235,15 @@ def test_the_release_rule_and_its_wording_follow_the_schedules_constant(
     ruled_out = report._release_verdict(RELEASE, far)
     assert "the exchange listed no KXCPIYOY event for this release" in ruled_out
     assert "closes within 36 hours of it" in ruled_out
+
+
+def test_a_dropped_event_closing_exactly_the_match_after_a_release_is_named() -> None:
+    """The schedule's rule is inclusive, so a close exactly two days after the release matches."""
+    from pmfa.evaluation import report
+    from pmfa.evaluation.schedule import RELEASE_MATCH
+
+    released = datetime(2026, 8, 30, 12, 30, tzinfo=UTC)
+    edge = {f"{CPI}-26NOVX": f"closes {(released + RELEASE_MATCH).isoformat()}, after the window"}
+    named = report._release_verdict(RELEASE, edge)
+    assert f"{CPI}-26NOVX, which closes within two days of the release" in named
+    assert "listed no KXCPIYOY event for this release" not in named

@@ -141,8 +141,46 @@ def test_mixed_strike_types_share_one_set_of_bins():
     assert space.market_outcomes["EV-B3.5"] == ["gt_3.4_le_3.5", "gt_3.5_le_3.6"]
 
 
+def quoted(event: Event, first: int) -> tuple[Event, list[str]]:
+    """``event`` with a full quote on every market, and each quoted value as text.
+
+    The prices sit on cent ticks, as the exchange's do, so a price that leaks after
+    being rounded or snapped to cents still shows as one of the searched forms: the
+    exact dollars, two-place dollars, whole or tenth cents with a ``c``, and bare
+    cents. They lie in 0.61-0.78, numbers the briefs of these two events never
+    contain otherwise. The sizes, volumes and open interest are odd enough (1739.25,
+    48213, ...) that finding one can only mean it was copied. ``first`` keeps two
+    events' values apart.
+    """
+    markets, values = [], []
+    for i, m in enumerate(event.markets, start=first):
+        bid = Decimal("0.61") + Decimal("0.01") * i
+        prices = {
+            "yes_bid": bid,
+            "yes_ask": bid + Decimal("0.03"),
+            "last_price": bid + Decimal("0.01"),
+        }
+        counts = {
+            "yes_bid_size": Decimal("1739.25") + i,
+            "yes_ask_size": Decimal("2861.75") + i,
+            "volume": Decimal("48213") + i,
+            "volume_24h": Decimal("7349") + i,
+            "open_interest": Decimal("9187") + i,
+        }
+        priced = m.model_copy(update=prices | counts)
+        assert priced.mid is not None
+        markets.append(priced)
+        for v in counts.values():
+            values += [str(v), format(v.normalize(), "f")]
+        for v in [*prices.values(), priced.mid]:
+            cents = v * 100
+            values += [str(v), format(v.normalize(), "f"), f"{v:.2f}"]
+            values += [f"{cents:.0f}c", f"{cents:.1f}c", format(cents.normalize(), "f")]
+    return event.model_copy(update={"markets": markets}), values
+
+
 def test_event_brief_carries_shared_rules_and_no_prices():
-    event = load_event("KXCPIYOY-26NOV")
+    event, cpi_values = quoted(load_event("KXCPIYOY-26NOV"), first=0)
     space = build_outcome_space(event, series("KXCPIYOY"))
     brief = event_brief(event, space, series("KXCPIYOY"))
     assert brief.outcome_kind == "ladder" and brief.thresholds == [3.4, 3.5, 3.6, 3.7, 3.8]
@@ -151,14 +189,17 @@ def test_event_brief_carries_shared_rules_and_no_prices():
         in brief.rules
     )
     assert "3.6%" not in brief.rules
-    assert "price" not in brief.model_dump()
+    text = brief.model_dump_json()
+    assert [v for v in cpi_values if v in text] == []
 
-    fed = load_event("KXFEDDECISION-26DEC")
+    fed, fed_values = quoted(load_event("KXFEDDECISION-26DEC"), first=10)
     fed_space = build_outcome_space(fed, series("KXFEDDECISION"))
     fed_brief = event_brief(fed, fed_space, series("KXFEDDECISION"))
     assert [o.outcome_id for o in fed_brief.options] == fed_space.outcome_ids()
     assert fed_brief.rules.count("mutually exclusive") == 1
     assert fed_brief.closes_at == fed.close_time
+    fed_text = fed_brief.model_dump_json()
+    assert [v for v in fed_values if v in fed_text] == []
 
 
 def test_realized_outcome_from_settled_markets():

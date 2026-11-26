@@ -237,11 +237,133 @@ def test_a_world_holding_a_position_in_another_event_records_and_replays_identic
     trigger = Trigger(trigger_id="sched-dec", kind=TriggerKind.SCHEDULE, at=AS_OF, event_ticker=DEC)
     file, cassette, run = record(make_file(fills=[fill], trigger=trigger))
     assert JAN in {e.event_ticker for e in file.events}
-    assert file.fills == [fill]
+    # The rebuilt world holds the fixture's fill as an order, so the recording keeps it as one.
+    assert file.fills == []
+    assert [f for o in file.orders for f in o.fills] == [fill]
     save_example(tmp_path / "held", file, cassette, run.episode, run.card)
     result = replay(tmp_path / "held")
     assert decided(result.episode) == decided(run.episode)
     assert without_call_source(result.episode) == without_call_source(run.episode)
+
+
+def test_a_recording_of_a_world_built_without_starting_history_writes_none(tmp_path):
+    import json
+
+    from pmfa.world.recorded import save_recorded_world
+
+    file, _, run = record(make_file())
+    assert run.episode.orders
+    # The only equity point is the one a rebuilt world writes at the trigger time anyway.
+    assert file.orders == [] and file.settlements == [] and file.equity == []
+    data = json.loads(save_recorded_world(file, tmp_path / "world.json").read_text())
+    assert not {"orders", "fills", "settlements", "equity"} & set(data)
+
+
+def test_a_recording_started_at_a_time_holds_nothing_of_the_store_dated_after_it():
+    from datetime import timedelta
+
+    from pmfa.records.decision import Fill, OrderResult, OrderStatus
+    from pmfa.records.episode import LedgerEntry
+
+    def fill(order_id: str, at: datetime, n: int = 0) -> Fill:
+        return Fill(
+            fill_id=f"{order_id}-fill-{n}",
+            order_id=order_id,
+            market_ticker=CUT,
+            side=Side.NO,
+            contracts="4",
+            price="0.66",
+            fee="0.07",
+            filled_at=at,
+            simulated=True,
+        )
+
+    def filled(
+        order_id: str,
+        placed_at: datetime,
+        outcome_at: datetime | None,
+        fills: list[Fill] | None = None,
+    ) -> OrderResult:
+        fills = fills or [fill(order_id, outcome_at or placed_at)]
+        return OrderResult(
+            order_id=order_id,
+            client_order_id=order_id,
+            episode_id=f"ep-{order_id}",
+            market_ticker=CUT,
+            side=Side.NO,
+            requested_contracts=4 * len(fills),
+            limit_price="0.66",
+            status=OrderStatus.FILLED,
+            fills=fills,
+            placed_at=placed_at,
+            outcome_at=outcome_at,
+        )
+
+    def entry(name: str, resolved_at: datetime | None) -> LedgerEntry:
+        return LedgerEntry(
+            entry_id=f"ledger-{name}",
+            episode_id=f"ep-{name}",
+            mode=RunMode.REPLAY,
+            event_ticker=DEC,
+            market_ticker=CUT,
+            category="fed_decision",
+            question="Will the Fed cut 25 bp in December?",
+            as_of=AS_OF - timedelta(days=2) if resolved_at else AS_OF,
+            probability=0.3,
+            market_price=0.35,
+            outcome=False if resolved_at else None,
+            resolved_at=resolved_at,
+            brier=0.09 if resolved_at else None,
+            market_brier=0.1225 if resolved_at else None,
+            traded=True,
+        )
+
+    source = make_file()
+    config = recorded_config(source)
+    world = build_recorded_world(
+        source, models=TapeModels(scripted(config), config), review_policy=review_policy(source)
+    )
+    earlier = filled("earlier", AS_OF - timedelta(days=1), None)
+    # Sent at the as-of time, but priced from a candle that ends two minutes later.
+    pending = filled("pending", AS_OF, AS_OF + timedelta(minutes=2))
+    # Its outcome is known an hour before, but the exchange reported a second fill later.
+    hour_ago = AS_OF - timedelta(hours=1)
+    split = filled(
+        "split",
+        hour_ago,
+        None,
+        [fill("split", hour_ago), fill("split", AS_OF + timedelta(minutes=1), 1)],
+    )
+    world.store.save_order(earlier)
+    world.store.save_order(pending)
+    world.store.save_order(split)
+    world.store.record_settlement(CUT, Side.NO, AS_OF + timedelta(days=1))
+    world.store.record_equity(AS_OF + timedelta(minutes=2), Decimal("990"))
+    # Resolved before the as-of time, resolved after it, and not resolved yet (the order
+    # behind its ``traded`` flag is the pending one).
+    resolved = entry("resolved", AS_OF - timedelta(days=1))
+    world.store.add_ledger_entries(
+        [resolved, entry("later", AS_OF + timedelta(hours=1)), entry("pending", None)]
+    )
+
+    file = Recording(world).file(source.trigger, description=source.description)
+
+    assert file.as_of == AS_OF
+    assert [o.order_id for o in file.orders] == ["earlier", "split"]
+    assert all((o.outcome_at or o.placed_at) <= AS_OF for o in file.orders)
+    fills = [*file.fills, *(f for o in file.orders for f in o.fills)]
+    assert fills and all(f.filled_at <= AS_OF for f in fills)
+    assert [f.fill_id for f in file.orders[1].fills] == ["split-fill-0"]
+    assert file.settlements == []
+    assert all(p.at <= AS_OF for p in file.equity)
+    assert file.ledger == [resolved]
+
+    # The account as of the as-of time is the same in the rebuilt world.
+    rebuilt = build_recorded_world(
+        file, models=TapeModels(scripted(config), config), review_policy=review_policy(file)
+    )
+    assert rebuilt.executor.balance() == world.executor.balance()
+    assert rebuilt.executor.positions() == world.executor.positions()
 
 
 def test_the_book_an_order_filled_against_is_recorded_and_replayed(tmp_path):

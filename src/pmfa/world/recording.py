@@ -1,11 +1,13 @@
 """Recording: the other half of record and replay.
 
-``Recording(world)`` wraps a world's exchange, executor, evidence and knowledge
-ports so that everything an episode reads is captured as it is read: series,
-events, markets, order books, candles and liquidity from the exchange; the
-books orders meet from the executor; documents and calendar entries from the
-evidence port; and every ``Knowledge`` call with its results. Run the episode
-on ``recording.world``; then ``recording.file(trigger, ...)`` returns a
+``Recording(world)`` wraps a world's exchange, executor, evidence, knowledge
+and store ports so that everything an episode reads is captured as it is read:
+series, events, markets, order books, candles and liquidity from the exchange;
+the books orders meet from the executor; documents and calendar entries from
+the evidence port; every ``Knowledge`` call with its results; and, from the
+store, the critic rejections and the latest forecast time of each event the
+episode asks about, as they stood before the episode touched them. Run the
+episode on ``recording.world``; then ``recording.file(trigger, ...)`` returns a
 ``RecordedWorldFile`` holding exactly what was read, and
 ``build_recorded_world`` on that file replays the episode without the
 original world (no snapshot, corpus, index, network or key).
@@ -20,10 +22,27 @@ What a recorded file can and cannot say:
   a different book (a backtest's ``fill_books``), the book each order filled
   against is recorded too (``fill_books``), where it differs from the
   execution book.
-- The starting state is read from the store when the recording starts: stage,
-  halt flag, prior ledger entries, prior fills, and the bankroll, plus the event
-  and series of every market a prior fill is in (the executor looks them up).
-  Earlier equity points are not carried over.
+- The starting state is read from the store when the recording starts, as of
+  the clock's time then, and holds nothing dated later: the stage, the halt
+  flag, the ledger entries resolved by then, the bankroll, the orders whose
+  outcome was known by then (in the order they were sent, each with its fills
+  up to then), and the settlements and equity points dated at or before it.
+  That is what the episode's account, sizing and calibration read, and the
+  daily loss, drawdown, fill-failure and calibration stops, so the replayed
+  world answers them as the recorded one did. An order
+  whose outcome comes later (a backtest order still waiting for its candle) is
+  left out, as the recorded world's account leaves it out, and so is every
+  ledger entry not yet resolved (no decision reads one, and its ``traded`` flag
+  can tell of such an order). The event and series of every market a prior
+  fill is in are recorded too (the executor looks them up). An equity series
+  that is just the one point a replay would write anyway is left out.
+- The store has no list of every event's rejections, so an event's prior
+  critic rejections and latest forecast time are taken the first time the
+  episode reads or writes them, before the write goes through. A forecast time
+  after the starting clock is left out.
+- Not carried: the prior episodes and the content hashes the store remembered
+  for their documents, which only the source-change stops read. Those stops
+  cannot hold in a replayed world.
 - The configuration is recorded as its differences from the defaults.
 
 ``save_example`` writes a recorded file, its cassette, and the episode's
@@ -43,7 +62,7 @@ from typing import Any, Literal
 from pmfa.config import Config
 from pmfa.errors import NotFound, PmfaError
 from pmfa.models.cassette import Cassette
-from pmfa.ports import Evidence, Exchange, Executor, Knowledge, World
+from pmfa.ports import Evidence, Exchange, Executor, Knowledge, StateStore, World
 from pmfa.records.decision import OrderIntent, OrderResult, ReviewCard
 from pmfa.records.episode import EpisodeRecord
 from pmfa.records.evidence import (
@@ -56,6 +75,7 @@ from pmfa.records.evidence import (
     ScheduledEvent,
     Trigger,
 )
+from pmfa.records.forecast import Forecast
 from pmfa.records.market import (
     Balance,
     Candle,
@@ -66,9 +86,14 @@ from pmfa.records.market import (
     Series,
     Side,
 )
+from pmfa.records.roles import RejectionBrief
 from pmfa.world.recorded import (
+    RecordedEquityPoint,
     RecordedKnowledgeCall,
+    RecordedRejection,
+    RecordedSettlement,
     RecordedWorldFile,
+    first_equity,
     knowledge_arguments,
     save_recorded_world,
 )
@@ -277,7 +302,57 @@ class _RecordingKnowledge:
         return getattr(self._inner, name)
 
 
+class _RecordingStore:
+    """The ``StateStore`` port, passing everything through.
+
+    Before the episode first reads or writes an event's critic rejections or forecasts, it
+    takes what the store held for that event, which is the part of the starting state the
+    store cannot list up front.
+    """
+
+    def __init__(self, recording: Recording, inner: StateStore) -> None:
+        self._r = recording
+        self._inner = inner
+
+    def _prior(self, event_ticker: str) -> None:
+        with self._r._lock:
+            if event_ticker not in self._r._rejections:
+                self._r._rejections[event_ticker] = self._inner.get_rejections(event_ticker)
+            if event_ticker not in self._r._forecast_times:
+                self._r._forecast_times[event_ticker] = self._inner.last_forecast_time(event_ticker)
+
+    def get_rejections(self, event_ticker: str) -> list[RejectionBrief]:
+        self._prior(event_ticker)
+        return self._inner.get_rejections(event_ticker)
+
+    def record_rejection(self, episode_id: str, event_ticker: str, claim: str, reason: str) -> None:
+        self._prior(event_ticker)
+        self._inner.record_rejection(episode_id, event_ticker, claim, reason)
+
+    def last_forecast_time(self, event_ticker: str) -> datetime | None:
+        self._prior(event_ticker)
+        return self._inner.last_forecast_time(event_ticker)
+
+    def save_forecast(self, forecast: Forecast) -> None:
+        self._prior(forecast.event_ticker)
+        self._inner.save_forecast(forecast)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
 # --------------------------------------------------------------------------- the recording
+
+
+def _known_part(order: OrderResult, now: datetime) -> OrderResult:
+    """``order`` with only the fills dated at or before ``now``.
+
+    A paper fill is stamped with its order's outcome time, so this changes nothing there;
+    an exchange can report a fill a moment after the order's time, and the account as of
+    ``now`` does not count that fill yet.
+    """
+    known = [f for f in order.fills if f.filled_at <= now]
+    return order if len(known) == len(order.fills) else order.model_copy(update={"fills": known})
 
 
 def config_overrides(config: Config) -> dict[str, Any]:
@@ -312,13 +387,31 @@ class Recording:
         self._documents: dict[str, Document] = {}
         self._scheduled: dict[str, ScheduledEvent] = {}
         self._knowledge: list[RecordedKnowledgeCall] = []
+        self._rejections: dict[str, list[RejectionBrief]] = {}
+        self._forecast_times: dict[str, datetime | None] = {}
 
-        # The starting state, read before anything runs.
+        # The starting state, read before anything runs, as of the clock's time: an
+        # outcome, resolution, settlement or equity point dated later is in the episode's future.
         store = world.store
+        now = self._now = world.clock.now()
         self._stage = store.get_stage().stage
         self._halted = store.get_halt().halted
-        self._ledger = store.ledger()
-        self._fills = store.list_fills()
+        self._ledger = [
+            e
+            for e in store.ledger()
+            if e.resolved_at is not None and e.resolved_at <= now and e.as_of <= now
+        ]
+        self._orders = [
+            _known_part(o, now) for o in store.list_orders() if (o.outcome_at or o.placed_at) <= now
+        ]
+        self._settlements = [
+            RecordedSettlement(market_ticker=t, result=r, settled_at=at)
+            for t, r, at in store.list_settlements()
+            if at <= now
+        ]
+        self._equity = [
+            RecordedEquityPoint(at=t, equity=e) for t, e in store.equity_series() if t <= now
+        ]
         bankroll = getattr(world.executor, "bankroll", None)
         self._bankroll: Decimal = (
             Decimal(bankroll) if bankroll is not None else world.executor.balance().equity
@@ -326,7 +419,7 @@ class Recording:
 
         # The executor looks up the event and series of every market it holds, so the
         # events behind prior fills are recorded even when the episode never reads them.
-        for ticker in sorted({f.market_ticker for f in self._fills}):
+        for ticker in sorted({f.market_ticker for o in self._orders for f in o.fills}):
             self._add_held_market(world.exchange, ticker)
 
         self.world: World = dataclasses.replace(
@@ -335,6 +428,7 @@ class Recording:
             executor=_RecordingExecutor(self, world.executor),
             evidence=_RecordingEvidence(self, world.evidence),
             knowledge=_RecordingKnowledge(self, world.knowledge),
+            store=_RecordingStore(self, world.store),
         )
 
     # -- capture
@@ -370,7 +464,11 @@ class Recording:
         description: str,
         provenance: Literal["hand-made fixture", "recorded"] = "recorded",
     ) -> RecordedWorldFile:
-        """Exactly what the episode read, as a recorded world whose as-of time is ``trigger.at``."""
+        """Exactly what the episode read, as a recorded world whose as-of time is ``trigger.at``.
+
+        The equity points are left out when they are just the one point a world built from
+        the file writes at the trigger time anyway (``first_equity``).
+        """
         with self._lock:
             series = dict(self._series)
             for event in self._events.values():
@@ -378,7 +476,7 @@ class Recording:
                     series[event.series_ticker] = self.inner.exchange.get_series(
                         event.series_ticker
                     )
-            return RecordedWorldFile(
+            file = RecordedWorldFile(
                 description=description,
                 provenance=provenance,
                 trigger=trigger,
@@ -404,7 +502,18 @@ class Recording:
                     self._scheduled.values(), key=lambda s: (s.scheduled_at, s.scheduled_event_id)
                 ),
                 ledger=list(self._ledger),
-                fills=list(self._fills),
+                orders=list(self._orders),
+                settlements=list(self._settlements),
+                rejections=[
+                    RecordedRejection(event_ticker=t, claim=r.claim, reason=r.reason)
+                    for t, held in sorted(self._rejections.items())
+                    for r in held
+                ],
+                forecast_times={
+                    t: at
+                    for t, at in sorted(self._forecast_times.items())
+                    if at is not None and at <= self._now
+                },
                 bankroll=self._bankroll,
                 stage=self._stage,
                 halted=self._halted,
@@ -412,6 +521,10 @@ class Recording:
                 mode=self.inner.mode,
                 knowledge_calls=list(self._knowledge),
             )
+        equity = list(self._equity)
+        if equity == [RecordedEquityPoint(at=file.as_of, equity=first_equity(file))]:
+            equity = []
+        return file.model_copy(update={"equity": equity})
 
 
 # --------------------------------------------------------------------------- example directories

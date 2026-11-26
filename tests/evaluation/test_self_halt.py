@@ -31,12 +31,12 @@ def episode(
     )
 
 
-# Listed out of order on purpose: the pass ran them by start time.
+# In the order the pass ran them, which is the order ``self_halt`` takes them in.
 TRADING = [
-    episode(4, 4, Exit.HALTED),
     episode(1, 1, Exit.EXECUTED),
-    episode(3, 3, Exit.NO_EDGE),
     episode(2, 2, Exit.HALTED),
+    episode(3, 3, Exit.NO_EDGE),
+    episode(4, 4, Exit.HALTED),
     episode(5, 5, Exit.HALTED),
 ]
 
@@ -68,27 +68,28 @@ def test_the_passes_are_told_apart_by_trigger_kind() -> None:
     assert (trading["n_from_then"], trading["n_halted_from_then"]) == (4, 3)
 
 
-def test_the_first_halt_is_the_earliest_to_start_not_the_earliest_as_of_or_id() -> None:
-    """With a late start, an episode's as-of time and id can sort before one that ran first.
+def test_the_first_halt_is_the_first_in_run_order_not_the_earliest_as_of_or_id() -> None:
+    """An episode that ran later can have an earlier as-of time and a smaller id.
 
-    ``ep-0`` has the earliest as-of time and the smallest id, but the pass
-    started it at hour 3.5, after ``ep-3``; ``ep-2`` halted first by start time.
+    ``ep-0`` ran after ``ep-3`` but has the earliest as-of time and the
+    smallest id; ``ep-2`` halted first in the order the pass ran them.
     """
     late = episode(0, 0.5, Exit.HALTED).model_copy(
         update={"started_at": T0 + timedelta(hours=3.5), "exit_detail": "gate: halt"}
     )
-    found = self_halt([*TRADING, late])
+    ran = [*TRADING[:3], late, *TRADING[3:]]
+    found = self_halt(ran)
     assert found is not None
     assert (found.first_episode_id, found.reason) == ("ep-2", FILL_STOP)
-    # From ep-2 on by start time: ep-2, ep-3, ep-0, ep-4, ep-5; all but ep-3 halted.
+    # From ep-2 on in run order: ep-2, ep-3, ep-0, ep-4, ep-5; all but ep-3 halted.
     assert (found.n_from_then, found.n_halted_from_then) == (5, 4)
 
 
-def test_episodes_that_share_a_time_are_taken_in_the_order_the_pass_ran_them() -> None:
-    """Two scoring points at one as-of time run by event ticker; ids are hashes and may not.
+def test_scoring_points_that_share_a_time_are_taken_in_the_order_given() -> None:
+    """Two scoring points at one as-of time ran by event ticker; their ids sort the other way.
 
-    The ids here sort the other way on purpose. KXCPIYOY ran first, tripped
-    the drawdown stop, and KXFEDDECISION then met the halt flag at the gate.
+    KXCPIYOY ran first and tripped the drawdown stop; KXFEDDECISION then met
+    the halt flag at the gate.
     """
     at = T0 + timedelta(days=1)
 
@@ -110,8 +111,8 @@ def test_episodes_that_share_a_time_are_taken_in_the_order_the_pass_ran_them() -
 
     drawdown = "self-halt: drawdown 21% exceeds 20%"
     both_halted = [
-        point("aaa", "KXFEDDECISION-26AUG", Exit.HALTED, "gate: halt"),
         point("zzz", "KXCPIYOY-26AUG", Exit.HALTED, drawdown),
+        point("aaa", "KXFEDDECISION-26AUG", Exit.HALTED, "gate: halt"),
     ]
     found = self_halt(both_halted)
     assert found is not None
@@ -119,30 +120,48 @@ def test_episodes_that_share_a_time_are_taken_in_the_order_the_pass_ran_them() -
     assert (found.n_from_then, found.n_halted_from_then) == (2, 2)
 
     executed_then_halted = [
-        point("aaa", "KXFEDDECISION-26AUG", Exit.HALTED, drawdown),
         point("zzz", "KXCPIYOY-26AUG", Exit.EXECUTED, ""),
+        point("aaa", "KXFEDDECISION-26AUG", Exit.HALTED, drawdown),
     ]
     found = self_halt(executed_then_halted)
     assert found is not None
     assert found.first_trigger_id == "schedule:KXFEDDECISION-26AUG:7d"
     assert (found.n_from_then, found.n_halted_from_then) == (1, 1)
 
-    trading = [
-        Trigger(trigger_id=f"doc:{d}", kind=TriggerKind.NEW_DOCUMENT, at=at, doc_id=d)
-        for d in ("doc-b", "doc-a")
-    ]
-    docs = [
-        EpisodeRecord(
-            episode_id=eid,
+
+def test_two_late_trading_episodes_that_share_a_start_are_taken_in_run_order() -> None:
+    """Two documents waited for the same order outcome, so both started, and are as of, then.
+
+    The pass ran them in the schedule's order, by publication time: ``doc-b``
+    was published first, though its id sorts after ``doc-a``. ``doc-b``
+    tripped the stop; ``doc-a`` then met the halt flag at the gate. The block
+    must name ``doc-b`` with its own reason, not the flag ``doc-a`` met.
+    """
+    start = T0 + timedelta(minutes=2)
+
+    def late(doc_id: str, episode_id: str, detail: str) -> EpisodeRecord:
+        # A late episode runs on a copy of its trigger with ``at`` moved to its start.
+        trigger = Trigger(
+            trigger_id=f"doc:{doc_id}", kind=TriggerKind.NEW_DOCUMENT, at=start, doc_id=doc_id
+        )
+        return EpisodeRecord(
+            episode_id=episode_id,
             mode=RunMode.BACKTEST,
-            trigger=t,
-            as_of=at,
+            trigger=trigger,
+            as_of=start,
             exit=Exit.HALTED,
             exit_detail=detail,
-            started_at=at,
+            started_at=start,
         )
-        for eid, t, detail in (("aaa", trading[0], "gate: halt"), ("zzz", trading[1], FILL_STOP))
-    ]
-    found = self_halt(docs)
+
+    ran = [late("doc-b", "zzz", FILL_STOP), late("doc-a", "aaa", "gate: halt")]
+    found = self_halt(ran)
     assert found is not None
-    assert (found.first_trigger_id, found.reason) == ("doc:doc-a", FILL_STOP)
+    assert (found.first_trigger_id, found.first_episode_id) == ("doc:doc-b", "zzz")
+    assert found.reason == FILL_STOP
+    assert (found.n_from_then, found.n_halted_from_then) == (2, 2)
+
+    # The metrics keep the order they are given in, too.
+    metrics = compute_metrics([], [], [], ran, [], [], systems={}, config=Config())
+    trading = metrics["self_halts"]["trading"]
+    assert (trading["first_trigger_id"], trading["reason"]) == ("doc:doc-b", FILL_STOP)

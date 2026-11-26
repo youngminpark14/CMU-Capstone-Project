@@ -48,6 +48,20 @@ def test_nothing_holds_on_a_quiet_store() -> None:
     assert reasons(SqliteStore(MEMORY)) == []
 
 
+def test_equity_points_after_now_alone_are_nothing_to_measure_a_stop_from() -> None:
+    """A backtest order's equity point is written at its outcome time, later than the clock.
+
+    Until the clock reaches it, a store that holds only such a point has no equity to measure
+    the daily loss stop or the drawdown from, and the check must say so quietly, not fail.
+    """
+    store = SqliteStore(MEMORY)
+    store.record_equity(NOW + timedelta(minutes=2), Decimal("900"))
+    assert reasons(store) == []
+    # Once the clock reaches the point, it counts like any other.
+    later = stop_reasons(store, CONFIG, SimClock(NOW + timedelta(minutes=2)), EVIDENCE)
+    assert later == []  # one point: no earlier equity to have fallen from
+
+
 def test_daily_loss_stop_alone() -> None:
     store = SqliteStore(MEMORY)
     store.record_equity(NOW - timedelta(days=1), Decimal("1000"))

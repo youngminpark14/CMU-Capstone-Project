@@ -447,7 +447,20 @@ def test_08_the_price_moves_past_the_edge_before_execution_and_no_order_is_sent(
     assert orders(world) == []
     # The episode recomputed once with the fresh book, and the edge is gone.
     assert record.exit is Exit.NO_EDGE
-    assert sum(1 for s in record.trace if s.node == "size" and s.kind == "action") == 3
+    # The first proposal (NO at the 0.68 limit) was cancelled when nothing was offered at
+    # its limit, and the recompute proposed nothing in its place.
+    [(first, status)] = world.store.list_proposals()
+    assert (first.market_ticker, first.side, first.limit_price) == (C25, Side.NO, Decimal("0.68"))
+    assert status is ProposalStatus.CANCELLED
+    # What the recompute decided: on the fresh book its best candidate was the same side at
+    # the new 0.73 ask, and its edge after fees was below the minimum, so it proposed nothing.
+    sized = [
+        s.data["best"] for s in record.trace if s.node == "size" and (s.data or {}).get("best")
+    ]
+    best = sized[-1]
+    assert (best["market_ticker"], Side(best["side"])) == (C25, Side.NO)
+    assert Decimal(str(best["ask"])) == Decimal("0.73")
+    assert Decimal(str(best["edge"])) < world.config.sizing.min_edge
 
 
 def test_08_after_approval_a_price_above_the_limit_exits_stale_price():
@@ -823,6 +836,70 @@ def test_a_price_move_with_new_evidence_is_forecast():
         record = controller.run(move)
     assert record.forecast is not None
     assert record.passage_ids and all(pid.startswith("speech-fresh") for pid in record.passage_ids)
+
+
+# --------------------------------------------------------------------------- a held event
+
+
+def recheck(world, minutes: int) -> Trigger:
+    """A scheduled re-check of the Fed event ``minutes`` after the first episode."""
+    at = AS_OF + timedelta(minutes=minutes)
+    world.clock.set(at)  # type: ignore[attr-defined]
+    return Trigger(
+        trigger_id=f"recheck-{minutes}", kind=TriggerKind.SCHEDULE, at=at, event_ticker=FED
+    )
+
+
+def test_a_re_forecast_of_a_held_event_with_the_same_forecast_sends_no_second_order():
+    """The first episode buys 19 NO of the cut. The re-check reaches the same forecast, so
+    its target is the holding it already has, and there is no difference to trade.
+
+    No proposal is made here, so the holding sizing read is shown by the test below, whose
+    proposal carries it as ``position_before``."""
+    world = make_world(fed_file(), hawkish_script())
+    with EpisodeController(world) as controller:
+        first = controller.run(world.file.trigger)
+        assert first.exit is Exit.EXECUTED and first.proposal is not None
+        bought = first.proposal.contracts
+        second = controller.run(recheck(world, 5))
+    check_trace(second)
+    assert second.exit is Exit.NO_EDGE
+    assert "holding is already at or above the target" in second.exit_detail
+    assert second.proposal is None and len(orders(world)) == 1
+    [position] = world.executor.positions(FED)
+    assert (position.market_ticker, position.side, position.contracts) == (C25, Side.NO, bought)
+
+
+def test_a_re_forecast_of_a_held_event_buys_only_the_difference_to_its_new_target():
+    """A re-check that finds a cut less likely raises the NO target. It sizes against the
+    holding the first episode bought and orders only the difference."""
+    script = hawkish_script()
+    world = make_world(fed_file(), script)
+    with EpisodeController(world) as controller:
+        first = controller.run(world.file.trigger)
+        assert first.exit is Exit.EXECUTED and first.proposal is not None
+        bought = first.proposal.contracts
+        # The scripted critic reads its scores when called, so the re-check gets a new forecast.
+        less_cut = {
+            "hike_gt25": 0.01,
+            "hike_25": 0.04,
+            "hold": 0.80,
+            "cut_25": 0.08,
+            "cut_gt25": 0.07,
+        }
+        for claim, spec in script.scores.items():
+            script.scores[claim] = dataclasses.replace(spec, options=less_cut)
+        second = controller.run(recheck(world, 10))
+    check_trace(second)
+    assert second.exit is Exit.EXECUTED
+    p = second.proposal
+    assert p is not None and (p.market_ticker, p.side) == (C25, Side.NO)
+    assert p.position_before == -bought  # a NO holding counts as negative
+    assert p.position_target < p.position_before
+    assert p.contracts == p.position_before - p.position_target
+    assert [o.filled_contracts for o in orders(world)] == [bought, p.contracts]
+    [position] = world.executor.positions(FED)
+    assert (position.side, position.contracts) == (Side.NO, bought + p.contracts)
 
 
 def test_every_exit_writes_exactly_one_episode_record():
@@ -1223,6 +1300,11 @@ def test_an_exchange_error_while_sending_with_no_order_found_ends_in_error_and_i
     intent = world.executor.placed[0]
     assert "503" in record.exit_detail and intent.client_order_id in record.exit_detail
     assert again == record and len(world.executor.placed) == 1
+    # The outcome is unknown, so nothing may say the order was refused, filled or never
+    # placed: the proposal keeps its approval and no order is stored under the episode.
+    [(_, status)] = world.store.list_proposals()
+    assert status is ProposalStatus.APPROVED
+    assert world.store.list_orders(episode_id=record.episode_id) == []
 
 
 def ledger_traded(world, ticker) -> bool:
@@ -1315,6 +1397,41 @@ def test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order(transport)
         record = controller.run(world.file.trigger)
     assert record.exit is Exit.HALTED
     assert world.executor.placed == [] and orders(world) == []
+
+
+def test_10_d_a_halt_set_between_the_gate_and_execute_stops_before_the_book_is_read(
+    monkeypatch,
+):
+    """Execute reads the halt flag before it reads the execution book, so a halted
+    episode does not ask the exchange for a live book it will not trade on."""
+    import pmfa.episode.pipeline as pipeline
+
+    world = spied_world(fed_file(), lambda w: SpyExecutor(w.executor))
+    reads = {"total": 0, "at_halt": None}
+
+    def count_reads(ticker):
+        reads["total"] += 1
+
+    real_route = pipeline.Pipeline.route
+
+    def route_then_halt(self, state):
+        update = real_route(self, state)
+        self.world.store.set_halt("operator halt", self.world.clock.now())
+        reads["at_halt"] = reads["total"]
+        return update
+
+    world.executor.on_book = count_reads
+    monkeypatch.setattr(pipeline.Pipeline, "route", route_then_halt)
+    with EpisodeController(world) as controller:
+        record = controller.run(world.file.trigger)
+    check_trace(record)
+    assert record.gate is not None and record.gate.approved
+    assert record.exit is Exit.HALTED and "operator halt" in record.exit_detail
+    assert world.executor.placed == [] and orders(world) == []
+    [(_, status)] = world.store.list_proposals()
+    assert status is ProposalStatus.CANCELLED
+    assert reads["at_halt"] is not None
+    assert reads["total"] == reads["at_halt"]  # no book was read once the flag was set
 
 
 # --------------------------------------------------------------------------- 9, the gate re-run

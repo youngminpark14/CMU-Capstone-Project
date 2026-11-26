@@ -11,7 +11,6 @@ from __future__ import annotations
 import statistics
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from datetime import datetime
 from decimal import Decimal
 
 from pmfa.records.base import Dollars, Record, UtcTime
@@ -131,30 +130,18 @@ def episode_tallies(episodes: Sequence[EpisodeRecord]) -> EpisodeTallies:
     )
 
 
-def _run_order(e: EpisodeRecord) -> tuple[datetime, datetime, str, str, str]:
-    """The key that puts one pass's episodes in the order the backtest ran them.
-
-    Start time, then as-of time; then, for triggers that share both, the order
-    the schedule lists them in: scoring points by event ticker, trading
-    triggers by document id. The trigger id comes last, only to make the key total.
-    """
-    t = e.trigger
-    return (e.started_at, e.as_of, t.event_ticker or "", t.doc_id or "", t.trigger_id)
-
-
 def self_halt(episodes: Sequence[EpisodeRecord]) -> SelfHalt | None:
     """The first ``halted`` exit of one pass's episodes and what followed; ``None`` with none.
 
-    Episodes are taken in the order they ran: by start time on the pass's
-    clock, then as-of time, then the order the backtest runs triggers that
-    share a time in (see ``_run_order``). The episode id is a hash, so it would
-    not keep that order.
+    ``episodes`` must be in the order the pass ran them; they are taken as
+    given. No field of the record can recover that order: two late trading
+    episodes that waited for the same order outcome share a start and an as-of
+    time, and the episode id is a hash. Only the run knows it.
     """
-    ordered = sorted(episodes, key=_run_order)
-    first = next((i for i, e in enumerate(ordered) if e.exit is Exit.HALTED), None)
+    first = next((i for i, e in enumerate(episodes) if e.exit is Exit.HALTED), None)
     if first is None:
         return None
-    head, later = ordered[first], ordered[first:]
+    head, later = episodes[first], episodes[first:]
     return SelfHalt(
         first_episode_id=head.episode_id,
         first_trigger_id=head.trigger.trigger_id,

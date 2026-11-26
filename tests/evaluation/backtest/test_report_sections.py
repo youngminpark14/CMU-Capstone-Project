@@ -112,31 +112,86 @@ def test_the_error_section_prints_the_blocks_numbers(full_run: FullRun, tmp_path
     ) in section
 
 
-def test_a_self_halt_is_stated_for_each_pass(full_run: FullRun, tmp_path: Path) -> None:
+# Two self-halt blocks made by hand, different in every value, so a part of the
+# report that prints the other pass's block is caught.
+SCORING_HALT = {
+    "first_trigger_id": "schedule:EV-CPI:7d",
+    "first_episode_id": "ep-4",
+    "first_started_at": "2026-08-18T12:29:00Z",
+    "reason": "self-halt: drawdown 21% exceeds 20%",
+    "n_from_then": 5,
+    "n_halted_from_then": 4,
+}
+TRADING_HALT = {
+    "first_trigger_id": "doc:tr-9",
+    "first_episode_id": "ep-9",
+    "first_started_at": "2026-08-12T14:00:00Z",
+    "reason": "self-halt: fill failures on 3 of 20 orders",
+    "n_from_then": 7,
+    "n_halted_from_then": 6,
+}
+HALTS = {"scoring": SCORING_HALT, "trading": TRADING_HALT}
+
+
+def _halt_report(full_run: FullRun, tmp_path: Path, halts: dict[str, Any]) -> dict[str, str]:
+    """The report's parts that speak of self-halts, after ``self_halts`` is set to ``halts``."""
     from pmfa.evaluation.report import build_report
 
     run_dir = _copy(full_run, tmp_path)
-    halt = {
-        "first_trigger_id": "tr-9",
-        "first_episode_id": "ep-9",
-        "first_started_at": "2026-08-12T14:00:00Z",
-        "reason": "self-halt: fill failures on 3 of 20 orders",
-        "n_from_then": 7,
-        "n_halted_from_then": 6,
-    }
-    _edit(run_dir, lambda m: m.update(self_halts={"scoring": halt, "trading": halt}))
+    _edit(run_dir, lambda m: m.update(self_halts=halts))
     text = build_report(run_dir).read_text()
     exits = _section(text, "Exits by reason")
-    trading_part = exits.split("Trading pass", 1)[1]
-    scoring_part = exits.split("Scoring pass", 1)[1].split("Trading pass", 1)[0]
-    for part in (scoring_part, trading_part):
-        assert "2026-08-12T14:00:00Z" in part
-        assert "self-halt: fill failures on 3 of 20 orders" in part
-        assert "6 of the 7" in part
+    return {
+        "scoring": exits.split("Scoring pass", 1)[1].split("Trading pass", 1)[0],
+        "trading": exits.split("Trading pass", 1)[1],
+        "money": _section(text, "Simulated trading after fees"),
+    }
+
+
+def _values(halt: dict[str, Any]) -> list[str]:
+    return [
+        halt["first_started_at"],
+        halt["first_trigger_id"],
+        halt["reason"],
+        f"{halt['n_halted_from_then']} of the {halt['n_from_then']}",
+    ]
+
+
+def test_a_self_halt_is_stated_for_each_pass(full_run: FullRun, tmp_path: Path) -> None:
+    parts = _halt_report(full_run, tmp_path, HALTS)
+    for name, other in (("scoring", "trading"), ("trading", "scoring")):
+        for value in _values(HALTS[name]):
+            assert value in parts[name], (name, value)
+        for value in _values(HALTS[other]):
+            assert value not in parts[name], (name, value)
+    trading_part, scoring_part = parts["trading"], parts["scoring"]
     assert "no further orders" in trading_part and "no further orders" not in scoring_part
     assert "scores are not affected" in scoring_part
-    trading = _section(text, "Simulated trading after fees")
-    assert "halted itself at 2026-08-12T14:00:00Z" in trading
+    assert TRADING_HALT["first_started_at"] in parts["money"]
+    assert SCORING_HALT["first_started_at"] not in parts["money"]
+
+
+def test_a_halt_in_the_scoring_pass_only_is_stated_there_only(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    parts = _halt_report(full_run, tmp_path, {"scoring": SCORING_HALT, "trading": None})
+    for value in _values(SCORING_HALT):
+        assert value in parts["scoring"], value
+        assert value not in parts["trading"], value
+        assert value not in parts["money"], value
+    assert "ended halted" not in parts["trading"]
+    assert "halted itself" not in parts["money"]
+
+
+def test_a_halt_in_the_trading_pass_only_is_stated_there_only(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    parts = _halt_report(full_run, tmp_path, {"scoring": None, "trading": TRADING_HALT})
+    for value in _values(TRADING_HALT):
+        assert value in parts["trading"], value
+        assert value not in parts["scoring"], value
+    assert TRADING_HALT["first_started_at"] in parts["money"]
+    assert "ended halted" not in parts["scoring"]
 
 
 def test_late_starts_are_counted_where_fills_are_described(

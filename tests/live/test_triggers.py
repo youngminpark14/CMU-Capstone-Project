@@ -220,6 +220,20 @@ def test_a_thin_market_keeps_its_last_price_before_the_anchor_as_its_reference()
     assert sorted(seen.values()) == [minute(20, base), minute(35, base)]
 
 
+def test_a_market_unpriced_at_the_anchor_is_measured_from_its_last_price_before_it():
+    # H0 crosses at 15:05 and moves the event's anchor there. C25 has no candle at 15:05:
+    # its price at the anchor is 0.33 from 15:01, inside the window, so its 4c drop to
+    # 0.29 at 15:06 is a move after the anchor and a second crossing.
+    hold, cut = f"{FED}-H0", f"{FED}-C25"
+    candles = {
+        hold: mid_candles(hold, [(minute(-10), "0.62"), (minute(2), "0.64"), (minute(5), "0.65")]),
+        cut: mid_candles(cut, [(minute(1), "0.33"), (minute(6), "0.29")]),
+    }
+    window, threshold = timedelta(minutes=30), Decimal("0.03")
+    moves = trig.price_moves(candles, window=window, threshold=threshold)
+    assert [(at, ticker) for at, ticker, _ in moves] == [(minute(5), hold), (minute(6), cut)]
+
+
 def test_a_move_before_the_anchor_is_not_counted_again_after_it():
     # C25 moved 0.20 -> 0.24 at 10:15, before the event's last trigger at 10:20: that
     # move belongs before the anchor, and from it on C25's reference is 0.24, so a flat
