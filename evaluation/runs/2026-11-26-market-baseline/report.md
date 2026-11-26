@@ -1,6 +1,6 @@
 # Backtest report: 2026-11-26-market-baseline
 
-Run status: **complete**. Created 2026-11-26T06:54:00.596722+00:00, finished 2026-11-26T06:54:07.950468+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
+Run status: **complete**. Created 2026-11-26T11:01:11.344288+00:00, finished 2026-11-26T11:01:18.215400+00:00. Every number below comes from this run's `manifest.json` and `metrics.json`; the per-forecast table is `forecasts.csv`.
 
 ## What was run and what was not
 
@@ -19,7 +19,7 @@ The full configuration, model assignments, snapshot and corpus manifests, plan a
 - Window: forecasts from 2026-07-01 to 2026-11-25T20:10:48.937084+00:00. The latest listed knowledge cutoff of any assigned model is 2026-06-30.
 - Horizons: 7, 3, 1 day(s) before each event's close.
 - Bootstrap: 2000 resamples of whole events, seed 20261124, 95% percentile intervals.
-- Commit: `77f5f73c704b4573b5c9afe140092b66e7549abf`.
+- Commit: `47234ac6ca0ffc8ec1127ea76f6901401ee1796b`.
 - Data: snapshot content SHA-256 `15d471e2b2b6700e7bb137355c241c65df1d67ff0cca68fd2355464682992638` (the same for any rebuild that holds the same rows), snapshot file SHA-256 `a9c3334dc0536a4eedecd0fc2b0e75bcee310db34e7031ea2c7ec16901d4ebf4` (this exact file; differs on every rebuild), corpus texts digest `22e5b3662f30374118637a09def8b0fc9a5bd70ed60bd6a85bee7975e6f46d75`.
 - Snapshot: 7 events, 104 markets, built 2026-11-25T20:10:52.303544Z from external-api.kalshi.com.
 - Corpus: 10 from bls.gov, 45 from federalreserve.gov.
@@ -188,7 +188,7 @@ In this run the window starts 2026-07-01 and every assigned model lists a knowle
 - A fill is timed at the end of the candle that priced it: up to a minute after the arrival time on one-minute candles, up to an hour on the hourly fallback. An order that meets no candle has its outcome timed at the end of the hour searched, or at the arrival time when the market had closed by then. The paper account, the equity points and the stops that read orders count an order only from that time.
 - In the trading pass the next episode starts no earlier than that time, so an episode can start later than its trigger (the report counts these). The scoring pass keeps its fixed as-of times and relies on that time filter.
 - The immediate-or-cancel limit order fills against a book built from that candle on the conservative side of its period: buying YES meets its highest YES ask, buying NO meets 1 minus its lowest YES bid. Each side holds execution.backtest_volume_share of the candle's volume, floored to whole contracts; a limit that book does not meet fills nothing.
-- One-minute candles exist only for minutes in which a quote or trade changed, so when no one-minute candle holds the arrival time the hourly candle holding it is used, and that order is flagged coarse (see How each fill was priced). When neither exists, the market has closed by the arrival time, or the candle had no volume, the book is empty and nothing fills.
+- One-minute candles exist only for minutes in which a quote or trade changed, so when no one-minute candle holds the arrival time the hourly candle holding it is used, and that order is flagged coarse (see How each fill was priced). When neither exists, the market has closed by the arrival time, or the candle's volume times execution.backtest_volume_share is under one contract, the book is empty and nothing fills. A side is empty when the candle has no quote to price it from: buying YES needs a YES ask below 1, buying NO a YES bid above 0.
 - The exchange's history has no order-book depth, so liquidity is a candle-volume proxy.
 - Taker fees are paid on every fill, rounded up to the cent once per order; the unfilled remainder of an order is dropped.
 
