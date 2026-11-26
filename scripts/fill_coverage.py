@@ -9,11 +9,13 @@ news trigger of the trading pass, the open market sides that pass the liquidity
 floor and how many of those had contracts to fill against. It reads the data
 and writes nothing.
 
-Two counts bracket how many could fill. Contracts at any price is the upper
-bound: an order fills only up to its limit. Contracts at or below the ask the
-order was sized on (the as-of ask) is the lower bound: the limit can sit above
-that ask, up to the edge-preserving bound. The times are the triggers' own, so
-a start delayed by an earlier order's outcome is not modelled.
+It prints two counts. Contracts at any price overstates how many could fill: an
+order fills only up to its limit. In a backtest the book a decision reads has
+one level per side, so an order's limit is the ask it was sized on (the as-of
+ask, snapped up to a valid tick). Contracts at or below that ask is therefore
+the closer count of the sides on which an order could fill at all. The times
+are the triggers' own, so a start delayed by an earlier order's outcome is not
+modelled.
 
 Run it after ``pmfa data build``::
 
@@ -98,8 +100,9 @@ def main() -> int:
         f"open market sides at those triggers: {c['sides']}",
         f"  pass the liquidity floor of ${config.caps.liquidity_floor_dollars}: {liquid}",
         f"    had contracts at any price in the fill candle: {fillable} ({share(fillable)})",
-        f"      of which at or below the as-of ask: {at_ask} ({share(at_ask)})",
-        f"    had none: {liquid - fillable} ({share(liquid - fillable)})",
+        f"    had none at any price: {liquid - fillable} ({share(liquid - fillable)})",
+        f"    had contracts at or below the as-of ask, an order's limit: {at_ask} ({share(at_ask)})",
+        f"    had none at or below it: {liquid - at_ask} ({share(liquid - at_ask)})",
         f"    fill candle: one-minute {c['liquid_minute']}, hourly fallback {c['liquid_hour']}, "
         f"none {c['liquid_none']}",
         f"triggers with at least one liquid, fillable side: {c['triggers_with_a_fillable_side']}",

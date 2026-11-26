@@ -169,8 +169,8 @@ backtest it is the end of the candle that priced its fill book; an hour after th
 end of the hour searched) when no candle was found; the arrival time when the market had closed by
 then. The paper executor stamps the fills with it. The paper account, the equity points and the
 stops that read orders (fill failures, a changed source) count an order only from then, so no
-decision made earlier sees its price or outcome. `OrderResult.outcome_at`, set only when later than `placed_at`, in
-[records/decision.py](../src/pmfa/records/decision.py).
+decision made earlier sees its price or outcome. `OrderResult.outcome_at`, set only when later than
+`placed_at`, in [records/decision.py](../src/pmfa/records/decision.py).
 
 **Late start.** A backtest trading episode that starts later than its trigger. Each episode of the
 trading pass starts at the latest of its trigger's time, the clock's time and the latest stored
@@ -193,6 +193,15 @@ and coverage, in a fixed order), so two builds that hold the same rows give the 
 their file hashes differ. The snapshot manifest stores it as `content_sha256` and a run manifest as
 `snapshot_content_sha256`. `content_sha256` in
 [world/snapshot/store.py](../src/pmfa/world/snapshot/store.py).
+
+**Rehearsal.** A whole backtest on the frozen data with a fixed rule in place of every model answer,
+run before any paid run. Its forecasts are fixed rules and mean nothing. It checks the data and the
+pipeline around the models: the run completes, no pipeline episode ends because an answer was
+refused or a step failed, the pipeline forecasts and sends at least one order, and at least one
+trace is saved and every saved trace replays and matches. It does not reach the model side (the
+gateway's schemas, the cache, the dollar caps), and its critic never rejects. Its manifest says its
+models were supplied by the caller, so `pmfa report --publish` refuses it.
+[scripts/rehearse_backtest.py](../scripts/rehearse_backtest.py).
 
 **Abstention.** An episode that ended without a forecast (an exit before or during the forecast
 step). In the evaluation its row has no probability; the stricter skill figure scores it as the

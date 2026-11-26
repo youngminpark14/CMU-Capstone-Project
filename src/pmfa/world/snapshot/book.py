@@ -21,8 +21,9 @@ reaches the re-read, the recompute, the gate or routing.
    candle's volume, floored to whole contracts.
 
 The book is empty when the market has closed by ``t``, when no candle
-contains ``t``, or when that candle has no volume. A side with no quote in the
-candle (a YES ask of 1, a YES bid of 0, or none at all) is empty.
+contains ``t``, or when that candle's volume times the configured share is
+under one contract. A side is empty when the candle has no quote to price it
+from: buying YES needs a YES ask below 1, buying NO a YES bid above 0.
 
 **Its time.** The book is dated ``known_at``: when everything it shows had
 happened, so the order's outcome (its fills, or that it did not fill) is known

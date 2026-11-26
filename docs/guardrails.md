@@ -23,6 +23,7 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | Nothing published or priced after the as-of time is read, except the candle that prices a backtest fill | Code | [knowledge/index.py](../src/pmfa/knowledge/index.py), [world/recorded.py](../src/pmfa/world/recorded.py), [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py) | `test_canary_after_as_of_is_never_retrieved`, `test_fractional_second_after_as_of_is_excluded`, `test_an_as_of_time_with_a_fraction_of_a_second_reads_its_second_and_not_the_next`, `test_a_passage_published_later_in_the_as_of_times_own_second_is_not_read` in [test_retriever.py](../tests/knowledge/test_retriever.py); `test_13_a_canary_document_dated_after_the_as_of_time_is_never_retrieved` in [test_scenarios.py](../tests/episodes/test_scenarios.py) |
 | A backtest fill counts only from the end of the candle that priced it: the paper account, the equity points and the stops that read orders count an order only from its outcome time, and the trading pass starts no episode before the latest order's outcome time | Code | [snapshot/book.py](../src/pmfa/world/snapshot/book.py), [paper.py](../src/pmfa/execution/paper.py), [halt.py](../src/pmfa/execution/halt.py), `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) | `test_the_fill_is_timed_at_the_end_of_its_candle_and_not_seen_before_then` in [test_fill_prices.py](../tests/evaluation/backtest/test_fill_prices.py); `test_a_fill_from_a_later_book_counts_only_from_that_books_time` in [test_paper.py](../tests/execution/test_paper.py); `test_fill_failures_count_an_order_only_once_its_outcome_is_known`, `test_a_source_is_rechecked_only_for_orders_whose_outcome_is_known`, `test_equity_points_after_now_alone_are_nothing_to_measure_a_stop_from` in [test_halt.py](../tests/execution/test_halt.py); `test_the_second_episode_starts_once_the_first_fill_was_priced` in [test_trading_pass.py](../tests/evaluation/backtest/test_trading_pass.py); `test_a_second_decision_at_the_same_instant_reads_nothing_of_the_first_order` in [test_scoring_same_instant.py](../tests/evaluation/backtest/test_scoring_same_instant.py); `test_the_second_trace_at_a_shared_instant_holds_nothing_after_its_as_of_time_and_replays` in [test_trace_same_instant.py](../tests/evaluation/backtest/test_trace_same_instant.py) |
 | Cached answers cannot carry later knowledge (the as-of time is in the cache key) | Code | [cache.py](../src/pmfa/models/cache.py) | `test_as_of_is_part_of_the_cache_key` in [test_gateway.py](../tests/models/test_gateway.py) |
+| `pmfa report --publish` refuses a run answered by supplied models (scripted answers or a rehearsal), so it is not published as a result; only a direct `publish_run(..., allow_supplied=True)` call, as tests make, publishes one | Code | `publish_run` in [report.py](../src/pmfa/evaluation/report.py), called by `pmfa report --publish` in [cli/backtest.py](../src/pmfa/cli/backtest.py) | `test_a_run_answered_by_supplied_models_is_not_published_as_a_result` in [test_parts.py](../tests/evaluation/backtest/test_parts.py) |
 | A trade needs one primary origin or two independent secondary origins | Code | [confidence.py](../src/pmfa/decision/confidence.py), checked in research and again in the gate | `test_02_one_secondary_origin_syndicated_twice_is_insufficient_origins` |
 | Scenarios citing missing, late or uncounted passages are deleted | Code | [checks.py](../src/pmfa/forecast/checks.py) | `test_evidence_check` in [test_levels_and_checks.py](../tests/forecast/test_levels_and_checks.py) |
 | Size never exceeds a cap; zero below the minimum edge; never grows when confidence falls | Code | [sizing.py](../src/pmfa/decision/sizing.py) | property tests in [test_sizing_properties.py](../tests/decision/test_sizing_properties.py) |
@@ -224,8 +225,9 @@ then on the executor with `find_order`), so a retry finds the order instead of s
   says the outcome is unknown. The proposal keeps its approval and no rejection is recorded,
   because an order may stand on the exchange. The demo executor makes the same lookup when an
   order's outcome is unknown (no response, a 408 or a 5xx) or the exchange answers
-  `order_already_exists`: it records an order it finds, returns `REJECTED` when the exchange
-  answers that none exists, and raises when the lookup fails, so the episode ends as above.
+  `order_already_exists`: it returns an order it finds, and the episode records it; it returns
+  `REJECTED` when the exchange answers that none exists; and it raises when the lookup fails, so
+  the episode ends as above.
 - **Continued episodes.** When the process stopped at `execute` (a crash, or an error that escaped
   after the approval), the controller continues the episode at that node, and a continued episode
   only reconciles: it looks the order up by its client order id and records what it finds, and it
@@ -278,12 +280,12 @@ holds; it sets the flag if it is not set yet, and the episode ends `halted`.
 A backtest applies the same stops, and nobody resumes a halt there: once one trips, every later
 episode of that pass that reaches the gate ends `halted` and sends no order, and the report says
 when each pass halted. The fill-failure and calibration stops are both likely to trip early in a
-backtest's trading pass: [evaluation.md](evaluation.md#fill-assumptions-and-their-limits) counts
-how many liquid market sides at the trading pass's news triggers had nothing to fill against in the
-candle an order would meet (86 of 204, 42%), and the market's own prices for the June 2026 CPI
-release have a calibration error of 0.140 over its 63 scored rows, so a pipeline no better
-calibrated would trip the calibration stop about two weeks after that release closed. No backtest
-with a model has run, so both are expectations.
+backtest's trading pass: [evaluation.md](evaluation.md#fill-assumptions-and-their-limits) counts how
+many liquid market sides at the trading pass's news triggers had no contracts in the candle an order
+would meet (86 of 204, 42%, at any price; 131, 64%, at or below the as-of ask an order's limit is
+set to), and the market's own prices for the June 2026 CPI release have a calibration error of 0.140
+over its 63 scored rows, so a pipeline no better calibrated would trip the calibration stop about
+two weeks after that release closed. No backtest with a model has run, so both are expectations.
 
 ## Stages and the autonomy ladder
 
@@ -376,12 +378,13 @@ corpus and the caches are ignored by git, and `.env.example` lists the variables
 - **The rules check is structural.** Code verifies that a scenario asserts outcomes that exist; it
   cannot verify that the claim's wording reads the rules correctly. That is left to the Critic, which
   can reject a scenario. The rules text a role reads is built from the exchange's wording: the
-  words the markets' primary rules share, around a placeholder for the option, then each secondary
-  rules text as given. In the frozen snapshot, Kalshi's rules for the Fed decision markets of more
-  than 25 bp have three spaces where the ">" sign belongs ("a Hike of   25bps"), while their
-  subtitles carry it ("Hike >25bps"). A role meets this only in the October 2026 event's secondary
-  rules ("Hike   25 bps"). The options it chooses among are labelled by code from each market's
-  strike ("Hike more than 25 bp"), so they are not ambiguous.
+  words the markets' primary rules share, around a placeholder for the option (for the threshold
+  on a ladder event), then each distinct secondary rules text once, as given. In the frozen
+  snapshot, Kalshi's rules for the Fed decision markets of more than 25 bp have three spaces where
+  the ">" sign belongs ("a Hike of   25bps"), while their subtitles carry it ("Hike >25bps"). A
+  role meets this only in the October 2026 event's secondary rules ("Hike   25 bps"). The options
+  it chooses among are labelled by code from each market's strike ("Hike more than 25 bp"), so
+  they are not ambiguous.
 - **The exchange-side protections are documented, not verified here.** The subaccount restriction,
   the funds-transfer block, and the order group's breaker are Kalshi's behaviour as its documentation
   describes it. No test in this repository has exercised them against a live demo account yet.

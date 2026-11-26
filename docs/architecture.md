@@ -401,12 +401,14 @@ When the gateway records, each episode also gets a cassette: every model call in
 input record, output record, model, effort, tokens, cost and latency.
 
 A recording ([recording.py](../src/pmfa/world/recording.py)) captures what an episode read as one
-recorded world file, which replays the episode offline. Its starting state is read from the store as of the
-clock's time when the recording starts and holds nothing dated later: the prior orders whose
+recorded world file, which replays the episode offline. Its starting state is read from the store as
+of the clock's time when the recording starts and holds nothing dated later: the prior orders whose
 outcome was known, in the order they were sent, with their fills up to then; the settlements and
-equity points; the resolved ledger entries; the stage and the halt flag; and, for each event the
-episode reads, its prior critic rejections and the time of its last forecast. A world rebuilt from
-the file ([recorded.py](../src/pmfa/world/recorded.py)) answers the balance, the positions, the
+equity points; the resolved ledger entries; and the stage and the halt flag. For each event whose
+critic rejections or forecasts the episode reads or writes in the store, its prior critic rejections
+and the time of its last forecast are taken at the first such read or write, before the episode's
+own write goes through, and a forecast time after the starting clock is left out. A world rebuilt
+from the file ([recorded.py](../src/pmfa/world/recorded.py)) answers the balance, the positions, the
 risk state and the daily loss, drawdown, fill-failure and calibration stops as the recorded world
 did. The source-change stops are not carried, so they cannot fire in a rebuilt world.
 

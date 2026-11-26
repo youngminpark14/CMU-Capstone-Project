@@ -20,11 +20,11 @@ funds. Nothing here is investment or trading advice.
 
 | Area | State |
 | --- | --- |
-| Pipeline and tests | Built end to end. The offline suite of 1,080 tests runs with no keys and no network in about two minutes on one machine (1,076 passed in 108 seconds on 2026-11-25). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
+| Pipeline and tests | Built end to end. The offline suite of 1,196 tests runs with no keys and no network in about two and a half minutes on one machine (1,192 passed in 146 seconds on 2026-11-26). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
-| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](scripts/rehearse_backtest.py)), as a check of the plumbing only: its forecasts mean nothing. |
-| Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here (fill coverage, build time) describe the data and the harness, not forecasting. |
+| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](scripts/rehearse_backtest.py)), which checks the data and the pipeline around the models but not the model side (the gateway, the cache, the dollar caps): its forecasts mean nothing. |
+| Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here, such as fill coverage, price staleness and build time, describe the data and the harness, not forecasting. |
 | Not yet done | **No live model call has been made in this repository**, because no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
 | Sample episodes | Hand-made fixtures: the inputs are real, but a person wrote every model record. They show the pipeline working, not forecasting skill, and each one says so. |
 | Shadow mode | Exercised for plumbing only, against recorded worlds in [tests/live/](tests/live/). |
@@ -202,9 +202,15 @@ It runs every system at every scoring point and the pipeline at every news trigg
 data, with a fixed rule in place of every model answer. It builds the retrieval indexes, sizes and
 gates orders against real books, fills them from real candles, applies the stops, saves traces and
 replays each one, and writes a report to `runs/<date>-rehearsal` (ignored by git). It takes about a
-minute and exits non-zero unless the run completed and every saved trace replays and matches. Its
-forecasts come from fixed rules and mean nothing: it checks the data and the plumbing, not
-forecasting, and is never published as a run.
+minute. It exits non-zero, with a `PROBLEM:` line for each failed check, unless the run completed,
+episodes got past matching in both passes, no pipeline episode ended `rules_mismatch`,
+`low_coverage` or `error` (a refused answer or a failed step), the pipeline made forecasts and sent
+at least one order, and at least one trace was saved and every saved trace replays and matches. Its
+forecasts come from fixed rules and mean nothing. It checks the data and the pipeline around the
+models on the paths its fixed answers take. It does not reach the model side: the gateway's
+structured-output schemas, the response cache, cassette recording, the role runners and the dollar
+caps (the per-episode call cap still applies). Its critic always scores, so critic rejections and
+evidence follow-ups never run. `pmfa report --publish` refuses to publish it.
 
 Then plan the backtest. The dry run prints the model calls and the dollar estimate per system and
 calls no model; the order in which to run the real backtest (a subsample first, then the full run)
@@ -282,12 +288,12 @@ In a backtest, every decision (sizing, the price re-read before sending, the rec
 nothing is offered at the limit, the gate and routing) reads the market as of the as-of time. Only
 the fill is priced later, from the candle that holds the order's arrival 60 seconds after the as-of
 time: the one-minute candle, else the hourly one, else nothing fills. The order's outcome, filled
-or not, is timed at the end of that candle; at the end of the hour searched when there is none; or
-at the arrival time when the market had closed by then. The paper account, the equity points and
-the stops that read orders (fill failures, a changed source) count the order only from that time,
-so an order that did not fill counts toward the fill-failure stop from then too. The next trading
-episode starts no earlier than that time, and one that starts after its trigger takes the later
-time as its as-of time.
+or not, is timed at the end of that candle; an hour after the arrival time (the end of the hour
+searched) when there is none; or at the arrival time when the market had closed by then. The paper
+account, the equity points and the stops that read orders (fill failures, a changed source) count
+the order only from that time, so an order that did not fill counts toward the fill-failure stop
+from then too. The next trading episode starts no earlier than that time, and one that starts after
+its trigger takes the later time as its as-of time.
 
 ## Commands
 
@@ -300,7 +306,7 @@ time as its as-of time.
 | `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
 | `pmfa data status` | Print the corpus and snapshot manifests. |
 | `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
-| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`. |
+| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). |
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
@@ -444,20 +450,23 @@ score and skill, reliability) and its three figures from the committed `forecast
   candle covers its arrival time.
 - **A backtest's trading simulation is likely to halt itself early.** It applies the same stops as
   the live modes, nobody resumes a halt in a backtest, and the report says when and why each pass
-  halted. Two stops are likely to trip. On the frozen data,
+  halted. Two stops are likely to trip in the trading pass. On the frozen data,
   [scripts/fill_coverage.py](scripts/fill_coverage.py) finds that of the 204 market sides that pass
-  the liquidity floor at the 55 news triggers, 86 (42%) had nothing to fill against in the candle an
-  order would meet, while the fill-failure stop trips when two or more of the last ten orders did
-  not fill (`oversight.fill_failure_window = 0` turns that stop off). The calibration stop trips for
-  a category when the expected calibration error of the pipeline's resolved forecasts stays above
-  0.10 for two weeks, with at least 30 resolved market forecasts at each weekly check; one CPI
-  release (21 markets) forecast twice is enough. The market's own prices for the window's first CPI
-  release (the June 2026 CPI, closed 2026-07-14) have an expected calibration error of 0.140, so an
-  agent no better calibrated on it would stop trading about two weeks later, near the end of July.
-  A halt leaves the Brier scores unchanged, because
-  the forecast comes before the gate, and `pmfa backtest --no-trade` runs the scoring alone. No
-  backtest with model forecasts has run yet, so these are expectations from the data, not results
-  ([Fill assumptions and their limits](docs/evaluation.md#fill-assumptions-and-their-limits)).
+  the liquidity floor at the 55 news triggers, 86 (42%) had no contracts at any price in the candle
+  an order would meet, and 131 (64%) none at or below the as-of ask, which is the limit a backtest
+  order carries, while the fill-failure stop trips when two or more of the last ten orders did not
+  fill, once ten orders exist (`oversight.fill_failure_window = 0` turns that stop off). The
+  calibration stop trips for a category when the expected calibration error of the pipeline's
+  resolved forecasts stays above 0.10 for two weeks, with at least 30 resolved market forecasts at
+  each weekly check; one CPI release (21 or 26 markets) forecast twice is enough. The market's own
+  prices for the window's first CPI release (the June 2026 CPI, closed 2026-07-14) have an expected
+  calibration error of 0.140, so an agent no better calibrated on it would stop trading about two
+  weeks later, near the end of July. The scoring pass settles nothing until the run ends, so its
+  calibration stop has nothing resolved to read and cannot trip. A halt leaves the Brier scores
+  unchanged, because the forecast comes before the gate, and `pmfa backtest --no-trade` runs the
+  scoring alone. No backtest with model forecasts has run yet, so these are expectations from the
+  data, not results ([Fill assumptions and their
+  limits](docs/evaluation.md#fill-assumptions-and-their-limits)).
 - **Sample episodes are hand-made.** Their model records were written by a person who knew the
   outcomes.
 - **Exchange-side protections are documented, not verified.** The subaccount restriction, the
