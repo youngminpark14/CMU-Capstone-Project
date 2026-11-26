@@ -205,10 +205,10 @@ warning when it is published: its commit does not hold exactly the code that pro
 
 ## Results
 
-### The market baseline (2026-11-25)
+### The market baseline (2026-11-26)
 
 The only published run is
-[evaluation/runs/2026-11-25-market-baseline/](../evaluation/runs/2026-11-25-market-baseline/report.md).
+[evaluation/runs/2026-11-26-market-baseline/](../evaluation/runs/2026-11-26-market-baseline/report.md).
 No Anthropic API key was available, so it scored the market alone; it made no model call and spent
 $0.
 

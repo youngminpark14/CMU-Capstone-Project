@@ -23,7 +23,7 @@ funds. Nothing here is investment or trading advice.
 | Pipeline and tests | Built end to end. The offline suite of 1,080 tests runs with no keys and no network in about two minutes on one machine (1,076 passed in 108 seconds on 2026-11-25). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
-| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-25-market-baseline/manifest.json). |
+| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). |
 | Measured | Only the market's own Brier score (see [Results](#results)). It is the baseline every later run is compared with. |
 | Not yet done | **No live model call has been made in this repository**, because no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
 | Sample episodes | Hand-made fixtures: the inputs are real, but a person wrote every model record. They show the pipeline working, not forecasting skill, and each one says so. |
@@ -103,7 +103,7 @@ Nothing to install.
    `test_01` to `test_16` run whole episodes against fixed worlds and assert what was decided (exit,
    forecast, proposal, routing tier, orders), for example that a halted agent sends no order in any
    mode and that a canary document dated after the as-of time is never retrieved.
-4. **The evaluation report.** [evaluation/runs/2026-11-25-market-baseline/report.md](evaluation/runs/2026-11-25-market-baseline/report.md).
+4. **The evaluation report.** [evaluation/runs/2026-11-26-market-baseline/report.md](evaluation/runs/2026-11-26-market-baseline/report.md).
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
 5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 38 short
@@ -350,7 +350,7 @@ not guaranteed, is in [docs/guardrails.md](docs/guardrails.md).
 ## Results
 
 One backtest has been run and published:
-[evaluation/runs/2026-11-25-market-baseline/](evaluation/runs/2026-11-25-market-baseline/report.md).
+[evaluation/runs/2026-11-26-market-baseline/](evaluation/runs/2026-11-26-market-baseline/report.md).
 It scored only the market's own price at 7, 3 and 1 days before each event's close, because the
 systems that need a model could not run without an API key. The market's price is the YES mid when
 both sides are quoted, else the last trade clamped into the standing quote. These numbers are not

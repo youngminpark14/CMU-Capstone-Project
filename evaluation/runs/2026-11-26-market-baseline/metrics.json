@@ -255,6 +255,56 @@
           "n_markets_in_rows": 104,
           "n_rows": 104
         }
+      },
+      "error_concentration": {
+        "n_rows": 312,
+        "squared_error": 10.766074999999999,
+        "bands": [
+          {
+            "name": "below 0.10",
+            "n_rows": 185,
+            "squared_error": 0.0562,
+            "share": 0.005220101104627267
+          },
+          {
+            "name": "0.10 to 0.90",
+            "n_rows": 45,
+            "squared_error": 4.910725,
+            "share": 0.45612955510713055
+          },
+          {
+            "name": "above 0.90",
+            "n_rows": 82,
+            "squared_error": 5.79915,
+            "share": 0.5386503437882423
+          }
+        ],
+        "top_event": {
+          "name": "KXCPIYOY-26JUN",
+          "n_rows": 63,
+          "squared_error": 7.4822999999999995,
+          "share": 0.6949886564973772
+        },
+        "top_markets": [
+          {
+            "name": "KXCPIYOY-26JUN-T3.5",
+            "n_rows": 3,
+            "squared_error": 2.9009,
+            "share": 0.26944824367283343
+          },
+          {
+            "name": "KXCPIYOY-26JUN-T3.6",
+            "n_rows": 3,
+            "squared_error": 2.8518749999999997,
+            "share": 0.2648945878604784
+          },
+          {
+            "name": "KXCPIYOY-26JUN-T3.7",
+            "n_rows": 3,
+            "squared_error": 1.5338749999999999,
+            "share": 0.14247299967722685
+          }
+        ]
       }
     },
     "prompt_only": {
@@ -555,6 +605,10 @@
       "fill_tagged_would_be_auto": 0,
       "auto_executed": 0
     }
+  },
+  "self_halts": {
+    "scoring": null,
+    "trading": null
   },
   "pruning": {
     "summary": {

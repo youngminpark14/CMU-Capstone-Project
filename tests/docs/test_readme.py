@@ -9,7 +9,7 @@ import pytest
 
 from .support import README, ROOT, fenced_blocks, section
 
-RUN_DIR = ROOT / "evaluation" / "runs" / "2026-11-25-market-baseline"
+RUN_DIR = ROOT / "evaluation" / "runs" / "2026-11-26-market-baseline"
 PAIRS = {"[": "]", "(": ")", "{": "}"}
 
 
