@@ -363,7 +363,8 @@ the same point.
 Secrets are read from the environment only. The Anthropic key is read from `ANTHROPIC_API_KEY` at
 call time and handed to the client, never stored on an object or logged. The Kalshi demo key id and
 private key come from `KALSHI_DEMO_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` (or a file named by
-`KALSHI_DEMO_PRIVATE_KEY_PATH`); key material is never logged, printed or put in a `repr`. The
+`KALSHI_DEMO_PRIVATE_KEY_PATH`). `KALSHI_DEMO_PRIVATE_KEY` can hold the PEM text, or the key's
+base64 body alone. Key material is never logged, printed or put in a `repr`. The
 configuration holds only the variable names. `.env`, key files, the database, the snapshot, the
 corpus and the caches are ignored by git, and `.env.example` lists the variables.
 

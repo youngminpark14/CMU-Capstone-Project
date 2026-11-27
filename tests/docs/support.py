@@ -7,7 +7,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
+ARCHITECTURE = ROOT / "docs" / "architecture.md"
 EVALUATION = ROOT / "docs" / "evaluation.md"
+REVIEW = ROOT / "docs" / "review.md"
 
 FENCE = re.compile(r"^```([\w-]*)[^\n]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 
@@ -32,10 +34,14 @@ def without_code(text: str) -> str:
     return re.sub(r"`[^`\n]*`", "", text)
 
 
-def section(text: str, heading: str) -> str:
-    """The body of the level-2 section named ``heading``, up to the next level-2 heading."""
+def section(text: str, heading: str, level: int = 2) -> str:
+    """The body of the section named ``heading`` (a level-2 heading by default), up to the next
+    heading of its level or above. A page's one level-1 heading is its title, so it ends nothing."""
+    hashes = "#" * level
     match = re.search(
-        rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL
+        rf"^{hashes} {re.escape(heading)}\n(.*?)(?=^#{{2,{level}}} |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
     )
-    assert match, f"no '## {heading}' section"
+    assert match, f"no '{hashes} {heading}' section"
     return match.group(1)

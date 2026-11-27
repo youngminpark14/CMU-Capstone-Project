@@ -1,4 +1,5 @@
-"""Every ``pmfa`` command shown in the README and the evaluation page parses against the real CLI.
+"""Every ``pmfa`` command shown in the README, the architecture page and the evaluation page
+parses against the real CLI.
 
 A command line is checked word by word against the command tree that Typer builds:
 each subcommand must exist under its parent, and each ``--option`` must be an
@@ -18,7 +19,7 @@ import typer.main
 
 from pmfa.cli.app import app
 
-from .support import EVALUATION, README, fenced_blocks
+from .support import ARCHITECTURE, EVALUATION, README, fenced_blocks
 
 PREFIX = re.compile(r"^(?:uv run (?:--no-sync )?)?pmfa(?:\s|$)")
 
@@ -65,7 +66,11 @@ def _problems(line: str, root: typer.core.TyperCommand | typer.core.TyperGroup) 
     ]
 
 
-@pytest.mark.parametrize("doc", [README, EVALUATION], ids=["README.md", "docs/evaluation.md"])
+@pytest.mark.parametrize(
+    "doc",
+    [README, ARCHITECTURE, EVALUATION],
+    ids=["README.md", "docs/architecture.md", "docs/evaluation.md"],
+)
 def test_every_pmfa_command_shown_parses(doc: Path) -> None:
     commands = _commands(doc)
     assert commands, f"no pmfa command found in {doc.name}"
@@ -74,9 +79,9 @@ def test_every_pmfa_command_shown_parses(doc: Path) -> None:
     assert not problems, problems
 
 
-def test_the_readme_commands_table_names_every_subcommand() -> None:
+def test_the_commands_table_names_every_subcommand() -> None:
     table = re.search(
-        r"^## Commands\n(.*?)(?=^## )", README.read_text(encoding="utf-8"), re.M | re.S
+        r"^## Commands\n(.*?)(?=^## |\Z)", ARCHITECTURE.read_text(encoding="utf-8"), re.M | re.S
     )
     assert table
     named = set(re.findall(r"^\| `pmfa ([\w-]+)", table.group(1), re.MULTILINE))

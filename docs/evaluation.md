@@ -11,6 +11,39 @@ drawn in [architecture.md](architecture.md); scoring decisions are recorded in
 The code is in [src/pmfa/evaluation/](../src/pmfa/evaluation/) and the backtest world in
 [world/backtest.py](../src/pmfa/world/backtest.py).
 
+## Where the project stands
+
+| Area | State |
+| --- | --- |
+| Pipeline and tests | Built end to end. The offline suite of 1,369 tests runs with no keys and no network in about two minutes on one machine (1,365 passed in 123 seconds on 2026-11-27). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
+| Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](../tests/episodes/test_scenarios.py). |
+| Offline replay | Five sample episodes replay with one command and match their committed outputs. |
+| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](../evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](../scripts/rehearse_backtest.py)), which checks the data and the pipeline around the models but not the model side (the gateway, the cache, the dollar caps): its forecasts mean nothing. |
+| Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here, such as fill coverage, price staleness and build time, describe the data and the harness, not forecasting. |
+| Not yet done | **No backtest or other evaluation with a model has been run yet.** The published run is the market's alone, made when no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
+| Sample episodes | Hand-made fixtures: the inputs are real, but every model record is fixed text written in advance with an AI coding assistant, not the output of the pipeline's roles. They show the pipeline working, not forecasting skill, and each one says so. |
+| Shadow mode | Exercised for plumbing only, against recorded worlds in [tests/live/](../tests/live/). |
+| Demo executor | Built from Kalshi's documentation and tested against recorded and constructed responses. A read-only check against a live Kalshi demo account passed on 2026-11-27: signed requests, the balance and market data. No order has been placed on the demo exchange yet, and the exchange-side protections have not been exercised ([guardrails](guardrails.md#what-is-not-guaranteed)). |
+| Fees | The fee formula and rounding are tested on hand-computed cases and one worked example from Kalshi's fee-rounding documentation. The fee schedule PDF's own worked examples are not in the tests: the PDF sits behind a browser check. |
+
+Beating the market price is the hypothesis the evaluation tests, not a result of this project.
+
+### Opt-in smoke tests
+
+Three tests call live services and are skipped unless `PMFA_SMOKE=1` is set:
+
+```bash
+PMFA_SMOKE=1 uv run pytest -m smoke
+```
+
+- one read of a series from Kalshi production (public data, no key);
+- a read-only check of the demo exchange: the balance and one market, no order. It needs
+  `KALSHI_DEMO_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` or `KALSHI_DEMO_PRIVATE_KEY_PATH`;
+- one model call through the gateway on the cheapest configured model. It needs
+  `ANTHROPIC_API_KEY`.
+
+A test whose keys are missing is skipped. CI never sets `PMFA_SMOKE`.
+
 ## Method
 
 ### The frozen data
@@ -26,13 +59,16 @@ both ignored by git:
 - **The evidence corpus** ([world/evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)):
   Federal Reserve statements, minutes and speeches and BLS CPI and Employment Situation releases
   published in the window, each with its source, URL and publish time, plus the release calendar.
-  BLS pages may refuse automated clients; the manual import for a release that is not fetched is
-  described in [bls.py](../src/pmfa/world/evidence/bls.py).
+  BLS pages may refuse automated clients. When a release is not fetched, save it from a browser
+  into `data/manual/` as `bls-cpi-YYYY-MM.html` (the reference month, for example
+  `bls-cpi-2026-10.html` for the October CPI) and run `pmfa data build` again. The steps are in the
+  docstring of [bls.py](../src/pmfa/world/evidence/bls.py).
 
 ```bash
 uv run pmfa data build
 ```
 
+This step reads public Kalshi market data and Federal Reserve and BLS pages and needs no key.
 `pmfa data status` prints both manifests. The build on 2026-11-25 produced 7 events, 104 markets,
 753,670 one-minute and 87,171 hourly candles, and 55 documents (45 from federalreserve.gov, 10 from
 bls.gov). The snapshot build is resumable: a range already stored is skipped, so a second run
@@ -351,22 +387,31 @@ What these numbers mean:
   definition.
 - The scores are low because most rows are priced near 0 or 1: 185 of 312 prices sat below 0.10 and
   82 above 0.90, mostly far strikes of CPI ladders. Those rows are not all easy. Of the market's
-  summed squared error, 10.7661, the rows below 0.10 carry 0.5%, the 45 rows from 0.10 to 0.90 carry
-  45.6%, and the rows above 0.90 carry 53.9%. Six of those 82 rows carry 53.4% on their own:
-  KXCPIYOY-26JUN-T3.5 and T3.6, priced 0.975 to 0.99 at all three horizons, both resolved NO. The
-  event KXCPIYOY-26JUN carries 69.5% of the error (63 rows), its markets T3.5, T3.6 and T3.7 26.9%,
-  26.5% and 14.2% (three rows each; T3.7 was priced 0.705 to 0.725 and also resolved NO). So the
-  market's score on this sample rests mostly on one release that surprised it. Since most of the
-  market's error sits in a handful of rows of that one event, a system's skill against the market is
-  likely to be decided mostly there. The report shows the split under "Where the error comes from".
+  summed squared error over the 312 rows, 10.7661, the 185 rows priced below 0.10 carry 0.5%, the
+  45 rows from 0.10 to 0.90 carry 45.6%, and the 82 rows above 0.90 carry 53.9%. Six of those 82
+  rows carry 53.4% on their own: KXCPIYOY-26JUN-T3.5 and T3.6, priced 0.975 to 0.99 at all three
+  horizons, both resolved NO. One event, KXCPIYOY-26JUN, carries 69.5% of the error (63 rows), and
+  three of its markets carry 26.9% (T3.5), 26.5% (T3.6) and 14.2% (T3.7), three rows each; T3.7 was
+  priced 0.705 to 0.725 and also resolved NO. So the market's score on this sample rests mostly on
+  one release that surprised it. Since most of the market's error sits in a handful of rows of that
+  one event, a system's skill against the market is likely to be decided mostly there. The report
+  shows the split under
+  [Where the error comes from](../evaluation/runs/2026-11-26-market-baseline/report.md#where-the-error-comes-from).
 - The market sharpens slightly toward the close (0.0376 at 7 days, 0.0329 at 1 day), but the
   intervals overlap almost entirely.
-- Expected calibration error is 0.0559 over all horizons.
+- The market's expected calibration error over all horizons is 0.0559.
 - 226 of 312 prices came from the last trade, because one side of the quote was empty (mostly far
   strikes with no bid). The standing quote was fresh on most rows (median 0.45 hours since it last
   changed); the last trades were older (median 60.5 hours). 18 of those trades lay outside the
   standing one-sided quote and were clamped to it, which moves the pooled Brier score by less than
   0.000001.
+
+The published run is market-only: it built no retrieval index and made no retrieval
+(`leakage_checks` in its [manifest](../evaluation/runs/2026-11-26-market-baseline/manifest.json)),
+so the canary guarded nothing in that run; there the as-of rule applied to the snapshot's price
+reads. The tests exercise the canary, for example
+[tests/evaluation/backtest/test_backtest.py](../tests/evaluation/backtest/test_backtest.py), where a
+canary in a retrieval result aborts the run.
 
 ### Not yet run
 
@@ -413,6 +458,20 @@ answers are fixed rules, so its scores, trades and halt say nothing about how a 
 `pmfa report --publish` refuses a run whose models were supplied by the caller, such as a
 rehearsal: it prints `not published: ...`, exits 1 and copies nothing to `evaluation/runs/` (the
 report is still built in the run directory).
+
+#### The Claude API key
+
+```bash
+export ANTHROPIC_API_KEY=...
+```
+
+Create the key in the [Claude Console](https://platform.claude.com/settings/keys) and select a
+workspace for it there. A key that is not scoped to one workspace is refused unless each request
+names its workspace; for such a key, also set `ANTHROPIC_WORKSPACE_ID`. In a Claude Code cloud
+session a variable named `ANTHROPIC_API_KEY` is not passed to commands: save the key there under
+another name, for example `PMFA_ANTHROPIC_API_KEY`, and name it in `models.api_key_env`.
+
+#### The runs, in order
 
 With `ANTHROPIC_API_KEY` set and the data built, in this order.
 
@@ -497,3 +556,65 @@ uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full
 Publishing commits the manifest, the per-forecast table, the metrics, the report and figures, and the
 saved traces. The notebook [notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the
 newest published run.
+
+## Limitations
+
+- **The agent's forecasting has not been measured.** No backtest or other evaluation with a model
+  has been run here; the only forecasting result measured is the market's own (its Brier score and
+  calibration error).
+- **The sample is small.** The window from 2026-07-01 holds 7 settled events in the two followed
+  series. No result on it can separate skill from luck; the harness is the deliverable and its numbers
+  are a pilot.
+- **Many backtest prices are old trades**: 226 of the 312 scored prices used the last trade
+  ([The market baseline](#the-market-baseline-2026-11-26)).
+- **Backtest fills are simulated from candles**, with no order-book depth
+  ([Fill assumptions and their limits](#fill-assumptions-and-their-limits)).
+- **A backtest's trading simulation is likely to halt itself early**, on fill failures or on
+  calibration; the reasons and the numbers are in
+  [Fill assumptions and their limits](#fill-assumptions-and-their-limits).
+- **Sample episodes are hand-made.** Their model records are fixed text written in advance, with an
+  AI coding assistant and with the outcomes known. They are not the output of the pipeline's roles.
+- **Exchange-side protections are documented, not verified.** The subaccount restriction, the
+  funds-transfer block and the order-group breaker have not been exercised against a live demo
+  account.
+- **An injected passage can still distort a probability**, within the caps; roles cannot act on it.
+- **Evidence is official sources only**: Federal Reserve and BLS. No news wires or web search. A
+  generic RSS or Atom feed source exists for the live modes, off by default and secondary only.
+- **Stage demotion runs only in the live modes.** Each pass of the shadow or demo loop drops the
+  stage one step after daily loss stops on two days of the last seven; backtests and the episode
+  pipeline itself do not apply the rule.
+
+## Sources and credits
+
+Evidence text comes from the Board of Governors of the Federal Reserve System
+([federalreserve.gov](https://www.federalreserve.gov/disclaimer.htm)) and the U.S. Bureau of Labor
+Statistics ([bls.gov](https://www.bls.gov/bls/linksite.htm)). Both agencies place their text in the
+public domain and ask to be credited as the source; this project credits them here and in the
+README, and each example's README names its sources and URLs. Market data comes from Kalshi's
+public API. The exchange data committed here is: the examples' `world.json` files (one event and a
+handful of markets per example, one book level per side, no candle series), some of whose prices the
+`expected/` outputs repeat; the test fixtures under
+[tests/world/kalshi/fixtures/](../tests/world/kalshi/fixtures/) whose `_source` says they were
+recorded, API responses cut down to a few items each (the four candle files hold two to seven
+candles each), and the events under [tests/forecast/fixtures/](../tests/forecast/fixtures/), cut
+down to a few markets each; and the published run's `forecasts.csv` (312 rows: the market price of
+104 markets in 7 events at three horizons, each with its outcome), `manifest.json`, which names the
+12 events the snapshot builder did not store, with their close times, and `metrics.json`,
+`report.md` and `figures/`, which summarize those rows (scores by horizon, sample sizes by event and
+market, reliability, where the error comes from) and draw them as Brier scores by horizon, a
+reliability diagram and an equity curve, which is empty because the run did not trade. The fixtures
+whose `_source` says CONSTRUCTED were built by hand from Kalshi's API documentation and hold no
+recorded exchange data. The snapshot with its candle series and the corpus are not committed: they
+are rebuilt locally and ignored by git. The one synthetic story in `single-origin-syndicated` uses
+made-up outlets on reserved `.example` domains.
+
+**The exchange data here is not cleared for reuse.** Kalshi's API documentation says that using the
+API binds the user to its [Developer Agreement](https://kalshi.com/developer-agreement). The copy
+read for this project on 2026-11-27 (v1.1, from Kalshi's public documents; the linked page refused
+an automated request, so check it for a newer version) limits use of the API to "facilitating a
+members own trading on the Exchange". It prohibits "collecting, caching, aggregating, or storing
+data or content accessed via the API except for purposes of facilitating your own trading on
+Kalshi", and says "You may not share such data or content with third parties in any manner without
+prior written authorization from Kalshi." No authorization has been asked for or given for this
+project. Whether the committed exchange data and the local snapshot may be kept is therefore an
+open question that only Kalshi can settle; until it is settled, do not reuse that data.

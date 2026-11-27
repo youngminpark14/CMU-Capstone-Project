@@ -16,6 +16,7 @@ Each box is one node of the LangGraph graph in [graph.py](../src/pmfa/episode/gr
 node bodies are in [pipeline.py](../src/pmfa/episode/pipeline.py). Orange boxes call an LLM role
 through the model gateway. Grey boxes are code only. The blue box is the human. Every path ends in
 `record`, and every episode ends in exactly one named *exit*, shown on the arrows into `record`.
+Most episodes end without a trade.
 
 ```mermaid
 flowchart TD
@@ -165,12 +166,21 @@ funds are mock. Demo mode exists to show the execution plumbing and the human ov
 real exchange API. Evidence about forecasting skill comes from backtests (scored against the market
 price at the same moment) and from shadow mode (simulated fills against live prices).
 
+`pmfa shadow` and `pmfa demo` run one pass by default; `--loop` repeats every `--interval` seconds
+(default 300) until Ctrl-C. In shadow mode approve-tier proposals are filled on paper and tagged;
+`pmfa shadow --review` pauses them for you instead.
+
+Demo mode always runs at the approval stage, whatever stage is stored, so every demo order waits for
+you: `pmfa review list --mode demo`, then approve, resize or reject. Approval runs the gate again at
+the current price before the order is sent.
+
 The worlds are assembled in [recorded.py](../src/pmfa/world/recorded.py),
 [backtest.py](../src/pmfa/world/backtest.py) and [live.py](../src/pmfa/world/live.py). In shadow and
 demo mode a foreground loop ([live/loop.py](../src/pmfa/live/loop.py)) repeats one pass: refresh the
 indexes, resolve settled outcomes, expire due proposals, apply the self-halt conditions and the
 stage demotion rule, detect triggers and run their episodes, and record a *marked equity* point.
-The commands for each mode are in the README.
+The command for each mode is `pmfa replay NAME`, `pmfa backtest`, `pmfa shadow` or `pmfa demo`
+(see [Commands](#commands)).
 
 ## The modules
 
@@ -504,3 +514,93 @@ would pause after step 25 and continue with a `review` step. To check a claim ag
 take the passage ids a scenario cites (in the forecast step's `data`, and on the tree nodes) and
 find them in step 8's `data`, which lists every retrieved passage with its source, URL and publish
 time.
+
+## Commands
+
+`uv run pmfa --help` and `uv run pmfa COMMAND --help` show every option.
+
+| Command | What it does |
+| --- | --- |
+| `pmfa replay` | Replay a recorded episode offline and print its trace (`--list`, `--check`, `--verbose`, `--json`). |
+| `pmfa trace` | Print a stored episode's trace from a state database. |
+| `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
+| `pmfa data status` | Print the corpus and snapshot manifests. |
+| `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
+| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). |
+| `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
+| `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
+| `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
+| `pmfa halt` | Set the persisted halt flag and cancel all open orders. With no `--mode` it halts every live mode (shadow and demo); `--mode` narrows it to one; `--status`, `--resume`. |
+| `pmfa stage` | `status`, `advance` and `demote` the autonomy stage; `advance` refuses unless the benchmark is met. `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a backtest run's scored forecasts. |
+| `pmfa state-server` | Serve a state database over MCP on stdio, for browsing episodes with any MCP client. |
+| `pmfa resolve` | Run the outcome resolver once and print what resolved. |
+| `pmfa config` | `show` the effective configuration, or `check` a file. |
+| `pmfa report-status` | Print the monitoring report: P&L, drawdown, exits, rejections, fills, overrides, calibration. |
+
+`pmfa replay` prints the hand-made-fixture notice first, then the trigger and as-of time, the
+numbered trace (thought, action, observation), the forecast for each market next to the market
+price no role saw (marked `*` where that price is the last trade because one side of the quote was
+empty), the proposal, all nineteen gate checks, the routing tier, the review card, the simulated
+order and its fill, and the exit. `--check` compares the replay with the committed `expected/`
+files and exits non-zero on any difference; `--verbose` prints each step's records; `--json` prints
+the episode record. The sample episodes also ship inside the package's wheel, so
+`pmfa replay --list` works after an install outside this checkout.
+
+## Configuration
+
+[pmfa.toml](../pmfa.toml) holds every limit, threshold, source, model assignment and followed
+series, with comments. It is the built-in defaults as `pmfa config show` writes them, and a test
+keeps the two equal, so leave it unchanged. To change a value, write a TOML file with only the keys
+you change (defaults fill in the rest), check it, and point `PMFA_CONFIG` at it. That file then
+replaces `pmfa.toml`; it is not layered on top of it. An empty `PMFA_CONFIG` counts as not set.
+
+```bash
+uv run pmfa config check my-config.toml
+```
+
+```bash
+export PMFA_CONFIG=my-config.toml
+```
+
+`pmfa backtest` also takes `--config FILE` and `--cap DOLLARS`. The configuration refuses to load
+when caps contradict each other, for example a per-order cap at or above the exchange order group's
+50-contract limit.
+
+`sources.feeds` lists RSS or Atom feed URLs that shadow and demo mode poll as secondary evidence. It
+is empty by default, so nothing is fetched from a feed unless you list one. A feed on the host of a
+primary source (`federalreserve.gov`, `bls.gov`) is refused, so a feed item never counts as a
+primary origin. Backtests do not read feeds.
+
+The most important defaults:
+
+| Setting | Default |
+| --- | --- |
+| Followed series | `KXFEDDECISION` (Fed decision), `KXCPIYOY` (CPI year over year) |
+| Kelly fraction | 0.25 (quarter-Kelly), multiplied by forecast confidence |
+| Shrinkage toward the market price | 0.5 |
+| Minimum edge after fees | $0.02 per contract |
+| Caps | 25 contracts per order; 5% of bankroll per market; 10% per event |
+| Stops | Daily loss stop 3% of the day's starting equity; drawdown halt 10% below peak equity; both count unrealized losses |
+| Liquidity floor | $500 resting within $0.02 of the touch |
+| Notional bankroll (backtest, shadow) | $1,000 |
+| Proposal expiry | 10 minutes |
+| Budget per episode | 30 model calls, $2.00, and in live modes 90 seconds spent waiting on model calls (other steps are not timed) |
+| Budget per run | $100.00 |
+| Backtest window start | 2026-07-01 |
+
+## Dependencies and the two environments
+
+The lockfile ([uv.lock](../uv.lock)) carries two dependency sets because CrewAI, which defines the
+four LLM roles, requires the MCP SDK below version 2, while the state server also supports the MCP
+SDK 2 line. The two cannot share one environment
+([decision 0013](decisions/0013-two-dependency-sets.md)).
+
+| Environment | Install | Roles run through |
+| --- | --- | --- |
+| Default: `dev` and `crewai` groups, MCP SDK 1.x | `uv sync` | CrewAI single-agent kickoffs bound to the model gateway |
+| Alternative: `dev` and `mcp2` groups, MCP SDK 2.x | `uv sync --no-group crewai --group mcp2` | The model gateway directly, with the same prompts and records |
+
+On every push and pull request CI runs `ruff check`, `ruff format --check` and the suite in the
+default environment, and the suite alone in the MCP SDK 2.x environment
+([ci.yml](../.github/workflows/ci.yml)). The optional `notebook` group
+(`uv sync --group notebook`) adds a Jupyter kernel for [notebooks/](../notebooks/README.md).

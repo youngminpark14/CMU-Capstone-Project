@@ -1,4 +1,5 @@
-"""The README's diagram, results and example paths agree with the repository."""
+"""The README and the pages its details moved to agree with the repository: the architecture
+diagrams, the results and what is said about them, the decision-record counts, and the examples."""
 
 from __future__ import annotations
 
@@ -7,14 +8,21 @@ import re
 
 import pytest
 
-from .support import README, ROOT, fenced_blocks, section
+from .support import ARCHITECTURE, EVALUATION, README, REVIEW, ROOT, fenced_blocks, section
 
 RUN_DIR = ROOT / "evaluation" / "runs" / "2026-11-26-market-baseline"
 PAIRS = {"[": "]", "(": ")", "{": "}"}
+BASELINE = "The market baseline (2026-11-26)"
+"""The subsection of docs/evaluation.md that discusses the published run's numbers."""
 
 
 def _readme() -> str:
     return README.read_text(encoding="utf-8")
+
+
+def _baseline() -> str:
+    """The evaluation page's discussion of the published run, where the README's detail moved."""
+    return section(EVALUATION.read_text(encoding="utf-8"), BASELINE, level=3)
 
 
 def _bracket_problem(block: str) -> str | None:
@@ -30,9 +38,9 @@ def _bracket_problem(block: str) -> str | None:
     return f"unclosed {stack}" if stack else None
 
 
-def test_the_readme_has_a_mermaid_diagram_with_balanced_brackets_and_quotes() -> None:
-    blocks = fenced_blocks(_readme(), "mermaid")
-    assert blocks, "the README has no Mermaid diagram"
+def test_the_architecture_diagrams_have_balanced_brackets_and_quotes() -> None:
+    blocks = fenced_blocks(ARCHITECTURE.read_text(encoding="utf-8"), "mermaid")
+    assert blocks, "docs/architecture.md has no Mermaid diagram"
     for block in blocks:
         assert _bracket_problem(block) is None, _bracket_problem(block)
 
@@ -67,11 +75,10 @@ def test_the_results_table_equals_metrics_json() -> None:
         assert interval == f"{block['brier']['lower']:.4f} to {block['brier']['upper']:.4f}"
 
 
-def test_the_calibration_error_quoted_in_results_equals_metrics_json() -> None:
+def test_the_calibration_error_quoted_for_the_published_run_equals_metrics_json() -> None:
     metrics = json.loads((RUN_DIR / "metrics.json").read_text(encoding="utf-8"))
     quoted = re.search(
-        r"expected calibration error\s+over all horizons is (\d\.\d{4})",
-        section(_readme(), "Results"),
+        r"expected calibration error\s+over all horizons is (\d\.\d{4})", _baseline()
     )
     assert quoted
     assert quoted.group(1) == f"{metrics['reliability']['market']['answered']['ece']:.4f}"
@@ -84,17 +91,20 @@ BAND_WORDING = {
 }
 
 
+NUMBER_WORDS = {"Four": 4, "Five": 5, "Six": 6, "Seven": 7, "Eight": 8, "Nine": 9}
+
+
 def _percent(share: float, quoted: str) -> str:
-    """A share as a percentage, at the number of decimals the README quotes it with."""
+    """A share as a percentage, at the number of decimals the page quotes it with."""
     return f"{share * 100:.{len(quoted.partition('.')[2])}f}"
 
 
-def test_the_error_shares_quoted_in_results_equal_metrics_json() -> None:
-    """Each share is checked where the README attaches it: to its band, event or market."""
+def test_the_error_shares_quoted_for_the_published_run_equal_metrics_json() -> None:
+    """Each share is checked where the page attaches it: to its band, event or market."""
     metrics = json.loads((RUN_DIR / "metrics.json").read_text(encoding="utf-8"))
     found = metrics["systems"]["market"]["error_concentration"]
-    results = " ".join(section(_readme(), "Results").split())
-    assert f"over the {found['n_rows']} rows" in results
+    results = " ".join(_baseline().split())
+    assert f"over the {found['n_rows']} rows, {found['squared_error']:.4f}" in results
     checked: list[str] = []
     for band in found["bands"]:
         phrase = BAND_WORDING[band["name"]]
@@ -104,25 +114,35 @@ def test_the_error_shares_quoted_in_results_equal_metrics_json() -> None:
         assert quoted.group(2) == _percent(band["share"], quoted.group(2)), band["name"]
         checked.append(quoted.group(2))
     event = found["top_event"]
-    quoted = re.search(rf"{re.escape(event['name'])}, carries (\d+\.\d+)%", results)
+    quoted = re.search(
+        rf"{re.escape(event['name'])}, carries (\d+\.\d+)% of the error \((\d+) rows\)", results
+    )
     assert quoted, f"Results quotes no share for {event['name']}"
     assert quoted.group(1) == _percent(event["share"], quoted.group(1))
+    assert int(quoted.group(2)) == event["n_rows"]
     checked.append(quoted.group(1))
-    for market in found["top_markets"][:2]:
+    top_two = found["top_markets"][:2]
+    for market in found["top_markets"]:
         suffix = market["name"].removeprefix(event["name"] + "-")
         quoted = re.search(rf"(\d+\.\d+)% \({re.escape(suffix)}\)", results)
         assert quoted, f"Results quotes no share for {market['name']}"
         assert quoted.group(1) == _percent(market["share"], quoted.group(1)), market["name"]
         checked.append(quoted.group(1))
+    above = next(band for band in found["bands"] if band["name"] == "above 0.90")
+    quoted = re.search(rf"(\w+) of those {above['n_rows']} rows carry (\d+\.\d+)%", results)
+    assert quoted, "Results quotes no share for the two largest markets together"
+    assert NUMBER_WORDS.get(quoted.group(1)) == sum(m["n_rows"] for m in top_two)
+    assert quoted.group(2) == _percent(sum(m["share"] for m in top_two), quoted.group(2))
+    checked.append(quoted.group(2))
     assert sorted(re.findall(r"(\d+\.\d+)%", results)) == sorted(checked), (
         "Results quotes a percentage that is not tied to a band, event or market"
     )
 
 
-def test_the_readme_says_the_canary_guarded_the_published_run_only_if_an_index_was_built() -> None:
+def test_the_docs_say_the_canary_guarded_the_published_run_only_if_an_index_was_built() -> None:
     manifest = json.loads((RUN_DIR / "manifest.json").read_text(encoding="utf-8"))
     checks = manifest["leakage_checks"]
-    results = " ".join(section(_readme(), "Results").split())
+    results = " ".join(_baseline().split())
     assert "canary" in results
     claims_guarded = re.search(
         r"canary (?:(?:was|were|is|has been|had been|has|had) )?"
@@ -141,13 +161,14 @@ def test_the_readme_says_the_canary_guarded_the_published_run_only_if_an_index_w
 DECISION_RECORDS = sorted((ROOT / "docs" / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md"))
 
 
-def test_every_count_of_decision_records_equals_the_record_files() -> None:
-    text = " ".join(_readme().split())
+@pytest.mark.parametrize("doc", [README, REVIEW], ids=["README.md", "docs/review.md"])
+def test_every_count_of_decision_records_equals_the_record_files(doc) -> None:
+    text = " ".join(doc.read_text(encoding="utf-8").split())
     stated = re.findall(r"(\d+) (?:short |decision )*records\b", text)
-    assert stated, "the README states no number of decision records"
+    assert stated, f"{doc.name} states no number of decision records"
     for number in stated:
         assert int(number) == len(DECISION_RECORDS), (
-            f"the README says {number} records; docs/decisions holds {len(DECISION_RECORDS)}"
+            f"{doc.name} says {number} records; docs/decisions holds {len(DECISION_RECORDS)}"
         )
 
 
