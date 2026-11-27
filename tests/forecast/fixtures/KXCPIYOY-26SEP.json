@@ -1,0 +1,57 @@
+{
+ "event": {
+  "event_ticker": "KXCPIYOY-26SEP",
+  "series_ticker": "KXCPIYOY",
+  "title": "Inflation in September 2026 (CPI YoY)",
+  "sub_title": "In Sep 2026",
+  "category": "Economics",
+  "mutually_exclusive": false,
+  "markets": [
+   {
+    "ticker": "KXCPIYOY-26SEP-T3.5",
+    "event_ticker": "KXCPIYOY-26SEP",
+    "title": "Will the rate of CPI inflation be above 3.5% for the year ending in September 2026?",
+    "subtitle": "3.5",
+    "yes_sub_title": "Above 3.5%",
+    "status": "finalized",
+    "open_time": "2026-06-09T22:25:00Z",
+    "close_time": "2026-10-14T12:29:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.5,
+    "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.5% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+    "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+    "result": "yes"
+   },
+   {
+    "ticker": "KXCPIYOY-26SEP-T3.6",
+    "event_ticker": "KXCPIYOY-26SEP",
+    "title": "Will the rate of CPI inflation be above 3.6% for the year ending in September 2026?",
+    "subtitle": "3.6",
+    "yes_sub_title": "Above 3.6%",
+    "status": "finalized",
+    "open_time": "2026-06-09T22:25:00Z",
+    "close_time": "2026-10-14T12:29:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.6,
+    "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.6% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+    "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+    "result": "yes"
+   },
+   {
+    "ticker": "KXCPIYOY-26SEP-T3.7",
+    "event_ticker": "KXCPIYOY-26SEP",
+    "title": "Will the rate of CPI inflation be above 3.7% for the year ending in September 2026?",
+    "subtitle": "3.7",
+    "yes_sub_title": "Above 3.7%",
+    "status": "finalized",
+    "open_time": "2026-06-09T22:25:00Z",
+    "close_time": "2026-10-14T12:29:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.7,
+    "rules_primary": "If the Consumer Price Index (CPI) increases by more than 3.7% in the twelve months ending September 2026 (as represented by the one-decimal place value reported by the Bureau of Labor Statistics), then the market resolves to Yes.",
+    "rules_secondary": "In the case of a delay in data caused by a federal government shutdown impacting the reliability of the Source Agency, the market’s latest Expiration Date will be extended to the sooner of the release of the Underlying or six months after the end of the\ngovernment shutdown",
+    "result": "no"
+   }
+  ]
+ }
+}

@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "episode_id": "episode-38dc68a545683e7a",
+  "entries": [
+    {
+      "seq": 1,
+      "task": "match",
+      "slot": "monitor",
+      "role": "Monitor",
+      "model": "claude-haiku-5-5",
+      "served_model": "claude-haiku-5-5",
+      "effort": "low",
+      "source": "scripted",
+      "input": {
+        "trigger": {
+          "kind": "new_document",
+          "headline": "Fed officials said to favour holding rates in October (synthetic)",
+          "excerpt": "SYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October.",
+          "source": "example-markets.example",
+          "published_at": "2026-10-20T14:20:00Z"
+        },
+        "candidates": [
+          {
+            "event_ticker": "KXFEDDECISION-26OCT",
+            "title": "Fed decision in Oct 2026?",
+            "category": "fed_decision",
+            "closes_at": "2026-10-28T17:59:00Z",
+            "rules": "If the Federal Reserve does a <the market's option> on October 28, 2026, then the market resolves to Yes.\n\nThe outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+            "outcome_kind": "categorical",
+            "options": [
+              {
+                "outcome_id": "hike_gt25",
+                "label": "Hike more than 25 bp"
+              },
+              {
+                "outcome_id": "hike_25",
+                "label": "Hike 25 bp"
+              },
+              {
+                "outcome_id": "hold",
+                "label": "Hold (rate maintained)"
+              },
+              {
+                "outcome_id": "cut_25",
+                "label": "Cut 25 bp"
+              },
+              {
+                "outcome_id": "cut_gt25",
+                "label": "Cut more than 25 bp"
+              }
+            ],
+            "variable": "",
+            "unit": "",
+            "thresholds": []
+          }
+        ],
+        "as_of": "2026-10-20T14:25:00Z"
+      },
+      "output": {
+        "matched": true,
+        "event_ticker": "KXFEDDECISION-26OCT",
+        "rationale": "The story is about the October 27-28 rate decision."
+      },
+      "outcome": "ok",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0"
+      },
+      "latency_ms": 0,
+      "repaired": false,
+      "calls": 1
+    },
+    {
+      "seq": 2,
+      "task": "plan_queries",
+      "slot": "researcher",
+      "role": "Researcher",
+      "model": "claude-haiku-5-5",
+      "served_model": "claude-haiku-5-5",
+      "effort": "medium",
+      "source": "scripted",
+      "input": {
+        "trigger": {
+          "kind": "new_document",
+          "headline": "Fed officials said to favour holding rates in October (synthetic)",
+          "excerpt": "SYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October.",
+          "source": "example-markets.example",
+          "published_at": "2026-10-20T14:20:00Z"
+        },
+        "event": {
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Fed decision in Oct 2026?",
+          "category": "fed_decision",
+          "closes_at": "2026-10-28T17:59:00Z",
+          "rules": "If the Federal Reserve does a <the market's option> on October 28, 2026, then the market resolves to Yes.\n\nThe outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "outcome_kind": "categorical",
+          "options": [
+            {
+              "outcome_id": "hike_gt25",
+              "label": "Hike more than 25 bp"
+            },
+            {
+              "outcome_id": "hike_25",
+              "label": "Hike 25 bp"
+            },
+            {
+              "outcome_id": "hold",
+              "label": "Hold (rate maintained)"
+            },
+            {
+              "outcome_id": "cut_25",
+              "label": "Cut 25 bp"
+            },
+            {
+              "outcome_id": "cut_gt25",
+              "label": "Cut more than 25 bp"
+            }
+          ],
+          "variable": "",
+          "unit": "",
+          "thresholds": []
+        },
+        "as_of": "2026-10-20T14:25:00Z"
+      },
+      "output": {
+        "query_for": "officials favour holding the federal funds rate steady in October",
+        "query_against": "officials see a further increase in the federal funds rate in October",
+        "rationale": "One query for a hold, one for a hike."
+      },
+      "outcome": "ok",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0"
+      },
+      "latency_ms": 0,
+      "repaired": false,
+      "calls": 1
+    },
+    {
+      "seq": 3,
+      "task": "select_passages",
+      "slot": "researcher",
+      "role": "Researcher",
+      "model": "claude-haiku-5-5",
+      "served_model": "claude-haiku-5-5",
+      "effort": "medium",
+      "source": "scripted",
+      "input": {
+        "event": {
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Fed decision in Oct 2026?",
+          "category": "fed_decision",
+          "closes_at": "2026-10-28T17:59:00Z",
+          "rules": "If the Federal Reserve does a <the market's option> on October 28, 2026, then the market resolves to Yes.\n\nThe outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "outcome_kind": "categorical",
+          "options": [
+            {
+              "outcome_id": "hike_gt25",
+              "label": "Hike more than 25 bp"
+            },
+            {
+              "outcome_id": "hike_25",
+              "label": "Hike 25 bp"
+            },
+            {
+              "outcome_id": "hold",
+              "label": "Hold (rate maintained)"
+            },
+            {
+              "outcome_id": "cut_25",
+              "label": "Cut 25 bp"
+            },
+            {
+              "outcome_id": "cut_gt25",
+              "label": "Cut more than 25 bp"
+            }
+          ],
+          "variable": "",
+          "unit": "",
+          "thresholds": []
+        },
+        "passages": [
+          {
+            "passage_id": "news:example-markets:fed-hold#0",
+            "source": "example-markets.example",
+            "title": "Fed officials said to favour holding rates in October (synthetic)",
+            "url": "https://example-markets.example/2026/10/20/fed-hold",
+            "published_at": "2026-10-20T14:20:00Z",
+            "text": "Fed officials said to favour holding rates in October (synthetic)\n\nSYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October."
+          }
+        ],
+        "as_of": "2026-10-20T14:25:00Z"
+      },
+      "output": {
+        "keep_passage_ids": [
+          "news:example-markets:fed-hold#0"
+        ],
+        "dropped": [],
+        "rationale": "The story reports officials' views on the October decision."
+      },
+      "outcome": "ok",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0"
+      },
+      "latency_ms": 0,
+      "repaired": false,
+      "calls": 1
+    }
+  ]
+}

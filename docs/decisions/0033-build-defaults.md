@@ -1,0 +1,19 @@
+# 0033. Defaults introduced while building
+
+A $1,000 notional bankroll, a $2 cap per episode, and two requests per second to the exchange.
+
+## Context
+
+The specification leaves the notional bankroll unspecified, caps episodes in calls and seconds only, and asks for throttling to the basic rate tier.
+
+## Decision
+
+Backtests and shadow mode use a notional bankroll of $1,000 (`execution.notional_bankroll`). Each episode is also capped at $2.00 of model spend (`budget.max_usd_per_episode`), below the run cap. The run cap (`budget.max_usd_per_run`) is $100: the specification's default was $25, and the owner raised it on 2026-11-27 to the Console credit bought for the evaluation. The Kalshi client sends at most two requests per second (`kalshi.max_requests_per_second`), because the public endpoints answered 429 quickly at higher rates from a shared address. All three are in [config.py](../../src/pmfa/config.py). The specification's seconds cap (`budget.max_seconds_per_episode`, 90, enforced in the live modes only) counts model-call seconds as the gateway meters them: the time each call to a model takes, a failed call and a repair retry included ([meter.py](../../src/pmfa/models/meter.py), [gateway.py](../../src/pmfa/models/gateway.py)); the live modes use no response cache ([live.py](../../src/pmfa/world/live.py)). Exchange reads, retrieval, checks and orders are not counted, so an episode can run longer than 90 seconds.
+
+## Consequences
+
+A risk unit is $10 by default, so auto routing needs a cost under $10. One expensive episode cannot spend the run's budget. Snapshot builds are slow but polite.
+
+## Origin
+
+Build, November 2026. Counts checkpoint 4.1's 90-second limit as model-call seconds only.

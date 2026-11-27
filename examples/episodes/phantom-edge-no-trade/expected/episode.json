@@ -1,0 +1,807 @@
+{
+  "episode_id": "episode-b11d27a524b9e452",
+  "mode": "replay",
+  "trigger": {
+    "trigger_id": "new-document:bls:cpi_release:2026-08",
+    "kind": "new_document",
+    "at": "2026-09-11T12:35:00Z",
+    "doc_id": "bls:cpi_release:2026-08",
+    "event_ticker": null,
+    "detail": "The August CPI report was published at 12:30 UTC; the feed noticed it five minutes later."
+  },
+  "as_of": "2026-09-11T12:35:00Z",
+  "event_ticker": "KXFEDDECISION-26SEP",
+  "status": "done",
+  "exit": "no_edge",
+  "exit_detail": "best edge after fees is below the minimum",
+  "passage_ids": [
+    "bls:cpi_release:2026-08#0",
+    "bls:cpi_release:2026-08#1",
+    "fed:fomcminutes20260729#21"
+  ],
+  "origins": [
+    {
+      "origin_id": "bls:cpi_release:2026-08",
+      "source": "bls.gov",
+      "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+      "published_at": "2026-09-11T12:30:00Z",
+      "is_primary": false
+    },
+    {
+      "origin_id": "fed:fomcminutes20260729",
+      "source": "federalreserve.gov",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+      "published_at": "2026-08-19T18:00:00Z",
+      "is_primary": true
+    }
+  ],
+  "forecast": {
+    "forecast_id": "fc-1c90825f1b9c7901",
+    "episode_id": "episode-b11d27a524b9e452",
+    "event_ticker": "KXFEDDECISION-26SEP",
+    "as_of": "2026-09-11T12:35:00Z",
+    "system": "pipeline",
+    "outcome_probabilities": {
+      "hike_gt25": 0.015600000000000001,
+      "hike_25": 0.7554000000000001,
+      "hold": 0.2268,
+      "cut_25": 0.0022,
+      "cut_gt25": 0.0
+    },
+    "market_probabilities": {
+      "KXFEDDECISION-26SEP-C25": 0.0022,
+      "KXFEDDECISION-26SEP-C26": 0.0,
+      "KXFEDDECISION-26SEP-H0": 0.2268,
+      "KXFEDDECISION-26SEP-H25": 0.7554000000000001,
+      "KXFEDDECISION-26SEP-H26": 0.015600000000000001
+    },
+    "coverage": 1.0,
+    "confidence": 0.6666666666666666,
+    "n_independent_origins": 2,
+    "budget_exhausted": false,
+    "depth_reached": 1,
+    "fast_path": false,
+    "protected_node_id": null,
+    "protected_drove_size": false,
+    "paths": [
+      {
+        "node_ids": [
+          "node-2586dde3e699eb29"
+        ],
+        "claims": [
+          "The Committee raises the target range 25 bp on September 16"
+        ],
+        "mass": 0.78,
+        "status": "leaf"
+      },
+      {
+        "node_ids": [
+          "node-e63d0628de5719d9"
+        ],
+        "claims": [
+          "The Committee holds the target range on September 16"
+        ],
+        "mass": 0.22,
+        "status": "leaf"
+      }
+    ],
+    "passage_ids": [
+      "bls:cpi_release:2026-08#0",
+      "fed:fomcminutes20260729#21",
+      "bls:cpi_release:2026-08#1"
+    ]
+  },
+  "proposal": null,
+  "gate": null,
+  "routing": null,
+  "review": null,
+  "orders": [],
+  "fill_tagged": false,
+  "usage": {
+    "calls": 5,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cost_usd": "0",
+    "seconds": 0.0
+  },
+  "trace": [
+    {
+      "seq": 1,
+      "node": "trigger",
+      "kind": "observation",
+      "summary": "new_document trigger new-document:bls:cpi_release:2026-08 at 2026-09-11T12:35:00+00:00 (document bls:cpi_release:2026-08)",
+      "role": null,
+      "data": {
+        "trigger": {
+          "trigger_id": "new-document:bls:cpi_release:2026-08",
+          "kind": "new_document",
+          "at": "2026-09-11T12:35:00Z",
+          "doc_id": "bls:cpi_release:2026-08",
+          "event_ticker": null,
+          "detail": "The August CPI report was published at 12:30 UTC; the feed noticed it five minutes later."
+        }
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 2,
+      "node": "match",
+      "kind": "action",
+      "summary": "search the events index for the top 5 events as of 2026-09-11T12:35:00+00:00",
+      "role": null,
+      "data": {
+        "k": 5,
+        "excluded": []
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 3,
+      "node": "match",
+      "kind": "observation",
+      "summary": "1 candidate event(s): KXFEDDECISION-26SEP",
+      "role": null,
+      "data": {
+        "hits": [
+          {
+            "event_ticker": "KXFEDDECISION-26SEP",
+            "similarity": 0.04270446300506592
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 4,
+      "node": "match",
+      "kind": "thought",
+      "summary": "The August CPI report is the last inflation reading before the September 15-16 meeting, so it bears on that decision.",
+      "role": "Monitor",
+      "data": {
+        "output": {
+          "matched": true,
+          "event_ticker": "KXFEDDECISION-26SEP",
+          "rationale": "The August CPI report is the last inflation reading before the September 15-16 meeting, so it bears on that decision."
+        }
+      },
+      "call": {
+        "task": "match",
+        "slot": "monitor",
+        "role": "Monitor",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "low",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 5,
+      "node": "match",
+      "kind": "observation",
+      "summary": "matched event KXFEDDECISION-26SEP",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 6,
+      "node": "research",
+      "kind": "thought",
+      "summary": "One query for a hike after a hot report, one for holding.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "query_for": "consumer price index increased 0.4 percent in August, all items index increased 3.4 percent; policy tightening would likely be necessary",
+          "query_against": "index for all items less food and energy rose 2.4 percent over the year; maintaining the target range for the federal funds rate",
+          "rationale": "One query for a hike after a hot report, one for holding."
+        }
+      },
+      "call": {
+        "task": "plan_queries",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 7,
+      "node": "research",
+      "kind": "action",
+      "summary": "retrieve the top 8 passages for two queries as of 2026-09-11T12:35:00+00:00",
+      "role": null,
+      "data": {
+        "queries": [
+          "consumer price index increased 0.4 percent in August, all items index increased 3.4 percent; policy tightening would likely be necessary",
+          "index for all items less food and energy rose 2.4 percent over the year; maintaining the target range for the federal funds rate"
+        ],
+        "published_after": null
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 8,
+      "node": "research",
+      "kind": "observation",
+      "summary": "8 passage(s) retrieved",
+      "role": null,
+      "data": {
+        "passages": [
+          {
+            "passage_id": "bls:cpi_release:2026-08#4",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.4292276057216019
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-08#0",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.42509727560456867
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-08#1",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00+00:00",
+            "score": 0.4145784361551333
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#0",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.20188935127530627
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#4",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.18852992274767696
+          },
+          {
+            "passage_id": "bls:cpi_release:2026-07#1",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_08122026.htm",
+            "published_at": "2026-08-12T12:30:00+00:00",
+            "score": 0.17812301184126103
+          },
+          {
+            "passage_id": "fed:fomcminutes20260729#21",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "published_at": "2026-08-19T18:00:00+00:00",
+            "score": 0.14443975117918512
+          },
+          {
+            "passage_id": "fed:fomcminutes20260729#20",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "published_at": "2026-08-19T18:00:00+00:00",
+            "score": 0.14303754214227196
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 9,
+      "node": "research",
+      "kind": "thought",
+      "summary": "Kept the August CPI headline and core figures and the July minutes' policy action, with its three dissents for a hike.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "keep_passage_ids": [
+            "bls:cpi_release:2026-08#0",
+            "bls:cpi_release:2026-08#1",
+            "fed:fomcminutes20260729#21"
+          ],
+          "dropped": [
+            {
+              "passage_id": "bls:cpi_release:2026-08#4",
+              "reason": "Component detail, no bearing beyond the headline."
+            },
+            {
+              "passage_id": "bls:cpi_release:2026-07#0",
+              "reason": "The July report, superseded by the August one."
+            },
+            {
+              "passage_id": "bls:cpi_release:2026-07#1",
+              "reason": "July 12-month figures, superseded by August's."
+            },
+            {
+              "passage_id": "bls:cpi_release:2026-07#4",
+              "reason": "July component detail."
+            },
+            {
+              "passage_id": "fed:fomcminutes20260729#20",
+              "reason": "Balance sheet discussion."
+            }
+          ],
+          "rationale": "Kept the August CPI headline and core figures and the July minutes' policy action, with its three dissents for a hike."
+        }
+      },
+      "call": {
+        "task": "select_passages",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 10,
+      "node": "research",
+      "kind": "observation",
+      "summary": "kept 3 of 8 passage(s)",
+      "role": null,
+      "data": {
+        "passage_ids": [
+          "bls:cpi_release:2026-08#0",
+          "bls:cpi_release:2026-08#1",
+          "fed:fomcminutes20260729#21"
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 11,
+      "node": "research",
+      "kind": "action",
+      "summary": "resolve origins and apply the origin rule",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 12,
+      "node": "research",
+      "kind": "observation",
+      "summary": "2 independent origin(s), 1 primary",
+      "role": null,
+      "data": {
+        "origins": [
+          {
+            "origin_id": "bls:cpi_release:2026-08",
+            "source": "bls.gov",
+            "url": "https://www.bls.gov/news.release/archives/cpi_09112026.htm",
+            "published_at": "2026-09-11T12:30:00Z",
+            "is_primary": false
+          },
+          {
+            "origin_id": "fed:fomcminutes20260729",
+            "source": "federalreserve.gov",
+            "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260729.htm",
+            "published_at": "2026-08-19T18:00:00Z",
+            "is_primary": true
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 13,
+      "node": "forecast",
+      "kind": "action",
+      "summary": "beam search over 1 level(s); 0 earlier rejection(s), 0 ledger example(s), bankroll $1000",
+      "role": null,
+      "data": {
+        "levels": [
+          {
+            "scheduled_event_id": "resolution:KXFEDDECISION-26SEP",
+            "title": "Resolution: Fed decision in Sep 2026?",
+            "scheduled_at": "2026-09-16T17:59:00Z",
+            "is_resolution": true
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 14,
+      "node": "forecast",
+      "kind": "action",
+      "summary": "level 1 of 1: generate, check, and score scenarios for Resolution: Fed decision in Sep 2026?",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 15,
+      "node": "forecast",
+      "kind": "thought",
+      "summary": "Proposed 2 scenario(s): The Committee raises the target range 25 bp on September 16; The Committee holds the target range on September 16",
+      "role": "Generator",
+      "data": {
+        "output": {
+          "thoughts": [
+            {
+              "claim": "The Committee raises the target range 25 bp on September 16",
+              "outcome_ids": [
+                "hike_25"
+              ],
+              "value_low": null,
+              "value_high": null,
+              "passage_ids": [
+                "bls:cpi_release:2026-08#0",
+                "fed:fomcminutes20260729#21"
+              ],
+              "rationale": "A 0.4 percent monthly rise follows a July meeting where three members already wanted a hike."
+            },
+            {
+              "claim": "The Committee holds the target range on September 16",
+              "outcome_ids": [
+                "hold"
+              ],
+              "value_low": null,
+              "value_high": null,
+              "passage_ids": [
+                "bls:cpi_release:2026-08#1"
+              ],
+              "rationale": "Core inflation slowed to 2.4 percent over the year, and gasoline drove much of the monthly rise."
+            }
+          ]
+        }
+      },
+      "call": {
+        "task": "generate",
+        "slot": "generator",
+        "role": "Generator",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 16,
+      "node": "forecast",
+      "kind": "thought",
+      "summary": "Scored scored 0.78: A hot headline print after three hike dissents makes a September increase likely, though not certain. | scored 0.22: Slower core inflation leaves room to wait, which a minority would prefer.",
+      "role": "Critic",
+      "data": {
+        "output": {
+          "scores": [
+            {
+              "scenario_id": "node-2586dde3e699eb29",
+              "verdict": "scored",
+              "probability": 0.78,
+              "option_probabilities": [
+                {
+                  "outcome_id": "hike_gt25",
+                  "probability": 0.02
+                },
+                {
+                  "outcome_id": "hike_25",
+                  "probability": 0.96
+                },
+                {
+                  "outcome_id": "hold",
+                  "probability": 0.02
+                },
+                {
+                  "outcome_id": "cut_25",
+                  "probability": 0.0
+                },
+                {
+                  "outcome_id": "cut_gt25",
+                  "probability": 0.0
+                }
+              ],
+              "quantiles": null,
+              "rejection_reason": "",
+              "evidence_request": "",
+              "rationale": "A hot headline print after three hike dissents makes a September increase likely, though not certain."
+            },
+            {
+              "scenario_id": "node-e63d0628de5719d9",
+              "verdict": "scored",
+              "probability": 0.22,
+              "option_probabilities": [
+                {
+                  "outcome_id": "hike_gt25",
+                  "probability": 0.0
+                },
+                {
+                  "outcome_id": "hike_25",
+                  "probability": 0.03
+                },
+                {
+                  "outcome_id": "hold",
+                  "probability": 0.96
+                },
+                {
+                  "outcome_id": "cut_25",
+                  "probability": 0.01
+                },
+                {
+                  "outcome_id": "cut_gt25",
+                  "probability": 0.0
+                }
+              ],
+              "quantiles": null,
+              "rejection_reason": "",
+              "evidence_request": "",
+              "rationale": "Slower core inflation leaves room to wait, which a minority would prefer."
+            }
+          ]
+        }
+      },
+      "call": {
+        "task": "score",
+        "slot": "critic_depth1",
+        "role": "Critic",
+        "model": "claude-fable-5-2",
+        "served_model": "claude-fable-5-2",
+        "effort": "high",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 17,
+      "node": "forecast",
+      "kind": "observation",
+      "summary": "level 1: 2 leaf",
+      "role": null,
+      "data": {
+        "nodes": [
+          {
+            "node_id": "node-2586dde3e699eb29",
+            "parent_id": null,
+            "claim": "The Committee raises the target range 25 bp on September 16",
+            "status": "leaf",
+            "reason": "leaf",
+            "cond_probability": 0.78,
+            "path_mass": 0.78,
+            "passage_ids": [
+              "bls:cpi_release:2026-08#0",
+              "fed:fomcminutes20260729#21"
+            ]
+          },
+          {
+            "node_id": "node-e63d0628de5719d9",
+            "parent_id": null,
+            "claim": "The Committee holds the target range on September 16",
+            "status": "leaf",
+            "reason": "leaf",
+            "cond_probability": 0.22,
+            "path_mass": 0.22,
+            "passage_ids": [
+              "bls:cpi_release:2026-08#1"
+            ]
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 18,
+      "node": "forecast",
+      "kind": "observation",
+      "summary": "forecast: coverage 1.000, confidence 0.667, depth 1, 2 origin(s)",
+      "role": null,
+      "data": {
+        "forecast": {
+          "forecast_id": "fc-1c90825f1b9c7901",
+          "episode_id": "episode-b11d27a524b9e452",
+          "event_ticker": "KXFEDDECISION-26SEP",
+          "as_of": "2026-09-11T12:35:00Z",
+          "system": "pipeline",
+          "outcome_probabilities": {
+            "hike_gt25": 0.015600000000000001,
+            "hike_25": 0.7554000000000001,
+            "hold": 0.2268,
+            "cut_25": 0.0022,
+            "cut_gt25": 0.0
+          },
+          "market_probabilities": {
+            "KXFEDDECISION-26SEP-C25": 0.0022,
+            "KXFEDDECISION-26SEP-C26": 0.0,
+            "KXFEDDECISION-26SEP-H0": 0.2268,
+            "KXFEDDECISION-26SEP-H25": 0.7554000000000001,
+            "KXFEDDECISION-26SEP-H26": 0.015600000000000001
+          },
+          "coverage": 1.0,
+          "confidence": 0.6666666666666666,
+          "n_independent_origins": 2,
+          "budget_exhausted": false,
+          "depth_reached": 1,
+          "fast_path": false,
+          "protected_node_id": null,
+          "protected_drove_size": false,
+          "paths": [
+            {
+              "node_ids": [
+                "node-2586dde3e699eb29"
+              ],
+              "claims": [
+                "The Committee raises the target range 25 bp on September 16"
+              ],
+              "mass": 0.78,
+              "status": "leaf"
+            },
+            {
+              "node_ids": [
+                "node-e63d0628de5719d9"
+              ],
+              "claims": [
+                "The Committee holds the target range on September 16"
+              ],
+              "mass": 0.22,
+              "status": "leaf"
+            }
+          ],
+          "passage_ids": [
+            "bls:cpi_release:2026-08#0",
+            "fed:fomcminutes20260729#21",
+            "bls:cpi_release:2026-08#1"
+          ]
+        },
+        "calls": {
+          "generator": 1,
+          "critic": 1
+        }
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 19,
+      "node": "size",
+      "kind": "action",
+      "summary": "size the event: confidence 0.667, bankroll $1000",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 20,
+      "node": "size",
+      "kind": "observation",
+      "summary": "no trade: best edge after fees is below the minimum",
+      "role": null,
+      "data": {
+        "best": {
+          "market_ticker": "KXFEDDECISION-26SEP-H25",
+          "side": "no",
+          "ask": "0.1900",
+          "shrunk_probability": "0.21479999999999995",
+          "edge": "0.01402699999999995",
+          "liquidity": "92813.543800",
+          "meets_liquidity": true
+        },
+        "candidates": [
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H0",
+            "side": "yes",
+            "ask": "0.2000",
+            "shrunk_probability": "0.21090",
+            "edge": "-0.0003000000",
+            "liquidity": "116988.918200",
+            "meets_liquidity": true
+          },
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H0",
+            "side": "no",
+            "ask": "0.8100",
+            "shrunk_probability": "0.78910",
+            "edge": "-0.0316730000",
+            "liquidity": "339337.611800",
+            "meets_liquidity": true
+          },
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H25",
+            "side": "yes",
+            "ask": "0.8200",
+            "shrunk_probability": "0.78520000000000005",
+            "edge": "-0.04513199999999995",
+            "liquidity": "282683.996200",
+            "meets_liquidity": true
+          },
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H25",
+            "side": "no",
+            "ask": "0.1900",
+            "shrunk_probability": "0.21479999999999995",
+            "edge": "0.01402699999999995",
+            "liquidity": "92813.543800",
+            "meets_liquidity": true
+          },
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H26",
+            "side": "yes",
+            "ask": "0.0200",
+            "shrunk_probability": "0.0153000000000000005",
+            "edge": "-0.0060719999999999995",
+            "liquidity": "2571.213600",
+            "meets_liquidity": true
+          },
+          {
+            "market_ticker": "KXFEDDECISION-26SEP-H26",
+            "side": "no",
+            "ask": "0.9900",
+            "shrunk_probability": "0.9846999999999999995",
+            "edge": "-0.0059930000000000005",
+            "liquidity": "232489.466400",
+            "meets_liquidity": true
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 21,
+      "node": "size",
+      "kind": "observation",
+      "summary": "exit no_edge: best edge after fees is below the minimum",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    },
+    {
+      "seq": 22,
+      "node": "record",
+      "kind": "observation",
+      "summary": "exit no_edge: best edge after fees is below the minimum; 5 ledger entries",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-09-11T12:35:00Z"
+    }
+  ],
+  "started_at": "2026-09-11T12:35:00Z",
+  "finished_at": "2026-09-11T12:35:00Z"
+}

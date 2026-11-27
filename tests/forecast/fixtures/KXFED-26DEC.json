@@ -1,0 +1,57 @@
+{
+ "event": {
+  "event_ticker": "KXFED-26DEC",
+  "series_ticker": "KXFED",
+  "title": "Fed funds rate after Dec 2026 meeting?",
+  "sub_title": "On Dec 9, 2026",
+  "category": "Economics",
+  "mutually_exclusive": false,
+  "markets": [
+   {
+    "ticker": "KXFED-26DEC-T3.25",
+    "event_ticker": "KXFED-26DEC",
+    "title": "Will the upper bound of the federal funds rate be above 3.25% following the Fed's Dec 9, 2026 meeting?",
+    "subtitle": "3.25%",
+    "yes_sub_title": "Above 3.25%",
+    "status": "active",
+    "open_time": "2025-08-06T14:30:00Z",
+    "close_time": "2026-12-09T18:55:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.25,
+    "rules_primary": "If the upper bound of the target federal funds rate published on the Federal Reserve's official website is greater than 3.25% following the Federal Reserve's Dec 9, 2026 meeting, then the market resolves to Yes.",
+    "rules_secondary": "This market will expire the first 2:05 PM ET following the release of a Federal Reserve statement for their Dec 9, 2026 meeting or one week following the last day of that meeting.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFED-26DEC-T3.50",
+    "event_ticker": "KXFED-26DEC",
+    "title": "Will the upper bound of the federal funds rate be above 3.50% following the Fed's Dec 9, 2026 meeting?",
+    "subtitle": "3.50%",
+    "yes_sub_title": "Above 3.50%",
+    "status": "active",
+    "open_time": "2025-08-06T14:30:00Z",
+    "close_time": "2026-12-09T18:55:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.5,
+    "rules_primary": "If the upper bound of the target federal funds rate published on the Federal Reserve's official website is greater than 3.50% following the Federal Reserve's Dec 9, 2026 meeting, then the market resolves to Yes.",
+    "rules_secondary": "This market will expire the first 2:05 PM ET following the release of a Federal Reserve statement for their Dec 9, 2026 meeting or one week following the last day of that meeting.",
+    "result": ""
+   },
+   {
+    "ticker": "KXFED-26DEC-T3.75",
+    "event_ticker": "KXFED-26DEC",
+    "title": "Will the upper bound of the federal funds rate be above 3.75% following the Fed's Dec 9, 2026 meeting?",
+    "subtitle": "3.75%",
+    "yes_sub_title": "Above 3.75%",
+    "status": "active",
+    "open_time": "2025-08-06T14:30:00Z",
+    "close_time": "2026-12-09T18:55:00Z",
+    "strike_type": "greater",
+    "floor_strike": 3.75,
+    "rules_primary": "If the upper bound of the target federal funds rate published on the Federal Reserve's official website is greater than 3.75% following the Federal Reserve's Dec 9, 2026 meeting, then the market resolves to Yes.",
+    "rules_secondary": "This market will expire the first 2:05 PM ET following the release of a Federal Reserve statement for their Dec 9, 2026 meeting or one week following the last day of that meeting.",
+    "result": ""
+   }
+  ]
+ }
+}

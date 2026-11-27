@@ -1,0 +1,110 @@
+{
+ "_source": "Recorded from the public Kalshi API (external-api.kalshi.com) on 2026-11-25, unauthenticated; trimmed to a few items.",
+ "request": "GET /historical/markets/KXFEDDECISION-26SEP-C26/candlesticks?start_ts=1788998400&end_ts=1789171200&period_interval=60 (two empty and two traded candles kept)",
+ "status": 200,
+ "body": {
+  "candlesticks": [
+   {
+    "end_period_ts": 1788998400,
+    "open_interest": "1153326.49",
+    "price": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "mean": "0.0100",
+     "open": "0.0100",
+     "previous": "0.0100"
+    },
+    "volume": "93.51",
+    "yes_ask": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "open": "0.0100"
+    },
+    "yes_bid": {
+     "close": "0.0000",
+     "high": "0.0000",
+     "low": "0.0000",
+     "open": "0.0000"
+    }
+   },
+   {
+    "end_period_ts": 1789002000,
+    "open_interest": "1154448.49",
+    "price": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "mean": "0.0100",
+     "open": "0.0100",
+     "previous": "0.0100"
+    },
+    "volume": "1122.00",
+    "yes_ask": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "open": "0.0100"
+    },
+    "yes_bid": {
+     "close": "0.0000",
+     "high": "0.0000",
+     "low": "0.0000",
+     "open": "0.0000"
+    }
+   },
+   {
+    "end_period_ts": 1789009200,
+    "open_interest": "1159660.81",
+    "price": {
+     "close": null,
+     "high": null,
+     "low": null,
+     "mean": null,
+     "open": null,
+     "previous": "0.0100"
+    },
+    "volume": "0.00",
+    "yes_ask": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "open": "0.0100"
+    },
+    "yes_bid": {
+     "close": "0.0000",
+     "high": "0.0000",
+     "low": "0.0000",
+     "open": "0.0000"
+    }
+   },
+   {
+    "end_period_ts": 1789016400,
+    "open_interest": "1159780.32",
+    "price": {
+     "close": null,
+     "high": null,
+     "low": null,
+     "mean": null,
+     "open": null,
+     "previous": "0.0100"
+    },
+    "volume": "0.00",
+    "yes_ask": {
+     "close": "0.0100",
+     "high": "0.0100",
+     "low": "0.0100",
+     "open": "0.0100"
+    },
+    "yes_bid": {
+     "close": "0.0000",
+     "high": "0.0000",
+     "low": "0.0000",
+     "open": "0.0000"
+    }
+   }
+  ],
+  "ticker": "KXFEDDECISION-26SEP-C26"
+ }
+}

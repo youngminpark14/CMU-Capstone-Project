@@ -1,0 +1,239 @@
+"""P&L after fees, the equity curve, and drawdown on a worked example."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+from decimal import Decimal
+
+import pytest
+
+from pmfa.evaluation.pnl import (
+    EquityPoint,
+    equity_curve,
+    max_drawdown,
+    pnl_summary,
+    total_pnl,
+    trade_cost,
+    trade_payout,
+    trade_pnl,
+)
+from pmfa.evaluation.rows import TradeRow
+from pmfa.records.market import Side
+
+from .factories import T0, trade
+
+D = Decimal
+BANKROLL = D("1000")
+
+# The worked example. Fees are the exchange's taker fee, 0.07 x C x P x (1 - P), rounded up:
+#   T1 buys 10 YES at 0.40, fee 0.07*10*0.4*0.6 = 0.168 -> 0.17. Cost 4.00 + 0.17 = 4.17.
+#      YES wins: payout 10.00, P&L +5.83.
+#   T2 buys 20 NO at 0.30, fee 0.07*20*0.3*0.7 = 0.294 -> 0.30. Cost 6.00 + 0.30 = 6.30.
+#      YES wins, so NO loses: payout 0, P&L -6.30.
+#   T3 buys 5 YES at 0.50, fee 0.07*5*0.5*0.5 = 0.0875 -> 0.09. Cost 2.59. Still open.
+TRADES = [
+    trade(
+        Side.YES,
+        "10",
+        "0.40",
+        "0.17",
+        result=Side.YES,
+        event="A",
+        market="A-1",
+        filled_hours=0,
+        settled_hours=24,
+        episode="ep-1",
+    ),
+    trade(
+        Side.NO,
+        "20",
+        "0.30",
+        "0.30",
+        result=Side.YES,
+        event="B",
+        market="B-1",
+        filled_hours=1,
+        settled_hours=48,
+        episode="ep-2",
+    ),
+    trade(
+        Side.YES,
+        "5",
+        "0.50",
+        "0.09",
+        result=None,
+        event="A",
+        market="A-2",
+        filled_hours=2,
+        episode="ep-3",
+    ),
+]
+
+
+def test_cost_payout_and_pnl_of_each_trade():
+    t1, t2, t3 = TRADES
+    assert (trade_cost(t1), trade_payout(t1), trade_pnl(t1)) == (D("4.17"), D("10"), D("5.83"))
+    assert (trade_cost(t2), trade_payout(t2), trade_pnl(t2)) == (D("6.30"), D("0"), D("-6.30"))
+    assert (trade_cost(t3), trade_payout(t3), trade_pnl(t3)) == (D("2.59"), None, None)
+
+
+def test_pnl_per_market_per_event_and_total():
+    summary = pnl_summary(TRADES)
+    # Total 5.83 - 6.30 = -0.47: the fees (0.47) turned a break-even pair of trades into a loss.
+    assert summary.total == D("-0.47")
+    assert summary.by_market == {"A-1": D("5.83"), "B-1": D("-6.30")}
+    assert summary.by_event == {"A": D("5.83"), "B": D("-6.30")}
+    assert summary.fees == D("0.47")
+    assert (summary.n_trades, summary.n_settled) == (3, 2)
+    assert summary.open_cost == D("2.59")
+    assert total_pnl(TRADES) == D("-0.47")
+
+
+def test_not_trading_earns_zero():
+    assert total_pnl([]) == 0
+    assert equity_curve([], BANKROLL) == []
+
+
+def test_equity_curve_steps_at_fills_and_settlements():
+    curve = equity_curve(TRADES, BANKROLL)
+    steps = [(p.at - T0, p.kind, p.market_ticker, p.cash, p.equity) for p in curve]
+    h = timedelta(hours=1)
+    assert steps == [
+        # Fill T1: cash 1000 - 4.17; equity loses only the fee, 1000 - 0.17.
+        (0 * h, "fill", "A-1", D("995.83"), D("999.83")),
+        # Fill T2: cash - 6.30; equity - 0.30.
+        (1 * h, "fill", "B-1", D("989.53"), D("999.53")),
+        # Fill T3: cash - 2.59; equity - 0.09.
+        (2 * h, "fill", "A-2", D("986.94"), D("999.44")),
+        # T1 settles YES: cash + 10.00; equity + (10.00 - 4.00).
+        (24 * h, "settlement", "A-1", D("996.94"), D("1005.44")),
+        # T2 settles against it: cash + 0; equity - 6.00.
+        (48 * h, "settlement", "B-1", D("996.94"), D("999.44")),
+    ]
+    # Equity = bankroll + realized P&L - the open trade's fee: 1000 - 0.47 - 0.09.
+    # Cash = equity - the open trade's contracts at cost: 999.44 - 2.50.
+    assert curve[-1].equity == BANKROLL + pnl_summary(TRADES).total - D("0.09")
+    assert curve[-1].cash == curve[-1].equity - D("2.50")
+
+
+def test_max_drawdown_of_the_worked_example():
+    drawdown = max_drawdown(equity_curve(TRADES, BANKROLL), BANKROLL)
+    # Peak 1005.44 after T1 settles, trough 999.44 after T2: 6.00 dollars, 6.00 / 1005.44.
+    assert drawdown.dollars == D("6.00")
+    assert drawdown.fraction == D("6.00") / D("1005.44")
+    assert float(drawdown.fraction) == pytest.approx(0.0059675, abs=1e-7)
+
+
+def test_drawdown_fraction_and_dollars_are_maximized_separately():
+    def point(hours: int, equity: str) -> EquityPoint:
+        return EquityPoint(
+            at=T0 + timedelta(hours=hours),
+            kind="settlement",
+            episode_id="ep",
+            market_ticker="M",
+            cash=D(equity),
+            equity=D(equity),
+        )
+
+    # 100 -> 85 is a 15% fall of 15 dollars; 200 -> 180 is a 10% fall of 20 dollars.
+    curve = [point(1, "85"), point(2, "200"), point(3, "180")]
+    drawdown = max_drawdown(curve, D("100"))
+    assert drawdown.fraction == D("0.15")
+    assert drawdown.dollars == D("20")
+
+
+def test_a_rising_curve_has_no_drawdown():
+    winner = trade(Side.YES, "10", "0.40", "0", result=Side.YES)
+    drawdown = max_drawdown(equity_curve([winner], BANKROLL), BANKROLL)
+    assert (drawdown.fraction, drawdown.dollars) == (0, 0)
+
+
+def test_trade_rows_reject_inconsistent_settlement():
+    with pytest.raises(ValueError, match="set together"):
+        TradeRow.model_validate(
+            {**TRADES[0].model_dump(), "settled_at": None},
+        )
+    with pytest.raises(ValueError, match="before it fills"):
+        TradeRow.model_validate(
+            {**TRADES[0].model_dump(), "settled_at": T0 - timedelta(hours=1)},
+        )
+
+
+def test_simultaneous_settlements_are_one_point_and_count_only_the_fees():
+    """Two legs of one event settle at the same instant: no phantom mid-instant trough."""
+    loser = trade(Side.YES, "25", "0.40", "0.42", result=Side.NO, market="EV-1-C25")
+    winner = trade(
+        Side.YES, "25", "0.60", "0.42", result=Side.YES, market="EV-1-H0", filled_hours=1
+    )
+    curve = equity_curve([loser, winner], BANKROLL)
+    assert [(p.at - T0, p.equity) for p in curve] == [
+        (timedelta(0), D("999.58")),
+        (timedelta(hours=1), D("999.16")),
+        (timedelta(hours=24), D("999.16")),  # -10.00 on C25 and +10.00 on H0 at once
+    ]
+    drawdown = max_drawdown(curve, BANKROLL)
+    assert drawdown.dollars == D("0.84")  # the two fees, nothing more
+    # The paper account, replaying the same fills and settlements, agrees.
+    from pmfa.execution.portfolio import account
+    from pmfa.records.decision import Fill
+
+    fills = [
+        Fill(
+            fill_id=f"f{i}",
+            order_id=f"o{i}",
+            market_ticker=t.market_ticker,
+            side=t.side,
+            contracts=t.contracts,
+            price=t.price,
+            fee=t.fee,
+            filled_at=t.filled_at,
+            simulated=True,
+        )
+        for i, t in enumerate([loser, winner])
+    ]
+    settlements = [(t.market_ticker, t.result, t.settled_at) for t in (loser, winner)]
+    for p in curve:
+        acct = account(fills, settlements, bankroll=BANKROLL, as_of=p.at)
+        assert (p.cash, p.equity) == (acct.cash, acct.equity)
+
+
+def test_a_hedged_pair_settling_together_loses_only_its_fees():
+    yes = trade(Side.YES, "25", "0.50", "0.44", result=Side.YES)
+    no = trade(Side.NO, "25", "0.50", "0.44", result=Side.YES, filled_hours=1)
+    curve = equity_curve([yes, no], BANKROLL)
+    assert len(curve) == 3
+    assert max_drawdown(curve, BANKROLL).dollars == D("0.88")
+    assert curve[-1].equity == BANKROLL - D("0.88")
+
+
+def test_a_hedge_whose_prices_do_not_sum_to_one_nets_at_the_second_fill_as_the_account_does():
+    # Buy 25 YES at 0.40 (fee 0.42), then 25 NO at 0.50 (fee 0.44) an hour later; settle YES.
+    # The NO fill closes the 25 YES one for one: each pair returns a dollar now, so the
+    # pairs' gain, 25 x (1 - 0.40 - 0.50) = 2.50, is realized at the second fill.
+    from pmfa.execution.portfolio import account
+    from pmfa.records.decision import Fill
+
+    yes = trade(Side.YES, "25", "0.40", "0.42", result=Side.YES)
+    no = trade(Side.NO, "25", "0.50", "0.44", result=Side.YES, filled_hours=1)
+    curve = equity_curve([yes, no], BANKROLL)
+    assert [p.equity for p in curve] == [D("999.58"), D("1001.64"), D("1001.64")]
+    assert [p.cash for p in curve] == [D("989.58"), D("1001.64"), D("1001.64")]
+    assert curve[-1].equity - BANKROLL == total_pnl([yes, no])
+    fills = [
+        Fill(
+            fill_id=f"f{i}",
+            order_id=f"o{i}",
+            market_ticker=t.market_ticker,
+            side=t.side,
+            contracts=t.contracts,
+            price=t.price,
+            fee=t.fee,
+            filled_at=t.filled_at,
+            simulated=True,
+        )
+        for i, t in enumerate([yes, no])
+    ]
+    settlements = [(yes.market_ticker, Side.YES, yes.settled_at)]
+    for p in curve:
+        acct = account(fills, settlements, bankroll=BANKROLL, as_of=p.at)
+        assert (p.cash, p.equity) == (acct.cash, acct.equity)

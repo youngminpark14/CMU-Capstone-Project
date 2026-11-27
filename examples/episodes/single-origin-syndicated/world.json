@@ -1,0 +1,286 @@
+{
+  "description": "One invented 'Example Wire' story syndicated twice (synthetic text) about the real October 2026 Fed decision; one secondary origin is not enough.",
+  "provenance": "hand-made fixture",
+  "trigger": {
+    "trigger_id": "new-document:news:example-markets:fed-hold",
+    "kind": "new_document",
+    "at": "2026-10-20T14:25:00Z",
+    "doc_id": "news:example-markets:fed-hold",
+    "detail": "A synthetic news story (invented)."
+  },
+  "series": [
+    {
+      "ticker": "KXFEDDECISION",
+      "title": "Fed meeting",
+      "category": "Economics",
+      "frequency": "custom",
+      "fee_type": "quadratic_with_maker_fees",
+      "fee_multiplier": "1",
+      "settlement_sources": [
+        {
+          "name": "Federal Reserve",
+          "url": "https://www.federalreserve.gov"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event_ticker": "KXFEDDECISION-26OCT",
+      "series_ticker": "KXFEDDECISION",
+      "title": "Fed decision in Oct 2026?",
+      "sub_title": "On Oct 28, 2026",
+      "category": "Economics",
+      "mutually_exclusive": true,
+      "markets": [
+        {
+          "ticker": "KXFEDDECISION-26OCT-C25",
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Will the Federal Reserve Cut rates by 25bps at their October 2026 meeting?",
+          "subtitle": "Cut 25bps",
+          "status": "open",
+          "open_time": "2025-09-29T14:00:00Z",
+          "close_time": "2026-10-28T17:59:00Z",
+          "strike_type": "custom",
+          "custom_strike": {
+            "Cut": "25"
+          },
+          "rules_primary": "If the Federal Reserve does a Cut of 25bps on October 28, 2026, then the market resolves to Yes.",
+          "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.0000",
+          "yes_ask": "0.0100",
+          "last_price": "0.0100",
+          "volume": "1425447.02",
+          "volume_24h": "193.51",
+          "open_interest": "1310918.08"
+        },
+        {
+          "ticker": "KXFEDDECISION-26OCT-C26",
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Will the Federal Reserve Cut rates by >25bps at their October 2026 meeting?",
+          "subtitle": "Cut >25bps",
+          "status": "open",
+          "open_time": "2025-09-29T14:00:00Z",
+          "close_time": "2026-10-28T17:59:00Z",
+          "strike_type": "custom",
+          "custom_strike": {
+            "Cut": ">25"
+          },
+          "rules_primary": "If the Federal Reserve does a Cut of   25bps on October 28, 2026, then the market resolves to Yes.",
+          "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.0000",
+          "yes_ask": "0.0100",
+          "last_price": "0.0100",
+          "volume": "244082.03",
+          "volume_24h": "33.33",
+          "open_interest": "231300.61"
+        },
+        {
+          "ticker": "KXFEDDECISION-26OCT-H0",
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Will the Federal Reserve Hike rates by 0bps at their October 2026 meeting?",
+          "subtitle": "Fed maintains rate",
+          "status": "open",
+          "open_time": "2025-09-29T14:00:00Z",
+          "close_time": "2026-10-28T17:59:00Z",
+          "strike_type": "custom",
+          "custom_strike": {
+            "Hike": "0"
+          },
+          "rules_primary": "If the Federal Reserve does a Hike of 0bps on October 28, 2026, then the market resolves to Yes.",
+          "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.8700",
+          "yes_ask": "0.8800",
+          "last_price": "0.8800",
+          "volume": "5847397.55",
+          "volume_24h": "150750.54",
+          "open_interest": "1952933.19"
+        },
+        {
+          "ticker": "KXFEDDECISION-26OCT-H25",
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Will the Federal Reserve Hike rates by 25bps at their October 2026 meeting?",
+          "subtitle": "Hike 25bps",
+          "status": "open",
+          "open_time": "2025-09-29T14:00:00Z",
+          "close_time": "2026-10-28T17:59:00Z",
+          "strike_type": "custom",
+          "custom_strike": {
+            "Hike": "25"
+          },
+          "rules_primary": "If the Federal Reserve does a Hike of 25bps on October 28, 2026, then the market resolves to Yes.",
+          "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.1100",
+          "yes_ask": "0.1200",
+          "last_price": "0.1200",
+          "volume": "4171271.17",
+          "volume_24h": "76155.62",
+          "open_interest": "1500433.48"
+        },
+        {
+          "ticker": "KXFEDDECISION-26OCT-H26",
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "title": "Will the Federal Reserve Hike rates by >25bps at their October 2026 meeting?",
+          "subtitle": "Hike >25bps",
+          "status": "open",
+          "open_time": "2025-09-29T14:00:00Z",
+          "close_time": "2026-10-28T17:59:00Z",
+          "strike_type": "custom",
+          "custom_strike": {
+            "Hike": ">25"
+          },
+          "rules_primary": "If the Federal Reserve does a Hike of   25bps on October 28, 2026, then the market resolves to Yes.",
+          "rules_secondary": "The outcomes are mutually exclusive: at most one can resolve to Yes. For example, a 50-basis-point hike resolves “Hike   25 bps” to Yes and “Hike 25 bps” to No.\n\nIf the scheduled FOMC meeting is canceled and does not occur on its scheduled date, “Fed maintains rate” resolves to Yes and all other outcomes resolve to No.",
+          "price_ranges": [
+            {
+              "start": "0.0000",
+              "end": "1.0000",
+              "step": "0.0100"
+            }
+          ],
+          "yes_bid": "0.0000",
+          "yes_ask": "0.0100",
+          "last_price": "0.0100",
+          "volume": "992844.39",
+          "volume_24h": "5014.00",
+          "open_interest": "912341.88"
+        }
+      ]
+    }
+  ],
+  "order_books": {
+    "KXFEDDECISION-26OCT-C25": {
+      "ticker": "KXFEDDECISION-26OCT-C25",
+      "as_of": "2026-10-20T14:25:00Z",
+      "no_bids": [
+        {
+          "price": "0.9900",
+          "contracts": "10"
+        }
+      ]
+    },
+    "KXFEDDECISION-26OCT-C26": {
+      "ticker": "KXFEDDECISION-26OCT-C26",
+      "as_of": "2026-10-20T14:25:00Z"
+    },
+    "KXFEDDECISION-26OCT-H0": {
+      "ticker": "KXFEDDECISION-26OCT-H0",
+      "as_of": "2026-10-20T14:25:00Z",
+      "yes_bids": [
+        {
+          "price": "0.8700",
+          "contracts": "81"
+        }
+      ],
+      "no_bids": [
+        {
+          "price": "0.1200",
+          "contracts": "81"
+        }
+      ]
+    },
+    "KXFEDDECISION-26OCT-H25": {
+      "ticker": "KXFEDDECISION-26OCT-H25",
+      "as_of": "2026-10-20T14:25:00Z",
+      "yes_bids": [
+        {
+          "price": "0.1100",
+          "contracts": "699"
+        }
+      ],
+      "no_bids": [
+        {
+          "price": "0.8800",
+          "contracts": "699"
+        }
+      ]
+    },
+    "KXFEDDECISION-26OCT-H26": {
+      "ticker": "KXFEDDECISION-26OCT-H26",
+      "as_of": "2026-10-20T14:25:00Z"
+    }
+  },
+  "liquidity": {
+    "KXFEDDECISION-26OCT-C25": {
+      "yes": "1.000000",
+      "no": "99.000000"
+    },
+    "KXFEDDECISION-26OCT-C26": {
+      "yes": "0",
+      "no": "0"
+    },
+    "KXFEDDECISION-26OCT-H0": {
+      "yes": "711.641500",
+      "no": "101.098500"
+    },
+    "KXFEDDECISION-26OCT-H25": {
+      "yes": "841.278600",
+      "no": "6154.271400"
+    },
+    "KXFEDDECISION-26OCT-H26": {
+      "yes": "0",
+      "no": "0"
+    }
+  },
+  "documents": [
+    {
+      "doc_id": "news:example-wire:fed-hold",
+      "source": "example-wire.example",
+      "kind": "news",
+      "url": "https://example-wire.example/2026/10/20/fed-hold",
+      "title": "Fed officials said to favour holding rates in October (synthetic)",
+      "published_at": "2026-10-20T14:00:00Z",
+      "text": "SYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October.",
+      "content_hash": "9f896d2ba0a9b49f2cc208aa05b02566457cf9e624942a583cfcd640b739a75a"
+    },
+    {
+      "doc_id": "news:example-daily:fed-hold",
+      "source": "example-daily.example",
+      "kind": "news",
+      "url": "https://example-daily.example/2026/10/20/fed-hold",
+      "title": "Fed officials said to favour holding rates in October (synthetic)",
+      "published_at": "2026-10-20T14:10:00Z",
+      "text": "SYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October.",
+      "content_hash": "9f896d2ba0a9b49f2cc208aa05b02566457cf9e624942a583cfcd640b739a75a"
+    },
+    {
+      "doc_id": "news:example-markets:fed-hold",
+      "source": "example-markets.example",
+      "kind": "news",
+      "url": "https://example-markets.example/2026/10/20/fed-hold",
+      "title": "Fed officials said to favour holding rates in October (synthetic)",
+      "published_at": "2026-10-20T14:20:00Z",
+      "text": "SYNTHETIC TEST TEXT, INVENTED FOR A SOFTWARE FIXTURE; IT REPORTS NOTHING REAL. Example Wire. Two Federal Reserve officials, speaking on condition of anonymity, said they would favour holding the federal funds rate steady at the October 27-28 meeting while inflation data settle, and saw no need for a further increase in October.",
+      "content_hash": "9f896d2ba0a9b49f2cc208aa05b02566457cf9e624942a583cfcd640b739a75a"
+    }
+  ],
+  "stage": "approval"
+}

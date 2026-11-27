@@ -1,0 +1,41 @@
+{
+ "_source": "Recorded from the public Kalshi API (external-api.demo.kalshi.co) on 2026-11-25, unauthenticated; trimmed to a few items.",
+ "request": "GET /markets/KXFEDDECISION-26DEC-H0/orderbook",
+ "status": 200,
+ "body": {
+  "orderbook_fp": {
+   "no_dollars": [
+    [
+     "0.8800",
+     "117.00"
+    ],
+    [
+     "0.9300",
+     "2380.95"
+    ],
+    [
+     "0.9400",
+     "2777.77"
+    ],
+    [
+     "0.9500",
+     "2303.01"
+    ]
+   ],
+   "yes_dollars": [
+    [
+     "0.0200",
+     "8338.33"
+    ],
+    [
+     "0.0300",
+     "5555.55"
+    ],
+    [
+     "0.0400",
+     "4166.66"
+    ]
+   ]
+  }
+ }
+}

@@ -1,0 +1,44 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand from the GetFillsResponse schema in Kalshi's OpenAPI document (version 3.37.0, fetched 2026-11-24), because no demo credentials exist.",
+ "request": "GET /portfolio/fills?order_id=3b23c1c7-f4ef-4f0d-8b9a-9e53c61f1a0d&subaccount=1&limit=1000",
+ "status": 200,
+ "body": {
+  "fills": [
+   {
+    "fill_id": "f-0001",
+    "trade_id": "f-0001",
+    "order_id": "3b23c1c7-f4ef-4f0d-8b9a-9e53c61f1a0d",
+    "ticker": "KXFEDDECISION-26DEC-H0",
+    "market_ticker": "KXFEDDECISION-26DEC-H0",
+    "outcome_side": "no",
+    "book_side": "ask",
+    "count_fp": "3.00",
+    "yes_price_dollars": "0.0500",
+    "no_price_dollars": "0.9500",
+    "is_taker": true,
+    "created_time": "2026-11-25T15:00:00.120Z",
+    "fee_cost": "0.0100",
+    "subaccount_number": 1,
+    "exchange_index": 0
+   },
+   {
+    "fill_id": "f-0002",
+    "trade_id": "f-0002",
+    "order_id": "3b23c1c7-f4ef-4f0d-8b9a-9e53c61f1a0d",
+    "ticker": "KXFEDDECISION-26DEC-H0",
+    "market_ticker": "KXFEDDECISION-26DEC-H0",
+    "outcome_side": "no",
+    "book_side": "ask",
+    "count_fp": "1.00",
+    "yes_price_dollars": "0.0400",
+    "no_price_dollars": "0.9600",
+    "is_taker": true,
+    "created_time": "2026-11-25T15:00:00.121Z",
+    "fee_cost": "0.0100",
+    "subaccount_number": 1,
+    "exchange_index": 0
+   }
+  ],
+  "cursor": ""
+ }
+}

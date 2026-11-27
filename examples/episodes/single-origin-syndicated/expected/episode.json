@@ -1,0 +1,285 @@
+{
+  "episode_id": "episode-38dc68a545683e7a",
+  "mode": "replay",
+  "trigger": {
+    "trigger_id": "new-document:news:example-markets:fed-hold",
+    "kind": "new_document",
+    "at": "2026-10-20T14:25:00Z",
+    "doc_id": "news:example-markets:fed-hold",
+    "event_ticker": null,
+    "detail": "A synthetic news story (invented)."
+  },
+  "as_of": "2026-10-20T14:25:00Z",
+  "event_ticker": "KXFEDDECISION-26OCT",
+  "status": "done",
+  "exit": "insufficient_origins",
+  "exit_detail": "1 origin(s), 0 primary: the rule needs one primary or two independent secondary origins",
+  "passage_ids": [],
+  "origins": [],
+  "forecast": null,
+  "proposal": null,
+  "gate": null,
+  "routing": null,
+  "review": null,
+  "orders": [],
+  "fill_tagged": false,
+  "usage": {
+    "calls": 3,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cost_usd": "0",
+    "seconds": 0.0
+  },
+  "trace": [
+    {
+      "seq": 1,
+      "node": "trigger",
+      "kind": "observation",
+      "summary": "new_document trigger new-document:news:example-markets:fed-hold at 2026-10-20T14:25:00+00:00 (document news:example-markets:fed-hold)",
+      "role": null,
+      "data": {
+        "trigger": {
+          "trigger_id": "new-document:news:example-markets:fed-hold",
+          "kind": "new_document",
+          "at": "2026-10-20T14:25:00Z",
+          "doc_id": "news:example-markets:fed-hold",
+          "event_ticker": null,
+          "detail": "A synthetic news story (invented)."
+        }
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 2,
+      "node": "match",
+      "kind": "action",
+      "summary": "search the events index for the top 5 events as of 2026-10-20T14:25:00+00:00",
+      "role": null,
+      "data": {
+        "k": 5,
+        "excluded": []
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 3,
+      "node": "match",
+      "kind": "observation",
+      "summary": "1 candidate event(s): KXFEDDECISION-26OCT",
+      "role": null,
+      "data": {
+        "hits": [
+          {
+            "event_ticker": "KXFEDDECISION-26OCT",
+            "similarity": 0.18491005897521973
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 4,
+      "node": "match",
+      "kind": "thought",
+      "summary": "The story is about the October 27-28 rate decision.",
+      "role": "Monitor",
+      "data": {
+        "output": {
+          "matched": true,
+          "event_ticker": "KXFEDDECISION-26OCT",
+          "rationale": "The story is about the October 27-28 rate decision."
+        }
+      },
+      "call": {
+        "task": "match",
+        "slot": "monitor",
+        "role": "Monitor",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "low",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 5,
+      "node": "match",
+      "kind": "observation",
+      "summary": "matched event KXFEDDECISION-26OCT",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 6,
+      "node": "research",
+      "kind": "thought",
+      "summary": "One query for a hold, one for a hike.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "query_for": "officials favour holding the federal funds rate steady in October",
+          "query_against": "officials see a further increase in the federal funds rate in October",
+          "rationale": "One query for a hold, one for a hike."
+        }
+      },
+      "call": {
+        "task": "plan_queries",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 7,
+      "node": "research",
+      "kind": "action",
+      "summary": "retrieve the top 8 passages for two queries as of 2026-10-20T14:25:00+00:00",
+      "role": null,
+      "data": {
+        "queries": [
+          "officials favour holding the federal funds rate steady in October",
+          "officials see a further increase in the federal funds rate in October"
+        ],
+        "published_after": null
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 8,
+      "node": "research",
+      "kind": "observation",
+      "summary": "1 passage(s) retrieved",
+      "role": null,
+      "data": {
+        "passages": [
+          {
+            "passage_id": "news:example-markets:fed-hold#0",
+            "source": "example-markets.example",
+            "url": "https://example-markets.example/2026/10/20/fed-hold",
+            "published_at": "2026-10-20T14:20:00+00:00",
+            "score": 0.5433823824297304
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 9,
+      "node": "research",
+      "kind": "thought",
+      "summary": "The story reports officials' views on the October decision.",
+      "role": "Researcher",
+      "data": {
+        "output": {
+          "keep_passage_ids": [
+            "news:example-markets:fed-hold#0"
+          ],
+          "dropped": [],
+          "rationale": "The story reports officials' views on the October decision."
+        }
+      },
+      "call": {
+        "task": "select_passages",
+        "slot": "researcher",
+        "role": "Researcher",
+        "model": "claude-haiku-5-5",
+        "served_model": "claude-haiku-5-5",
+        "effort": "medium",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": "0",
+        "latency_ms": 0,
+        "source": "cassette",
+        "repaired": false
+      },
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 10,
+      "node": "research",
+      "kind": "observation",
+      "summary": "kept 1 of 1 passage(s)",
+      "role": null,
+      "data": {
+        "passage_ids": [
+          "news:example-markets:fed-hold#0"
+        ]
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 11,
+      "node": "research",
+      "kind": "action",
+      "summary": "resolve origins and apply the origin rule",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 12,
+      "node": "research",
+      "kind": "observation",
+      "summary": "1 independent origin(s), 0 primary",
+      "role": null,
+      "data": {
+        "origins": [
+          {
+            "origin_id": "news:example-wire:fed-hold",
+            "source": "example-wire.example",
+            "url": "https://example-wire.example/2026/10/20/fed-hold",
+            "published_at": "2026-10-20T14:00:00Z",
+            "is_primary": false
+          }
+        ]
+      },
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 13,
+      "node": "research",
+      "kind": "observation",
+      "summary": "exit insufficient_origins: 1 origin(s), 0 primary: the rule needs one primary or two independent secondary origins",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    },
+    {
+      "seq": 14,
+      "node": "record",
+      "kind": "observation",
+      "summary": "exit insufficient_origins: 1 origin(s), 0 primary: the rule needs one primary or two independent secondary origins; 0 ledger entries",
+      "role": null,
+      "data": {},
+      "call": null,
+      "at": "2026-10-20T14:25:00Z"
+    }
+  ],
+  "started_at": "2026-10-20T14:25:00Z",
+  "finished_at": "2026-10-20T14:25:00Z"
+}

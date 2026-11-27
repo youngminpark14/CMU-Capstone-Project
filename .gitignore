@@ -1,0 +1,24 @@
+# environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.ipynb_checkpoints/
+dist/
+build/
+*.egg-info/
+
+# secrets
+.env
+*.pem
+*.key
+
+# local data: the database, snapshot, corpus, indexes and caches are rebuilt, never committed
+/data/
+/runs/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db

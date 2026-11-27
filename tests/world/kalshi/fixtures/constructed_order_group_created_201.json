@@ -1,0 +1,10 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand from the CreateOrderGroupResponse schema in Kalshi's OpenAPI document (version 3.37.0, fetched 2026-11-24), because no demo credentials exist.",
+ "request": "POST /portfolio/order_groups/create",
+ "status": 201,
+ "body": {
+  "order_group_id": "og-new-1",
+  "subaccount": 1,
+  "exchange_index": 0
+ }
+}

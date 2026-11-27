@@ -1,0 +1,33 @@
+{
+  "source_url": "https://kalshi.com/docs/kalshi-fee-schedule.pdf",
+  "retrieved_on": "2026-11-25",
+  "retrieval_status": "not_retrieved",
+  "retrieval_note": "Every request for the PDF (and for https://kalshi.com/fee-schedule) on 2026-11-25 returned HTTP 429 with a 'Vercel Security Checkpoint' JavaScript challenge page instead of the document; a web-fetch tool got the same 429. An earlier attempt on 2026-11-24 hit the same checkpoint. No example was taken from the schedule itself. The challenge was not circumvented.",
+  "formula": "fee = round_up_to_cent(rate x multiplier x contracts x price x (1 - price)); taker rate 0.07; maker rate 0.0175 for quadratic_with_maker_fees, 0.035 for quadratic_with_combo_maker_fees, 0 for quadratic. Formula as recorded in docs/spec.md ('Facts checked on 2026-11-24', schedule effective 2026-07-07); maker rates per fee type from the FeeType description in the exchange's OpenAPI document.",
+  "hand_computed_note": "Cases labelled 'hand-computed' were worked out by hand with exact fractions from the formula above, not copied from the schedule. They pin the formula and the rounding, not the exchange's published numbers.",
+  "examples": [
+    {"label": "hand-computed", "contracts": 1, "price": "0.50", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.0175", "fee": "0.02"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.50", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "1.75", "fee": "1.75"},
+    {"label": "hand-computed", "contracts": 10, "price": "0.10", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.063", "fee": "0.07"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.01", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.0693", "fee": "0.07"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.99", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.0693", "fee": "0.07"},
+    {"label": "hand-computed", "contracts": 25, "price": "0.35", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.398125", "fee": "0.40"},
+    {"label": "hand-computed", "contracts": 1, "price": "0.01", "fee_type": "quadratic", "multiplier": "1", "taker": true, "exact_fee": "0.000693", "fee": "0.01"},
+    {"label": "hand-computed", "contracts": 20, "price": "0.75", "fee_type": "quadratic", "multiplier": "1", "taker": true, "exact_fee": "0.2625", "fee": "0.27"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.50", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": false, "exact_fee": "0.4375", "fee": "0.44"},
+    {"label": "hand-computed", "contracts": 10, "price": "0.25", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": false, "exact_fee": "0.0328125", "fee": "0.04"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.50", "fee_type": "quadratic", "multiplier": "1", "taker": false, "exact_fee": "0", "fee": "0.00"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.50", "fee_type": "quadratic_with_combo_maker_fees", "multiplier": "1", "taker": false, "exact_fee": "0.875", "fee": "0.88"},
+    {"label": "hand-computed", "contracts": 100, "price": "0.50", "fee_type": "quadratic_with_maker_fees", "multiplier": "0.5", "taker": true, "exact_fee": "0.875", "fee": "0.88"},
+    {"label": "hand-computed", "contracts": 10, "price": "0.30", "fee_type": "quadratic_with_maker_fees", "multiplier": "2", "taker": true, "exact_fee": "0.294", "fee": "0.30"},
+    {"label": "hand-computed", "contracts": 0, "price": "0.50", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0", "fee": "0.00"},
+    {"label": "hand-computed", "contracts": 10, "price": "0.0550", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.0363825", "fee": "0.04"},
+    {
+      "label": "exchange-docs",
+      "source_url": "https://docs.kalshi.com/getting_started/fee_rounding.md",
+      "retrieved_on": "2026-11-25",
+      "note": "The 'FCM-cleared fill' worked example states a buy with -$0.055000 signed revenue and a model fee of $0.00363825. With multiplier 1 that is uniquely 1 contract at $0.055 (0.07 x 1 x 0.055 x 0.945). Only the model fee is stated there; the exchange then rounds the balance change, not the fee, so the cent-rounded fee below is this module's conservative estimate, not a number from that page.",
+      "contracts": 1, "price": "0.055", "fee_type": "quadratic_with_maker_fees", "multiplier": "1", "taker": true, "exact_fee": "0.00363825", "fee": "0.01"
+    }
+  ]
+}
