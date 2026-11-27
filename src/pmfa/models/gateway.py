@@ -245,9 +245,9 @@ class Gateway:
                 repair=repair,
             )
         except BaseException:
-            self.meter.add(episode_id, usage_of(seconds=max(0.0, self._timer() - started)))
+            self.meter.add(episode_id, usage_of(seconds=self._elapsed(started)))
             raise
-        seconds = max(0.0, self._timer() - started)
+        seconds = self._elapsed(started)
         self.meter.add(
             episode_id,
             usage_of(
@@ -258,6 +258,14 @@ class Gateway:
             ),
         )
         return completion, seconds
+
+    def _elapsed(self, started: float) -> float:
+        """Seconds since ``started``, to the millisecond.
+
+        A cassette and the cache store a call's latency in whole milliseconds. Measuring
+        each attempt in that unit makes a replay charge exactly what the live call did.
+        """
+        return round(max(0.0, self._timer() - started), 3)
 
     def _worst_case(
         self, output_type: type[Record], assignment: ModelAssignment, prompt: Prompt

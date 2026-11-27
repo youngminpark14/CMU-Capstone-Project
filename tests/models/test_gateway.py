@@ -328,6 +328,29 @@ def test_cassette_records_then_replays(tmp_path):
     assert player.remaining("ep-1") == 0
 
 
+def test_a_replay_charges_the_same_seconds_as_the_live_calls_did(tmp_path):
+    """A live call does not take a whole number of milliseconds; a cassette stores milliseconds."""
+    gw, _ = gateway(
+        [ok(MATCH_OUT), raw("bad"), ok(MATCH_OUT), ok(MATCH_OUT), raw("x"), raw("y")],
+        recorder=CassetteRecorder(tmp_path),
+        timer=Ticker(1.23456789),  # every attempt takes this long
+    )
+    for _ in range(3):  # the second call is repaired: two attempts
+        assert gw.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-1").output == MATCH_OUT
+    with pytest.raises(ModelOutputError):  # two attempts, no usable answer
+        gw.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-2")
+
+    player = CassettePlayer.from_paths(tmp_path)
+    for _ in range(3):
+        player.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-1")
+    with pytest.raises(ModelOutputError):
+        player.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-2")
+    assert player.usage("ep-1") == gw.usage("ep-1")
+    assert player.usage("ep-2") == gw.usage("ep-2")
+    assert gw.usage("ep-1").seconds == 4.94  # four attempts of 1.235 s
+    assert gw.usage("ep-2").seconds == 2.47
+
+
 def test_replay_with_a_changed_input_is_a_cassette_miss(tmp_path):
     gw, _ = gateway([ok(MATCH_OUT)], recorder=CassetteRecorder(tmp_path))
     gw.call(RoleTask.MATCH, MATCH_IN, episode_id="ep")
