@@ -10,8 +10,13 @@
    before close), every system forecasts every listed market of the event as
    of that time: the market's price, the one-call baselines, and a full pipeline
    episode from a schedule trigger. One simulated clock and one state store.
-   Nothing is settled until the run ends, so each scoring forecast is made
-   without the outcomes of earlier ones.
+   When the pipeline runs, the outcome resolver runs before each point's
+   forecasts, as before each trading episode: it writes back every result the
+   exchange shows as settled at the point's as-of time, so the paper account
+   and the stops read it, and the critic is given earlier forecasts resolved
+   before that time, counted in whole seconds, as calibration examples. At the
+   end of the run the resolver settles the rest. The market and the one-call
+   baselines read no outcome.
 5. **Trading pass** (pipeline only). Every corpus document in the window, in
    time order, triggers an episode on one continuous clock and a second store,
    so holdings, the ledger and the bankroll carry forward. An episode starts no
@@ -472,14 +477,14 @@ def _scoring_pass(
 ) -> World | None:
     """Every running system at every scoring point. Returns the scoring world (for the final resolve).
 
-    The pass exists to score forecasts, and it settles nothing until the run
-    ends: no outcome is written back between points. So a pipeline forecast
-    here is made without the outcomes of earlier scoring forecasts (the critic
-    gets no calibration example from them). The pipeline's episodes still
-    size, gate and fill on one paper account, but that account never realizes
-    a result during the pass: a settled holding stays in it at cost, the
-    bankroll leaves out settled profit and loss, and the calibration stop has
-    nothing resolved to read. Its orders are not reported as trades; the
+    The pass exists to score forecasts. When the pipeline runs, the outcome
+    resolver runs at each point's as-of time before any system forecasts there,
+    the same call the trading pass makes before each episode. The critic's
+    calibration examples come from the ledger index, which compares whole
+    seconds, so a result settled in the last second before a point, or at it,
+    reaches the paper account at that point and the critic only at a point
+    with a later as-of time. A halt stops orders only: every point is still
+    forecast and scored. The pass's orders are not reported as trades; the
     trading pass is the trading simulation.
     """
     from pmfa.state.store import SqliteStore
@@ -512,6 +517,10 @@ def _scoring_pass(
     done = 0
     for point in points:
         clock.set(point.as_of)
+        if PIPELINE in running:
+            # Write back what has settled by now before any system forecasts here,
+            # as the trading pass does before each episode.
+            run.audits.extend(resolve_outcomes(world, now=clock.now()).audits)
         event = world.exchange.get_event(point.event_ticker)
         prices = market_prices(event)
         results = _results(data, point.event_ticker)

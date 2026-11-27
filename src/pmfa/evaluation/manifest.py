@@ -271,6 +271,15 @@ LEAKAGE_CONTROLS = [
     "time, so an episode can start later than its trigger, with that later time as its as-of "
     "time; the report counts these late starts. The scoring pass keeps its fixed as-of times "
     "and relies on that time filter.",
+    "When the pipeline runs, the outcome resolver runs before each scoring point and each "
+    "trading episode and writes back every result the snapshot exchange shows as settled at "
+    "that as-of time; nothing settled after it is read. The paper account settles those "
+    "markets and the stops read them. The critic is given up to retrieval.ledger_k of the "
+    "pipeline's earlier forecasts that resolved before the as-of time, same category first, "
+    "and the calibration stop counts the entries resolved before it. The ledger index "
+    "compares whole seconds, so a result settled in the last second before an as-of time, or "
+    "at it, reaches the paper account then and the critic only at a later as-of time. The "
+    "market and the one-call baselines read no outcome.",
     "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, "
     "and no port in the backtest world holds an HTTP client.",
     "The response cache key includes the as-of time, which is part of every role input.",

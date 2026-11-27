@@ -12,9 +12,10 @@ What a rehearsal is for: it drives the pipeline around the models over the real
 snapshot and corpus before any money is spent. It builds the retrieval indexes,
 runs every scoring point for every system and every news trigger of the trading
 pass, sizes and gates orders against real books, fills them from real candles,
-applies the stops, saves traces and replays each one, and writes the report. A
-rehearsal that passes shows a paid run will not fail on the data or on those
-steps.
+settles outcomes before each scoring point and each news trigger (so later
+critics are given calibration examples), applies the stops, saves traces and
+replays each one, and writes the report. A rehearsal that passes shows a paid
+run will not fail on the data or on those steps.
 
 What it does not exercise is the model side. The fixed rules stand in for the
 gateway, so its structured-output schemas, the response cache, cassette
@@ -251,6 +252,26 @@ def _problems(run_dir: Path, manifest: RunManifest, metrics: dict[str, Any]) -> 
     return problems
 
 
+def _calibration_examples(run_dir: Path, models: ScriptedModels) -> tuple[int, int]:
+    """Scoring-pass pipeline episodes whose critic got calibration examples, of those it scored.
+
+    The scoring pass settles before each scoring point, so once an earlier
+    event has resolved, a later point's critic is given its outcomes.
+    """
+    from pmfa.evaluation.backtest import EPISODES_FILE
+
+    lines = (run_dir / EPISODES_FILE).read_text(encoding="utf-8").splitlines()
+    scoring = {
+        e["episode_id"] for e in map(json.loads, lines) if e["trigger"]["kind"] == "schedule"
+    }
+    seen: dict[str, bool] = {}
+    for call in models.calls:
+        if call.task is RoleTask.SCORE and call.episode_id in scoring:
+            examples = bool(getattr(call.payload, "ledger_examples", []))
+            seen[call.episode_id] = seen.get(call.episode_id, False) or examples
+    return sum(seen.values()), len(seen)
+
+
 def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[bool, list[str]]:
     """Run the rehearsal into ``run_dir``. Returns whether it passed and the summary lines.
 
@@ -267,11 +288,12 @@ def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[
             f"{run_dir} holds a run this script did not make; choose another --run-name"
         )
     shutil.rmtree(run_dir, ignore_errors=True)
+    models = rehearsal_models(config)
     manifest = run_backtest(
         config,
         run_dir=run_dir,
         systems=ALL_SYSTEMS,
-        models=rehearsal_models(config),
+        models=models,
         save_examples=save_examples,
     )
     manifest = manifest.model_copy(update={"notes": [REHEARSAL_NOTE, *manifest.notes]})
@@ -295,6 +317,11 @@ def rehearse(config: Config, run_dir: Path, *, save_examples: int = 6) -> tuple[
                 f"{name} pass halted itself at {halt['first_started_at']}: {halt['reason']} "
                 f"({halt['n_halted_from_then']} of {halt['n_from_then']} episode(s) from then ended halted)"
             )
+    given, scored = _calibration_examples(run_dir, models)
+    lines.append(
+        f"scoring pass: the critic was given calibration examples in {given} of {scored} "
+        "pipeline episode(s) that reached it"
+    )
     late = metrics.get("late_starts")
     if late:
         lines.append(f"late starts: {late['episodes']} of {late['of']} trading episode(s)")

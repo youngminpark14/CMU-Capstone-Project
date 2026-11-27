@@ -166,7 +166,7 @@ def test_a_self_halt_is_stated_for_each_pass(full_run: FullRun, tmp_path: Path) 
             assert value not in parts[name], (name, value)
     trading_part, scoring_part = parts["trading"], parts["scoring"]
     assert "no further orders" in trading_part and "no further orders" not in scoring_part
-    assert "scores are not affected" in scoring_part
+    assert "every scoring point is still forecast and scored" in scoring_part
     assert TRADING_HALT["first_started_at"] in parts["money"]
     assert SCORING_HALT["first_started_at"] not in parts["money"]
 

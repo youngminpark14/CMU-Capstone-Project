@@ -1100,11 +1100,16 @@ def _error_concentration(w: Any, manifest: Any, metrics: dict[str, Any], shown: 
 
 
 SCORING_PASS_NOTE = (
-    "The scoring pass exists to score forecasts. Its pipeline episodes also size, gate and "
-    "fill on a paper account, but nothing is settled until the run ends: that account never "
-    "realizes a result during the pass, and no scoring forecast sees the outcome of an earlier "
-    "one. Its tiers and its exits after the forecast step therefore say little about trading, "
-    "and its orders are not in the trading results. The trading pass is the trading simulation."
+    "The scoring pass exists to score forecasts. Before each scoring point the outcome resolver "
+    "writes back every result the snapshot exchange shows as settled at the point's as-of "
+    "time. The pipeline's episodes size, gate and fill on a paper account that settles those "
+    "markets, its stops read them, and its critic is given earlier forecasts that resolved "
+    "before then (counted in whole seconds) as calibration examples; the market and the "
+    "one-call baselines read no "
+    "outcome. The points follow the calendar, not the news, and never wait for an earlier "
+    "order's outcome, so the pass's tiers and its exits after the forecast step say little "
+    "about trading, and its orders are not in the trading results. The trading pass is the "
+    "trading simulation."
 )
 """Printed above the first per-pass table, so the scoring pass's rows are not read as trading."""
 
@@ -1123,8 +1128,8 @@ def _self_halt_sentence(name: str, halt: dict[str, Any]) -> str:
             "orders, so the trading results describe the run only up to the halt.\n"
         )
     return (
-        head + " Forecasts are made before the gate, where the halt stops an episode, so the "
-        "scores are not affected.\n"
+        head + " The halt stops only orders: each forecast is made before the gate, so "
+        "every scoring point is still forecast and scored.\n"
     )
 
 

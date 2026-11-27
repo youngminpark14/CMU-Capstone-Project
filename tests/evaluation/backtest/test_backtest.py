@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,26 @@ def test_resolver_writes_brier_scores_and_the_pruning_audit(full_run: FullRun) -
     metrics = json.loads((full_run.run_dir / "metrics.json").read_text())
     assert metrics["pruning"]["summary"]["n_episodes"] >= len(audited)
     store.close()
+
+
+def test_each_pruning_audit_is_counted_once_across_the_resolves(full_run: FullRun) -> None:
+    """Both passes resolve before their episodes and again at the end; an audit is made once."""
+    metrics = json.loads((full_run.run_dir / "metrics.json").read_text())
+    counted = [a["episode_id"] for a in metrics["pruning"]["episodes"]]
+    assert len(counted) == len(set(counted))
+    audited: dict[str, dict[str, list[datetime]]] = {}
+    for name in ("scoring.sqlite", "trading.sqlite"):
+        store = SqliteStore(full_run.run_dir / "work" / name)
+        audited[name] = {}
+        for e in store.list_episodes():
+            steps = [s.at for s in store.get_trace(e.episode_id) if s.node == RESOLUTION_NODE]
+            if steps:
+                audited[name][e.episode_id] = steps
+        store.close()
+    every = {**audited["scoring.sqlite"], **audited["trading.sqlite"]}
+    assert sorted(counted) == sorted(every)
+    assert all(len(times) == 1 for times in every.values())
+    assert metrics["pruning"]["summary"]["n_episodes"] == len(counted)
 
 
 @pytest.mark.parametrize("store_name", ["scoring.sqlite", "trading.sqlite"])

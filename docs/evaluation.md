@@ -123,7 +123,7 @@ and the corpus:
 
 | Schedule | What it is | Used for |
 | --- | --- | --- |
-| Scoring points | Every settled event closing in the window, at fixed horizons of 7, 3 and 1 days before close. A point before the window start or before the event opened is skipped, with the reason recorded. | The forecast metrics. Every system forecasts every listed market of the event as of the point. Nothing is settled until the run ends, so no scoring forecast sees the outcome of an earlier one (the critic gets no calibration example from them). The pipeline's episodes still size, gate and fill on one paper account, which never realizes a result during the pass, and its orders are not reported as trades. |
+| Scoring points | Every settled event closing in the window, at fixed horizons of 7, 3 and 1 days before close. A point before the window start or before the event opened is skipped, with the reason recorded. | The forecast metrics. Every system forecasts every listed market of the event as of the point. When the pipeline runs, the outcome resolver writes back, before each point's forecasts, every result the snapshot exchange shows as settled at the point's as-of time: the pipeline's paper account settles those markets, its stops read them, and its Critic is given up to five of the pipeline's earlier forecasts that resolved before the as-of time (counted in whole seconds), same category first. The market and the one-call baselines read no outcome. The pipeline's episodes size, gate and fill on one paper account, and its orders are not reported as trades. |
 | Trading triggers | Every corpus document published in the window, in time order, as a new-document trigger at its publish time. | The trading simulation. The full pipeline runs on one continuous simulated clock, so holdings, the ledger and the bankroll carry forward. The outcome resolver settles what had settled before each episode starts (at its trigger's time, or later after a late start; see "Leakage controls"), and the rest at the end, once the last order's outcome has passed. |
 
 The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trading triggers.
@@ -292,10 +292,10 @@ is not modelled.
 
 A backtest applies the same stops as the live modes
 ([execution/halt.py](../src/pmfa/execution/halt.py)), and both passes start with an equity point at
-the window's start, the bankroll the stops measure from. The scoring pass settles nothing until the
-run ends, so there the calibration stop has nothing resolved to read and cannot trip, and the daily
-loss stop and the drawdown halt never see a settled result. Two of the stops are likely to trip
-early in the trading pass.
+the window's start, the bankroll the stops measure from. When the pipeline runs, both passes settle
+outcomes as the clock passes them (the scoring pass before each scoring point, the trading pass
+before each episode), so the stops read settled results in both. Two of the stops are likely to
+trip early: the fill-failure stop in the trading pass, and the calibration stop in either pass.
 
 The fill-failure stop trips when more than `oversight.fill_failure_halt_fraction` (0.10) of the last
 `oversight.fill_failure_window` (10) orders did not fill, that is two or more in ten, once ten
@@ -316,8 +316,8 @@ market's own prices on its 63 scored rows have an expected calibration error of 
 0.0559 over all 312 rows (computed from the published `forecasts.csv` with ten equal bins, as
 [metrics.py](../src/pmfa/evaluation/metrics.py) does). An agent whose forecasts of that release are
 no better calibrated than the market's would trip the calibration stop about two weeks after it,
-near the end of July, and the trading simulation would then place no order for the rest of the
-window. This too is an expectation from the data, not an observed result.
+near the end of July, in the scoring pass and in the trading pass alike, and neither would place an
+order for the rest of the window. This too is an expectation from the data, not an observed result.
 
 Nobody resumes a halt in a backtest: once a stop trips, the later episodes of that pass still run,
 and every one that reaches the gate has already forecast and spent model calls, ends `halted` there
@@ -325,11 +325,11 @@ and sends no order. An episode that exits earlier, such as `no_match` or `no_edg
 never reads the halt and keeps that exit; `self_halts` in `metrics.json` counts how many ended
 halted from then on. The report states each pass's halt under "Exits by reason", and under
 "Simulated trading after fees" says that the trading figures describe the run only up to the halt.
-A halt in the scoring pass does not change the scores, because the forecast is made before the
-gate, and `pmfa backtest --no-trade` runs the scoring pass alone. Setting
-`oversight.fill_failure_window = 0` in the configuration a run reads turns the fill-failure stop
-off; `oversight.calibration_halt_weeks` and `routing.calibration_error_max` are the settings behind
-the calibration stop (the second also decides the auto tier). Whether these stops should apply
+A halt in the scoring pass stops only its orders: each forecast is made before the gate, so every
+scoring point is still forecast and scored. `pmfa backtest --no-trade` runs the scoring pass alone.
+Setting `oversight.fill_failure_window = 0` in the configuration a run reads turns the fill-failure
+stop off; `oversight.calibration_halt_weeks` and `routing.calibration_error_max` are the settings
+behind the calibration stop (the second also decides the auto tier). Whether these stops should apply
 inside a backtest is an open question.
 
 ### What a run writes and what is committed
@@ -352,16 +352,16 @@ reason, and how many episodes ended halted from then on), and, when a trading pa
 `late_starts` (how many trading episodes started later than their trigger, of how many, and the
 longest wait in seconds). `pmfa report RUN_DIR` adds `report.md` and `figures/` from the manifest
 and metrics alone ([report.py](../src/pmfa/evaluation/report.py)). When the scoring pass ran
-pipeline episodes, the report says above its first per-pass table, in "Routing tiers", that nothing
-in that pass is settled until the run ends, so its tiers and its exits after the forecast step say
-little about trading. `--publish NAME` copies `manifest.json`, `forecasts.csv`, `metrics.json`,
-`report.md`, `figures/` and `traces/` to `evaluation/runs/NAME/`, and the published manifest's
-`outputs` lists exactly those files. It refuses a run whose models were supplied by the caller
-(scripted answers in a test, or a rehearsal): it prints `not published: ...`, exits 1 and copies
-nothing to `evaluation/runs/` (the report is still built in the run directory). `trades.csv` and
-`episodes.jsonl` stay in the local run directory. A run made from a working tree with uncommitted
-changes says so in its report, in the published manifest's notes and in a warning when it is
-published: its commit does not hold exactly the code that produced it.
+pipeline episodes, the report says above its first per-pass table, in "Routing tiers", that the
+pass's points follow the calendar and never wait for an earlier order's outcome, so its tiers and
+its exits after the forecast step say little about trading. `--publish NAME` copies `manifest.json`,
+`forecasts.csv`, `metrics.json`, `report.md`, `figures/` and `traces/` to `evaluation/runs/NAME/`,
+and the published manifest's `outputs` lists exactly those files. It refuses a run whose models were
+supplied by the caller (scripted answers in a test, or a rehearsal): it prints `not published: ...`,
+exits 1 and copies nothing to `evaluation/runs/` (the report is still built in the run directory).
+`trades.csv` and `episodes.jsonl` stay in the local run directory. A run made from a working tree
+with uncommitted changes says so in its report, in the published manifest's notes and in a warning
+when it is published: its commit does not hold exactly the code that produced it.
 
 ## Results
 
@@ -447,17 +447,18 @@ uv run python scripts/rehearse_backtest.py
 ```
 
 On the 2026-11-25 data it passed: 105 scoring forecasts (21 points for each of 5 systems), 21
-pipeline episodes in the scoring pass (executed 9, `no_edge` 12) and 55 in the trading pass
-(executed 2, halted 8, `no_edge` 30, `no_match` 15), 2 trading orders (neither filled), and six
-saved traces that all replay and match. The canary checks covered all 103 retrievals and the 76
-finished episodes and found nothing, and no trading episode started late. Its trading pass halted
-itself on the calibration stop on 2026-07-29 ("cpi error above 0.1 for 2 weeks"), and from then on
-8 of 44 trading episodes ended halted. This shows that the pipeline around the models runs end to
-end on the real data and that a stop trips and is reported. It shows nothing about forecasting: its
-answers are fixed rules, so its scores, trades and halt say nothing about how a model would do.
-`pmfa report --publish` refuses a run whose models were supplied by the caller, such as a
-rehearsal: it prints `not published: ...`, exits 1 and copies nothing to `evaluation/runs/` (the
-report is still built in the run directory).
+pipeline episodes in the scoring pass (executed 2, halted 7, `no_edge` 12) and 55 in the trading
+pass (executed 2, halted 8, `no_edge` 30, `no_match` 15), 2 trading orders (neither filled), and six
+saved traces that all replay and match. The Critic was given calibration examples in 18 of the 21
+scoring episodes. The canary checks covered all 103 retrievals and the 76 finished episodes and
+found nothing, and no trading episode started late. Both passes halted themselves on the calibration
+stop ("cpi error above 0.1 for 2 weeks"): the scoring pass on 2026-07-28, after which 7 of 16
+scoring episodes ended halted, and the trading pass on 2026-07-29, after which 8 of 44 did. This
+shows that the pipeline around the models runs end to end on the real data and that a stop trips and
+is reported. It shows nothing about forecasting: its answers are fixed rules, so its scores, trades
+and halt say nothing about how a model would do. `pmfa report --publish` refuses a run whose models
+were supplied by the caller, such as a rehearsal: it prints `not published: ...`, exits 1 and copies
+nothing to `evaluation/runs/` (the report is still built in the run directory).
 
 #### The Claude API key
 
