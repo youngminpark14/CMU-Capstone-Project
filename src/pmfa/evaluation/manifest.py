@@ -284,7 +284,8 @@ LEAKAGE_CONTROLS = [
     "and no port in the backtest world holds an HTTP client.",
     "The response cache key includes the as-of time, which is part of every role input.",
     "The run refuses to start if any assigned model's listed knowledge cutoff falls on or "
-    "after the window start.",
+    "after the window start. The server-side refusal fallback is off in a backtest, so no "
+    "model other than the assigned ones can answer.",
 ]
 
 COST_CONTROLS = [

@@ -194,6 +194,9 @@ def test_manifest_records_what_produced_the_numbers(full_run: FullRun) -> None:
     assert m.plan.scoring_points == 6 and m.plan.triggers == 3
     assert m.seed == full_run.config.evaluation.seed
     assert m.config["state"]["transport"] == "direct"
+    # Forced off in a backtest, whatever the configuration says (it says "default" here).
+    assert full_run.config.models.refusal_fallback == "default"
+    assert m.config["models"]["refusal_fallback"] == "off"
     assert m.snapshot_manifest["counts"]["events"] == 2
     assert m.leakage_controls and m.cost_controls and m.fill_assumptions
     assert m.models_source == "supplied"

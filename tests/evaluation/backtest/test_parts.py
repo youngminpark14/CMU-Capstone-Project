@@ -30,6 +30,22 @@ def test_subsample_is_even_and_keeps_the_ends() -> None:
     assert subsample([1, 2, 3], 1) == ([1], [2, 3])
 
 
+def test_a_backtest_never_asks_for_the_server_side_refusal_fallback() -> None:
+    """Only the assigned models, whose knowledge cutoffs the run checked, may answer."""
+    from pmfa.config import default_config
+    from pmfa.models.backend import AnthropicBackend
+    from pmfa.world.backtest import backtest_config
+
+    config = default_config()
+    assert AnthropicBackend.from_config(config).uses_fallback("claude-fable-5-2")
+    forced = backtest_config(config)
+    assert forced.models.refusal_fallback == "off"
+    backend = AnthropicBackend.from_config(forced)
+    assert not any(backend.uses_fallback(slot.model) for slot in forced.models.slots.values())
+    # Nothing else about the models changes.
+    assert forced.models.model_copy(update={"refusal_fallback": "default"}) == config.models
+
+
 def test_schedule_is_deterministic(data_config: Config) -> None:
     from pmfa.evaluation.schedule import build_schedule
 

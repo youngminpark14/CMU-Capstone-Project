@@ -8,7 +8,7 @@ LangChain's `ChatAnthropic` has an `effort` field, but setting it also adds a th
 
 ## Decision
 
-The backend ([backend.py](../../src/pmfa/models/backend.py)) passes effort as `output_config.effort` and sends no thinking parameter and no `temperature`, `top_p` or `top_k`. Output uses `with_structured_output(..., method="json_schema")`; every output record forbids extra fields, so every schema object sets `additionalProperties: false`, and ranges are stated in field descriptions and enforced by validators after parsing ([records/roles.py](../../src/pmfa/records/roles.py)). The server-side refusal fallback is on by default (`models.refusal_fallback`) for the models whose documentation lists it, not for Haiku 5.5. The model that actually served each answer is recorded on the call (`CallMeta.served_model`) and priced.
+The backend ([backend.py](../../src/pmfa/models/backend.py)) passes effort as `output_config.effort` and sends no thinking parameter and no `temperature`, `top_p` or `top_k`. Output uses `with_structured_output(..., method="json_schema")`; every output record forbids extra fields, so every schema object sets `additionalProperties: false`, and ranges are stated in field descriptions and enforced by validators after parsing ([records/roles.py](../../src/pmfa/records/roles.py)). The server-side refusal fallback is on by default (`models.refusal_fallback`) for the models whose documentation lists it, not for Haiku 5.5. A backtest forces it off, because the knowledge-cutoff guard checks only the assigned models ([world/backtest.py](../../src/pmfa/world/backtest.py)). The model that actually served each answer is recorded on the call (`CallMeta.served_model`) and priced.
 
 ## Consequences
 

@@ -197,7 +197,8 @@ class ModelsConfig(Section):
     }
     api_key_env: str = "ANTHROPIC_API_KEY"
     refusal_fallback: Literal["default", "off"] = "default"
-    """Server-side fallback when a model declines a request. The serving model is recorded per call."""
+    """Server-side fallback when a model declines a request. The serving model is recorded per
+    call. A backtest forces it off (``pmfa.world.backtest.backtest_config``)."""
     request_timeout_seconds: float = 180.0
     roles_runner: Literal["auto", "crewai", "gateway"] = "auto"
     """``auto`` runs roles through CrewAI when it is installed, else calls the gateway directly."""

@@ -116,6 +116,12 @@ cutoff listed for every default model. A model that may have read about an outco
 offending slot, if any assigned model's listed cutoff (`models.catalog`) falls on or after the window
 start. The manifest records each slot's model, effort and listed cutoff.
 
+The guard checks the assigned models, so a backtest also runs with the server-side refusal fallback
+off, whatever `models.refusal_fallback` says (`backtest_config` in
+[world/backtest.py](../src/pmfa/world/backtest.py)): with it on, a request that one model declines
+would be answered by another model whose cutoff was not checked. A declined request is an unusable
+answer instead.
+
 ### Two schedules
 
 [schedule.py](../src/pmfa/evaluation/schedule.py) builds two deterministic lists from the snapshot
@@ -206,7 +212,7 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
 | In the trading pass an episode starts at the latest of its trigger's time, the clock's time and the latest stored order outcome. An episode that starts later than its trigger runs with that later time as its as-of time, and the report counts these late starts. The scoring pass keeps its fixed as-of times and relies on the time filter of the row above. | `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
 | No web access: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and no port holds an HTTP client. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | The response cache key includes the as-of time, which every role input carries, so a question asked at a later time is a different entry. | [models/cache.py](../src/pmfa/models/cache.py) |
-| The knowledge-cutoff guard described above. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
+| The knowledge-cutoff guard described above, and no server-side refusal fallback in a backtest, so only the assigned models can answer. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py); `backtest_config` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 
 ### Cost controls
 
