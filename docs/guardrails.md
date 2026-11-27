@@ -349,7 +349,7 @@ configured request timeout or the seconds the episode has left, whichever is sho
 | Model calls per episode | 30 |
 | Dollars per episode | $2.00 |
 | Seconds of model time per episode | 90, live modes only |
-| Dollars per run | $25.00 |
+| Dollars per run | $100.00 |
 
 A cap reached during the tree search ends the search: the scenarios scored so far are aggregated
 and confidence is halved. A cap reached before the search (in matching or research) ends the episode

@@ -174,6 +174,10 @@ The suite is offline and deterministic. On every push and pull request CI runs `
 export ANTHROPIC_API_KEY=...
 ```
 
+Create the key in the [Claude Console](https://platform.claude.com/settings/keys) and select a
+workspace for it there. A key that is not scoped to one workspace is refused unless each request
+names its workspace; for such a key, also set `ANTHROPIC_WORKSPACE_ID`.
+
 Rebuild the frozen data first. This step reads public Kalshi market data and Federal Reserve and BLS
 pages and needs no key. The snapshot build is resumable: after an interruption, run it again and it
 continues with the first market it had not finished.
@@ -360,7 +364,7 @@ The most important defaults:
 | Notional bankroll (backtest, shadow) | $1,000 |
 | Proposal expiry | 10 minutes |
 | Budget per episode | 30 model calls, $2.00, and in live modes 90 seconds spent waiting on model calls (other steps are not timed) |
-| Budget per run | $25.00 |
+| Budget per run | $100.00 |
 | Backtest window start | 2026-07-01 |
 
 ## Guardrails

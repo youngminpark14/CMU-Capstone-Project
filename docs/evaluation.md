@@ -183,7 +183,7 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   stops after its first call; the ceiling bounds every call an episode can make, with each
   evidence follow-up's re-score priced on the critic slot of its level. When the ceiling exceeds the
   run's cap, the plan says the run would stop partial.
-- **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $25)
+- **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $100)
   before every call ([meter.py](../src/pmfa/models/meter.py)), against the call's worst-case cost,
   so a call that could take the run past the cap is not sent and the cap is a ceiling. When it trips, the run stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
@@ -439,11 +439,11 @@ single_pass_similarity   not run: no API key           21      21-21            
 pipeline                 not run: no API key           76      76-1683          0.04-85.99
                           scheduled episodes by tree depth: depth 1: 18, depth 2: 3
                           55 news-triggered episode(s), each bounded with a full depth-3 tree after one Monitor call
-                          the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($25) is the real ceiling
+                          the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($100) is the real ceiling
                           the floor assumes every episode stops after its first call (no candidate event, or no evidence)
 
-Estimated total: $16.93 to $102.87 (run cap $25)
-The maximum exceeds the run's dollar cap of $25: if the run spends that much it stops at the cap and is marked partial, with what it did not run listed.
+Estimated total: $16.93 to $102.87 (run cap $100)
+The maximum exceeds the run's dollar cap of $100: if the run spends that much it stops at the cap and is marked partial, with what it did not run listed.
 Assumptions:
   - Prices are the catalog's dollars per million tokens (config.models.catalog).
   - baseline on claude-fable-5-2: assumed 1500 input and 6000 output tokens, $0.2520 per call
@@ -457,10 +457,11 @@ Assumptions:
   - Answers already in the response cache cost nothing on a rerun; the estimate does not subtract them.
 ```
 
-With the default systems (without `single_pass_similarity`) the total is $11.13 to $97.08. The
-estimate uses assumed token counts until the cache holds recorded costs; the high-effort calls are
-assumed to write 6,000 output tokens each, thinking included. The upper end exceeds the default $25
-cap, so a full run at the default cap would stop partway and be marked partial.
+With the default systems (without `single_pass_similarity`) the total is $11.13 to $97.08, inside
+the default $100 cap. The estimate uses assumed token counts until the cache holds recorded costs;
+the high-effort calls are assumed to write 6,000 output tokens each, thinking included. With all
+five systems the upper end exceeds the cap, so a run that spent the maximum would stop there and be
+marked partial.
 
 **2. A subsample.** Three scoring points and three triggers; the dry run estimated $1.59 to $7.28 for
 the default systems. Its report shows the real cost per call and per episode, and its answers stay in

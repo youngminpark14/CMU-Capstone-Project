@@ -149,7 +149,7 @@ knowledge_cutoff = 2026-06-30
 max_calls_per_episode = 30
 max_seconds_per_episode = 90.0
 max_usd_per_episode = 2
-max_usd_per_run = 25
+max_usd_per_run = 100
 
 # The scenario tree: depth, beam, coverage floor, follow-ups, the fast path.
 [forecast]

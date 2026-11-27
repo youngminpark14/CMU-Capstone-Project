@@ -7,7 +7,13 @@ from typing import Any
 
 import pytest
 
-from pmfa.models.backend import FALLBACK_BETA, AnthropicBackend, MissingApiKey
+from pmfa.models.backend import (
+    FALLBACK_BETA,
+    WORKSPACE_ENV,
+    WORKSPACE_HEADER,
+    AnthropicBackend,
+    MissingApiKey,
+)
 from pmfa.models.gateway import Gateway
 from pmfa.models.roles.prompts import render
 from pmfa.models.roles.runner import DirectRunner
@@ -154,6 +160,20 @@ def test_the_key_is_read_from_the_environment_at_call_time(monkeypatch):
     headers = capture.requests[0]["headers"]
     assert FAKE_KEY in headers.get("x-api-key", "") + headers.get("authorization", "")
     assert FAKE_KEY not in repr(vars(b))
+
+
+def test_a_workspace_id_in_the_environment_is_sent_with_every_request(monkeypatch):
+    """A key that is not scoped to one workspace is refused unless each request names one."""
+    monkeypatch.delenv(WORKSPACE_ENV, raising=False)
+    answer = message(OUTPUTS[RoleTask.MATCH].model_dump_json(), model="m")
+    capture = Capture(answer, answer)
+    b = backend(capture)
+    complete(b, RoleTask.MATCH, model="claude-haiku-5-5")
+    assert WORKSPACE_HEADER not in capture.requests[0]["headers"]
+
+    monkeypatch.setenv(WORKSPACE_ENV, "wrkspc_test")
+    complete(b, RoleTask.MATCH, model="claude-haiku-5-5")
+    assert capture.requests[1]["headers"][WORKSPACE_HEADER] == "wrkspc_test"
 
 
 def test_a_refusal_comes_back_as_a_stop_reason():

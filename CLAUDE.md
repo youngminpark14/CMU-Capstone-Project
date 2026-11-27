@@ -93,3 +93,5 @@ tier, ledger, stage, world, run mode, cassette, risk unit: defined in `docs/spec
 - **Claude API.** Effort is `output_config.effort`; structured output is `output_config.format`
   with a JSON schema whose objects all set `additionalProperties: false` and use no numeric or
   string constraints. Sampling parameters (`temperature`, `top_p`, `top_k`) are rejected.
+  A key that is not scoped to one workspace needs the `anthropic-workspace-id` header on every
+  request (400 without it); the backend sends it from `ANTHROPIC_WORKSPACE_ID` when set.

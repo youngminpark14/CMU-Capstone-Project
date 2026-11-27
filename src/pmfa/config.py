@@ -208,7 +208,7 @@ class BudgetConfig(Section):
     max_seconds_per_episode: float = 90.0
     """Applies in live modes. Backtests use the call budget alone."""
     max_usd_per_episode: Decimal = Decimal("2.00")
-    max_usd_per_run: Decimal = Decimal("25.00")
+    max_usd_per_run: Decimal = Decimal("100.00")
 
 
 class ForecastConfig(Section):

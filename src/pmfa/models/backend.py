@@ -22,6 +22,12 @@ JSON-schema structured output. Facts checked against the pinned versions
   ``SERVER_FALLBACK_MODELS``.
 - The answer's top-level ``model`` names the model that served it, which
   differs from the requested one after a fallback.
+- A key that is not scoped to one workspace must name the workspace on every
+  request in the ``anthropic-workspace-id`` header; the API answers 400
+  without it (Claude API reference, 2026-11-27). A key created for one
+  workspace needs nothing. The SDK reads ``ANTHROPIC_WORKSPACE_ID`` only for
+  profile credentials, so the backend sends the header itself when that
+  variable is set.
 """
 
 from __future__ import annotations
@@ -35,6 +41,10 @@ from pmfa.errors import ConfigError
 from pmfa.records.base import Record
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+WORKSPACE_ENV = "ANTHROPIC_WORKSPACE_ID"
+"""Optional: the workspace id to send with a key that is not scoped to one workspace."""
+WORKSPACE_HEADER = "anthropic-workspace-id"
 
 SERVER_FALLBACK_MODELS: frozenset[str] = frozenset(
     {
@@ -146,6 +156,9 @@ class AnthropicBackend:
         }
         if self._base_url is not None:
             kwargs["base_url"] = self._base_url
+        workspace = os.environ.get(WORKSPACE_ENV, "").strip()
+        if workspace:
+            kwargs["default_headers"] = {WORKSPACE_HEADER: workspace}
         if self.uses_fallback(model):
             kwargs["betas"] = [FALLBACK_BETA]
             kwargs["model_kwargs"] = {"fallbacks": "default"}
@@ -175,6 +188,8 @@ class AnthropicBackend:
 __all__ = [
     "FALLBACK_BETA",
     "SERVER_FALLBACK_MODELS",
+    "WORKSPACE_ENV",
+    "WORKSPACE_HEADER",
     "AnthropicBackend",
     "Backend",
     "Completion",
