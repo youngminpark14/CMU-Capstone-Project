@@ -191,6 +191,44 @@ The commands for each mode are in the README.
 | [live/](../src/pmfa/live/) | Trigger detection and the foreground loop for shadow and demo mode. |
 | [cli/](../src/pmfa/cli/) | The `pmfa` command. |
 
+## Worked example: recency against similarity
+
+The instructors' feedback on checkpoint 3.1 asked for an example of recency decay putting a newer
+Federal Reserve release ahead of an older, semantically similar text. Here is one from the frozen
+backtest corpus. [ranking.py](../src/pmfa/knowledge/ranking.py) scores a passage as similarity times
+0.5 ^ (age in days / half-life), with a 30-day half-life, and keeps at most three passages per
+origin; the `similarity` variant drops both. The query is "Will the Federal Reserve raise the
+federal funds target range at its next meeting?", as of 2026-10-26 00:00 UTC, two days before the
+October decision, with the default hashing embedder.
+
+| Ranking | Rank | Passage | Published | Age (days) | Similarity | Recency factor | Score |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Similarity alone | 1 | FOMC statement, July meeting | 2026-07-29 | 88.2 | 0.339 | not applied | 0.339 |
+| Similarity alone | 2 | Minutes, June meeting, passage 21 | 2026-07-08 | 109.2 | 0.325 | not applied | 0.325 |
+| Similarity alone | 3 | Minutes, July meeting, passage 23 | 2026-08-19 | 67.2 | 0.318 | not applied | 0.318 |
+| Similarity alone | 4 | Minutes, September meeting, passage 20 | 2026-10-07 | 18.2 | 0.276 | not applied | 0.276 |
+| Similarity alone | 5 | FOMC statement, September meeting | 2026-09-16 | 39.2 | 0.275 | not applied | 0.275 |
+| With recency | 1 | Minutes, September meeting, passage 20 | 2026-10-07 | 18.2 | 0.276 | 0.656 | 0.181 |
+| With recency | 2 | Minutes, September meeting, passage 17 | 2026-10-07 | 18.2 | 0.272 | 0.656 | 0.178 |
+| With recency | 3 | Minutes, September meeting, passage 16 | 2026-10-07 | 18.2 | 0.239 | 0.656 | 0.157 |
+| With recency | 4 | Governor's speech on economic data, opening | 2026-10-01 | 24.4 | 0.217 | 0.569 | 0.124 |
+| With recency | 5 | Governor's speech on rural America, opening | 2026-09-30 | 25.2 | 0.209 | 0.559 | 0.117 |
+
+By similarity alone the July statement comes first. Its recency factor of 0.130 cuts its score to
+0.044, and the September minutes, the newest FOMC document at the as-of time, take the first three
+places. For a forecast of the October decision that is the right order: those minutes record the
+September increase to 3-3/4 to 4 percent, and most participants judging another likely by year
+end; the July statement records a hold at a range that no longer applies. The factor has a cost:
+the opening passages of two recent speeches, not about the policy rate, now rank above the
+September statement.
+
+[scripts/recency_example.py](../scripts/recency_example.py) prints both rankings after
+`pmfa data build`; [test_recency_example.py](../tests/knowledge/test_recency_example.py) recomputes
+it from a fixture of the nine passages. One query on one date with one embedder illustrates the
+mechanism and does not measure its value. The measurement is the ranking ablation in
+[evaluation.md](evaluation.md#systems-compared) (`single_pass` against `single_pass_similarity`),
+which has not been run with a model.
+
 ## The scenario tree search
 
 The forecast engine ([forecast/engine.py](../src/pmfa/forecast/engine.py)) turns one event and its

@@ -16,4 +16,4 @@ Syndicated and lightly edited copies count once; distinct releases, speeches and
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 3.1's merging of near-identical passages so that independent origins can be counted, which answers the instructors' feedback on checkpoint 2.1 about agents agreeing because they use the same information.

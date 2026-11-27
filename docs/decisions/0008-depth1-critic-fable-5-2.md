@@ -16,4 +16,4 @@ Changing one configuration value reverts it. Every model's listed knowledge cuto
 
 ## Origin
 
-Checkpoint 4.1; spec, Further Notes, "Changes from the checkpoint documents", item 8.
+Checkpoint 4.1; spec, Further Notes, "Changes from the checkpoint documents", item 8. Checkpoint 4.1 names Fable 5.1 at depth 1 in both its role table and its diagram. For deeper levels its table names Opus 5.5 and its diagram Sonnet 5.5; the default here follows the diagram.

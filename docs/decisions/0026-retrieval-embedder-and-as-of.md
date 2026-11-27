@@ -16,4 +16,4 @@ Retrieval is reproducible offline. Paraphrase matching is weaker with the defaul
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Changes checkpoint 3.1's store, Chroma with a small sentence-embedding model, by making a hashing embedder the default and the MiniLM sentence model optional.

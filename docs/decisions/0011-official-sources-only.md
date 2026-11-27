@@ -16,4 +16,4 @@ Committed text is public domain, with credit to both agencies. The `Evidence` po
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 11. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoints 1.1, 2.1 and 3.1; spec, Further Notes, "Changes from the checkpoint documents", item 11. Checkpoints 1.1 and 2.1 gave the agent news and web search, and checkpoint 3.1 drew evidence from an allowlist that named the Federal Reserve, a newspaper and RSS feeds, plus search results. Here the allowlist is the Federal Reserve and BLS, and web search is deferred.

@@ -16,4 +16,4 @@ A full depth-3 tree makes at most 9 Generator and 9 Critic calls, inside the 30-
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 7. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoint 4.1; spec, Further Notes, "Changes from the checkpoint documents", item 7. In checkpoint 4.1 the Critic read one thought and its cited passages and gave "the probability that it occurs". The same checkpoint set a budget of 30 model calls for the search; the spec applies it to the whole episode.

@@ -16,4 +16,4 @@ The Generator always knows which event it is making a claim about. The calendar 
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 4.1's depth limit, under which markets resolve on one to three scheduled events (at most three levels), and its depth-1 flat fallback for a market that closes within the hour.

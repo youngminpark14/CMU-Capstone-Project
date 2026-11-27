@@ -16,4 +16,4 @@ A replayed episode reaches the same exit, given that recorded world. An answer t
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 6.1's aim that any trade can be replayed, from a cassette and a recorded world rather than from the shared state alone.

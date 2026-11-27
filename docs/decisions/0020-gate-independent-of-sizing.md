@@ -16,4 +16,4 @@ A property test checks that the gate approves what sizing proposes, from differe
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Follows checkpoints 5.1 and 6.1, where a rejection from the Risk Manager gate ends the episode, rather than checkpoint 2.1's option to resize after a rejection.

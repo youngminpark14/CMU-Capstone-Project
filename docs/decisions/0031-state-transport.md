@@ -16,4 +16,4 @@ A test checks that the two flavours return the same records and raise the same e
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements the shared MCP state server of checkpoints 4.1 and 5.1 for tree nodes and Critic rejections, and bypasses its transport in backtests.

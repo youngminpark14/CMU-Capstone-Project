@@ -16,4 +16,4 @@ Abstaining cannot carry the backtest benchmark. Intervals are wide on a small wi
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Fixes the market price behind checkpoint 6.1's forecast-skill measure, the Brier score against the market price at forecast time.

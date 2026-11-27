@@ -16,4 +16,4 @@ Agreement between forecast and price means something. A passage cannot close its
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Answers checkpoint 5.1's controlled visibility, under which the Critic sees each scenario's claim and citations but not the Generator's reasoning, and changes checkpoint 2.1, whose reasoning loop fetched the live price before forecasting.

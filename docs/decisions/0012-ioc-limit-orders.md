@@ -16,4 +16,4 @@ An order's worst case is its own size at its own limit. A partial fill is record
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 12. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoints 2.1 and 6.1, and the instructors' feedback on checkpoint 2.1; spec, Further Notes, "Changes from the checkpoint documents", item 12. Both checkpoints used limit orders, and checkpoint 2.1 had tools to place and cancel them, without saying how long an order rests. Checkpoint 6.1's rule that a price move before execution "cancels the order and recomputes" is kept: the offers are re-read before sending, and when none is left at the limit the proposal is cancelled and the episode recomputes once or exits `stale_price` ([pipeline.py](../../src/pmfa/episode/pipeline.py)). The feedback on checkpoint 2.1 asked about partially filled orders; here a partial fill is recorded and its remainder dropped.

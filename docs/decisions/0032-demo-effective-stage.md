@@ -16,4 +16,4 @@ Every demo order is approved by a person, even if the stored stage were advanced
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Keeps checkpoint 2.1's plan to run in Kalshi's demo environment with mock funds and to approve trades by hand.

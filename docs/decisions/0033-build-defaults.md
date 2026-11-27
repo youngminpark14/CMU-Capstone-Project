@@ -16,4 +16,4 @@ A risk unit is $10 by default, so auto routing needs a cost under $10. One expen
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Counts checkpoint 4.1's 90-second limit as model-call seconds only.

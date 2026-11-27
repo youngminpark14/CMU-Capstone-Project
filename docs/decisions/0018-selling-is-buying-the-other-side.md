@@ -16,4 +16,4 @@ One order path covers buying and selling. Holdings only shrink when the other si
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 1.1's step 7 (place an order, reduce, exit, or do nothing) and its rule of recomputing a position and "trading the difference"; a holding is reduced only when the other side has the better edge.

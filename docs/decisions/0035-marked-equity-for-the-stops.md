@@ -16,4 +16,4 @@ Both stops count unrealized losses as well as fees and settled losses. The dolla
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Sets how the daily loss limit named in checkpoints 1.1 and 5.1 counts losses: unrealized ones included.

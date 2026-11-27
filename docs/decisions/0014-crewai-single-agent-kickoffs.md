@@ -16,4 +16,4 @@ A test asserts the two runners send byte-identical text, so cassettes and cache 
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Follows checkpoint 4.1's role-to-tool mapping in running the Generator and the Critic as CrewAI agents, but without the tools through which that checkpoint's roles read and wrote the tree state ([decision 0003](0003-record-only-roles.md)).

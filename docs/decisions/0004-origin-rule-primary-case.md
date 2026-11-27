@@ -4,7 +4,7 @@ An official release alone is enough; secondary sources still need two.
 
 ## Context
 
-The checkpoints required two independent sources before a news-triggered trade. For an official release, such as a BLS CPI release or an FOMC statement, the document is the ground truth itself.
+Checkpoints 2.1, 3.1, 5.1 and 6.1 each required two independent sources before a news-triggered trade. For an official release, such as a BLS CPI release or an FOMC statement, the document is the ground truth itself.
 
 ## Decision
 
@@ -16,4 +16,4 @@ Syndicated copies merge into one origin, so one secondary story repeated twice e
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 4. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoints 2.1, 3.1, 5.1 and 6.1; spec, Further Notes, "Changes from the checkpoint documents", item 4. Checkpoint 2.1 stops when research finds only one source, checkpoint 3.1 says "a single origin means no trade" and caps confidence by the origin count, checkpoint 5.1 skips forecasting with fewer than two, and checkpoint 6.1 requires two for any news-driven trade. None makes an exception for an official release; the primary-source case is the spec's.

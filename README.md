@@ -107,8 +107,12 @@ Nothing to install.
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
 5. **The decision records.** [docs/decisions/README.md](docs/decisions/README.md): 43 short
-   records, each with its reasons and where it came from: a capstone checkpoint where the
-   specification names one, otherwise the item of the specification or the build.
+   records, each with its reasons and where it came from: the capstone checkpoints it changes or
+   answers, the item of the specification, or the build.
+6. **The checkpoints, traced.** [docs/checkpoints.md](docs/checkpoints.md) takes each of the six
+   capstone checkpoints, and each point of the instructors' feedback, to the file and test that
+   carry it. Look for: what was kept, changed or dropped and why, how each piece of feedback was
+   answered, and the list of proposals not done here.
 
 ## Replay an episode offline
 
@@ -546,8 +550,8 @@ and BLS text is in the public domain.
 
 Built as the capstone project for Carnegie Mellon University's Agentic AI Program: Building
 Autonomous Systems for Real-World Applications. The design comes from the program's six capstone
-checkpoints and the instructors' feedback on them; the specification is
-[docs/spec.md](docs/spec.md).
+checkpoints and the instructors' feedback on them ([traced to the code](docs/checkpoints.md)); the
+specification is [docs/spec.md](docs/spec.md).
 
 ## AI assistance
 

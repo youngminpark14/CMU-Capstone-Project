@@ -16,4 +16,4 @@ Five candidates are five different events. The rules shown to the roles are the 
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 2. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoint 3.1; spec, Further Notes, "Changes from the checkpoint documents", item 2. Checkpoint 3.1's markets collection held "One document per open position on a market so that the title and rules are kept", took the top five by cosine similarity, and had the judge confirm the match. Here a document is an event and the Monitor confirms; the one row per listing change is the build's.

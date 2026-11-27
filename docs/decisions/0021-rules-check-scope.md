@@ -16,4 +16,4 @@ A scenario that names a non-existent option is deleted in code. A scenario with 
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Narrows checkpoint 4.1's rules check, which removed a failing thought on the spot, to what code can verify about a claim's structure.

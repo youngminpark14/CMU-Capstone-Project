@@ -16,4 +16,4 @@ One fresh primary origin or two fresh secondary ones give full support. Ordering
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 4.1's score (probability so far times evidence support), its tie rule (more independent sources, then newer evidence) and its lower confidence when the budget runs out; confidence is capped by the origin count, as in checkpoint 3.1, and does not use checkpoint 4.1's spread of critic scores.

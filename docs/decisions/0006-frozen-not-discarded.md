@@ -16,4 +16,4 @@ The forecast keeps tail mass, and coverage counts it. The pruning audit can late
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 6. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoint 4.1; spec, Further Notes, "Changes from the checkpoint documents", item 6. Checkpoint 4.1 kept the top three scenarios at each depth, pruned the rest, and placed no trade when the survivors held under 60% of the probability explored. The 0.6 floor stays as the `low_coverage` exit, but frozen scenarios count toward coverage, so only the mass the Critic left unassigned among siblings lowers it.

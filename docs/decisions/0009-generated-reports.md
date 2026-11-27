@@ -16,4 +16,4 @@ Everything a report shows can be recomputed from committed artifacts.
 
 ## Origin
 
-Spec, Further Notes, "Changes from the checkpoint documents", item 9. The spec does not name the checkpoint this revises, and the checkpoint documents are not available to this project, so no checkpoint number is given here.
+Checkpoint 6.1; spec, Further Notes, "Changes from the checkpoint documents", item 9. Checkpoint 6.1 proposed a dashboard tracking drawdown, rejections, fill quantity and calibration drift, "with a cancel-all in one command". Here the report shows the maximum drawdown, gate rejections by reason and a reliability table, and `pmfa halt` sets the halt flag and cancels all open orders.

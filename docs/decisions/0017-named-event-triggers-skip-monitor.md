@@ -16,4 +16,4 @@ One fewer call per such episode. These episodes cannot re-match after `rules_mis
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Changes checkpoint 5.1's coordination, in which a news item and a price change both start at the Monitor.

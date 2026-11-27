@@ -16,4 +16,4 @@ The reported edge is never better than what the order actually pays. A small ord
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 2.1's sizing calculator, whose fee-adjusted edge "must be exact and repeatable".

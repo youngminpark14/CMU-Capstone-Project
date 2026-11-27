@@ -16,4 +16,4 @@ A single step starts one episode, not one per candle. A second step, a reversal,
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Refines checkpoint 2.1's trigger, a large price move that makes the agent recompute; the 3-cent, 30-minute threshold is the spec's.

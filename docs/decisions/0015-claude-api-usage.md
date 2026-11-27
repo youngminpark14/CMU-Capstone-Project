@@ -16,4 +16,4 @@ A refusal or a truncated answer is unusable and gets the same single repair retr
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Implements checkpoint 4.1's note that every call gets both a model and an effort level; the default models follow the spec's table, which matches checkpoint 4.1's diagram for the Generator and the Critic (Haiku 5.5; Sonnet 5.5, with Fable at depth 1), not its role table (Sonnet 5.5; Opus 5.5) or checkpoint 5.1's (Opus; Fable).

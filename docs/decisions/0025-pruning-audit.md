@@ -16,4 +16,4 @@ The audit is a number per episode that can be averaged across a run, rather than
 
 ## Origin
 
-Build, November 2026.
+Build, November 2026. Measures what checkpoint 4.1's risk section checks at resolution, whether the realized path ran through a pruned branch, but raises no floor in response, since the build has no probability floor to raise ([decision 0005](0005-protected-slot-only-tail-rule.md)).
