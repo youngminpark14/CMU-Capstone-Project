@@ -7,11 +7,12 @@ uv run pmfa replay examples/episodes/fed-minutes-hawkish     # or just: uv run p
 ```
 
 **Every example here is a hand-made fixture with hand-written model records.** No Claude API key
-existed where they were built, so a person wrote every Monitor, Researcher, Generator and Critic
-answer (they are in `scripts/build_examples.py`). The examples show the pipeline working from
-trigger to decision on real inputs; they are not model output and not evidence of forecasting
-skill. The outcome of every real event was known to the author when the records were written.
-The replay prints this before anything else.
+existed where they were built, so every Monitor, Researcher, Generator and Critic answer is fixed
+text written in advance (they are in `scripts/build_examples.py`), with an AI coding assistant,
+Claude Code, as the rest of this repository was. The examples show the pipeline working from
+trigger to decision on real inputs; they are not the output of the pipeline's roles and not
+evidence of forecasting skill. The outcome of every real event was known to the author when the
+records were written. The replay prints a notice saying so before anything else.
 
 | Example | Exit | What it shows |
 | --- | --- | --- |

@@ -3,11 +3,13 @@
 Run it after a change to the pipeline: ``uv run --no-sync python scripts/build_examples.py``.
 
 Every example here is a HAND-MADE FIXTURE WITH HAND-WRITTEN MODEL RECORDS. No
-Claude API key existed where they were built, so a person wrote every Monitor,
-Researcher, Generator and Critic answer below. They exist to show the pipeline
-working end to end; they are not model output and not evidence of skill. The
-outcome of every real event was known to the author when the records were
-written; the records follow the documents in each file, not the outcome.
+Claude API key existed where they were built, so every Monitor, Researcher,
+Generator and Critic answer below is fixed text written in advance, with an AI
+coding assistant (Claude Code), as the rest of this repository was. They exist
+to show the pipeline working end to end; they are not the output of the
+pipeline's roles and not evidence of skill. The outcome of every real event was
+known to the author when the records were written; the records follow the
+documents in each file, not the outcome.
 
 For each example the script
 
@@ -86,9 +88,10 @@ BOOK_NOTE = (
     "proxy; the simulated fill meets that same book."
 )
 HAND_MADE = (
-    "**Provenance: hand-made fixture with hand-written model records.** A person wrote every "
-    "model answer in `cassette.json` (see `scripts/build_examples.py`); none is model output, "
-    "and nothing here is evidence of forecasting skill."
+    "**Provenance: hand-made fixture with hand-written model records.** Every model answer in "
+    "`cassette.json` is fixed text written in advance, with an AI coding assistant (see "
+    "`scripts/build_examples.py`); none is the output of the pipeline's roles, and nothing here "
+    "is evidence of forecasting skill."
 )
 
 

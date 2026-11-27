@@ -1,6 +1,6 @@
 # fed-minutes-hawkish
 
-**Provenance: hand-made fixture with hand-written model records.** A person wrote every model answer in `cassette.json` (see `scripts/build_examples.py`); none is model output, and nothing here is evidence of forecasting skill.
+**Provenance: hand-made fixture with hand-written model records.** Every model answer in `cassette.json` is fixed text written in advance, with an AI coding assistant (see `scripts/build_examples.py`); none is the output of the pipeline's roles, and nothing here is evidence of forecasting skill.
 
 The spec's 3.1 example: hawkish Fed minutes lead to a small NO position. The minutes of the September 15-16, 2026 FOMC meeting ("most participants assessed that another increase in the target range ... would likely be appropriate by year end") trigger an episode on the October 2026 Fed decision. The hand-written forecast puts a 25 bp October hike above the market's price, and the proposal is to buy 25 NO on `KXFEDDECISION-26OCT-H0` at no more than $0.1800 (25 filled): NO on "Fed maintains rate". The trade is approve-tier, so the episode pauses; a scripted reviewer approves it after 60 seconds.
 

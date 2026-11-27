@@ -26,7 +26,7 @@ funds. Nothing here is investment or trading advice.
 | Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](scripts/rehearse_backtest.py)), which checks the data and the pipeline around the models but not the model side (the gateway, the cache, the dollar caps): its forecasts mean nothing. |
 | Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here, such as fill coverage, price staleness and build time, describe the data and the harness, not forecasting. |
 | Not yet done | **No live model call has been made in this repository**, because no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
-| Sample episodes | Hand-made fixtures: the inputs are real, but a person wrote every model record. They show the pipeline working, not forecasting skill, and each one says so. |
+| Sample episodes | Hand-made fixtures: the inputs are real, but every model record is fixed text written in advance with an AI coding assistant, not the output of the pipeline's roles. They show the pipeline working, not forecasting skill, and each one says so. |
 | Shadow mode | Exercised for plumbing only, against recorded worlds in [tests/live/](tests/live/). |
 | Demo executor | Built from Kalshi's documentation and tested against recorded and constructed responses, not against a live demo account. |
 | Fees | The fee formula and rounding are tested on hand-computed cases and one worked example from Kalshi's fee-rounding documentation. The fee schedule PDF's own worked examples are not in the tests: the PDF sits behind a browser check. |
@@ -467,8 +467,8 @@ score and skill, reliability) and its three figures from the committed `forecast
   scoring alone. No backtest with model forecasts has run yet, so these are expectations from the
   data, not results ([Fill assumptions and their
   limits](docs/evaluation.md#fill-assumptions-and-their-limits)).
-- **Sample episodes are hand-made.** Their model records were written by a person who knew the
-  outcomes.
+- **Sample episodes are hand-made.** Their model records are fixed text written in advance, with an
+  AI coding assistant and with the outcomes known. They are not the output of the pipeline's roles.
 - **Exchange-side protections are documented, not verified.** The subaccount restriction, the
   funds-transfer block and the order-group breaker have not been exercised against a live demo
   account.
@@ -515,8 +515,19 @@ reliability, where the error comes from) and draw them as Brier scores by horizo
 diagram and an equity curve, which is empty because the run did not trade. The fixtures whose
 `_source` says CONSTRUCTED were built by hand from Kalshi's API documentation and hold no recorded
 exchange data. The snapshot with its candle series and the corpus are not committed: they are
-rebuilt locally and ignored by git. Kalshi's data terms have not been checked yet. The one synthetic
-story in `single-origin-syndicated` uses made-up outlets on reserved `.example` domains.
+rebuilt locally and ignored by git. The one synthetic story in `single-origin-syndicated` uses
+made-up outlets on reserved `.example` domains.
+
+**The exchange data here is not cleared for reuse.** Kalshi's API documentation says that using the
+API binds the user to its [Developer Agreement](https://kalshi.com/developer-agreement). The copy
+read for this project on 2026-11-27 (v1.1, from Kalshi's public documents; the linked page refused
+an automated request, so check it for a newer version) limits use of the API to "facilitating a
+members own trading on the Exchange". It prohibits "collecting, caching, aggregating, or storing
+data or content accessed via the API except for purposes of facilitating your own trading on
+Kalshi", and says "You may not share such data or content with third parties in any manner without
+prior written authorization from Kalshi." No authorization has been asked for or given for this
+project. Whether the committed exchange data and the local snapshot may be kept is therefore an
+open question that only Kalshi can settle; until it is settled, do not reuse that data.
 
 ## Educational use
 
@@ -527,10 +538,22 @@ Statistics. Real-money trading is out of scope by design
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The license covers this project's code and documents. It does not
+cover Kalshi's market data (see [Sources and credits](#sources-and-credits)); the Federal Reserve
+and BLS text is in the public domain.
 
 ## Acknowledgment
 
-Built as a capstone project for a Carnegie Mellon University program. The design comes
-from the program's capstone checkpoints and the instructor's feedback on them; the specification is
+Built as the capstone project for Carnegie Mellon University's Agentic AI Program: Building
+Autonomous Systems for Real-World Applications. The design comes from the program's six capstone
+checkpoints and the instructors' feedback on them; the specification is
 [docs/spec.md](docs/spec.md).
+
+## AI assistance
+
+This repository was built with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+assistant, working from the specification: it wrote the code, the tests and the documents, this
+page included, and the commits carry a `Co-Authored-By` line that says so. The sample episodes'
+model records are fixed text written the same way, not the output of the pipeline's roles.
+Separately, the agent itself calls Claude models through the Claude API when it runs; no such call
+has been made yet (see [Status](#status)).

@@ -1,6 +1,6 @@
 # cpi-ladder
 
-**Provenance: hand-made fixture with hand-written model records.** A person wrote every model answer in `cassette.json` (see `scripts/build_examples.py`); none is model output, and nothing here is evidence of forecasting skill.
+**Provenance: hand-made fixture with hand-written model records.** Every model answer in `cassette.json` is fixed text written in advance, with an AI coding assistant (see `scripts/build_examples.py`); none is the output of the pipeline's roles, and nothing here is evidence of forecasting skill.
 
 One forecast, every strike. The August 2026 CPI report triggers an episode on the September 2026 CPI ladder. The critic gives five quantiles of the 12-month CPI change for each of three scenarios; code turns them into a probability for every strike, so the ladder is monotone by construction (T3.2 0.80, T3.3 0.64, T3.4 0.44, T3.5 0.26, T3.6 0.12, T3.7 0.06, T3.8 0.03). The market's own mids at that moment are not monotone (the spreads are wide), and no strike has $500 resting near the touch, so nothing is traded: exit `no_edge`.
 

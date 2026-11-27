@@ -43,9 +43,10 @@ from pmfa.world.recording import (
 )
 
 HAND_MADE_NOTICE = (
-    "This is a hand-made fixture with hand-written model records. No model produced them: "
-    "a person wrote every Monitor, Researcher, Generator and Critic answer to exercise the "
-    "pipeline. Nothing in it is model output or evidence of forecasting skill."
+    "This is a hand-made fixture with hand-written model records: every Monitor, Researcher, "
+    "Generator and Critic answer is fixed text written in advance, with an AI coding assistant, "
+    "to exercise the pipeline. The pipeline's roles did not produce them, and nothing in it is "
+    "the output of a run or evidence of forecasting skill."
 )
 """The first thing the replay prints for a hand-made fixture."""
 

@@ -1,6 +1,6 @@
 # phantom-edge-no-trade
 
-**Provenance: hand-made fixture with hand-written model records.** A person wrote every model answer in `cassette.json` (see `scripts/build_examples.py`); none is model output, and nothing here is evidence of forecasting skill.
+**Provenance: hand-made fixture with hand-written model records.** Every model answer in `cassette.json` is fixed text written in advance, with an AI coding assistant (see `scripts/build_examples.py`); none is the output of the pipeline's roles, and nothing here is evidence of forecasting skill.
 
 The spec's 2.1 case: the market already prices the news. The August 2026 CPI report (0.4 percent in the month, 3.4 percent over the year) is hawkish for the September 15-16 Fed decision, and the hand-written forecast says so, but in the five minutes after the release the "Hike 25bps" market moved from about 0.59 to 0.815. The forecast is close to the new price, so no market has the 2-cent minimum edge after fees and shrinkage: exit `no_edge`.
 

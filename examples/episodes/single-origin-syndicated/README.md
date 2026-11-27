@@ -1,6 +1,6 @@
 # single-origin-syndicated
 
-**Provenance: hand-made fixture with hand-written model records.** A person wrote every model answer in `cassette.json` (see `scripts/build_examples.py`); none is model output, and nothing here is evidence of forecasting skill.
+**Provenance: hand-made fixture with hand-written model records.** Every model answer in `cassette.json` is fixed text written in advance, with an AI coding assistant (see `scripts/build_examples.py`); none is the output of the pipeline's roles, and nothing here is evidence of forecasting skill.
 
 The origin rule. A news-triggered trade needs one primary origin or two independent secondary origins. Here one story from a made-up outlet, "Example Wire", is syndicated verbatim by two other made-up outlets; all three are in `world.json`, which (unlike the other examples) is the whole source world, re-indexed on replay. Retrieval merges the three copies into one passage, origin resolution traces it to one secondary origin, and the episode exits `insufficient_origins` before any forecast.
 

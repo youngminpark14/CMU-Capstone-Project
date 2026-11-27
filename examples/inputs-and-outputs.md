@@ -5,9 +5,10 @@ A walkthrough for a reader who installs nothing. Every number below is in the co
 prints the same story.
 
 > **Hand-made fixture with hand-written model records.** The inputs are real (Kalshi quotes, FOMC
-> minutes), but a person wrote every model answer. Nothing here is model output or evidence of
-> forecasting skill, and the author knew when writing the records that the Committee held in
-> October, so this NO position lost.
+> minutes), but every model answer is fixed text written in advance, with an AI coding assistant.
+> Nothing here is the output of the pipeline's roles or evidence of forecasting skill, and the
+> author knew when writing the records that the Committee held in October, so this NO position
+> lost.
 
 ## The inputs (`world.json`)
 
