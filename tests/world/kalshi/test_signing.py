@@ -101,6 +101,19 @@ def test_keys_load_from_pkcs8_pkcs1_and_escaped_newlines() -> None:
     assert isinstance(loaded, rsa.RSAPrivateKey)
 
 
+def test_a_key_given_as_its_base64_body_alone_loads_as_the_same_key() -> None:
+    """An environment-variable form can keep only the body of a pasted multi-line key."""
+    ed = rfc_key(RFC_TEST2_SECRET)
+    lines = pem(ed, serialization.PrivateFormat.PKCS8).strip().splitlines()
+    body = "".join(lines[1:-1])
+    loaded = load_private_key(body)
+    assert isinstance(loaded, Ed25519PrivateKey)
+    assert loaded.sign(b"m") == ed.sign(b"m")  # Ed25519 signatures are deterministic
+    with pytest.raises(ConfigError) as info:
+        load_private_key("not-a-key-SECRETVALUE")
+    assert "SECRETVALUE" not in str(info.value)
+
+
 def test_bad_pem_is_a_config_error_that_does_not_echo_the_input() -> None:
     with pytest.raises(ConfigError) as info:
         load_private_key(

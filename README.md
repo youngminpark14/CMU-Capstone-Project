@@ -176,7 +176,9 @@ export ANTHROPIC_API_KEY=...
 
 Create the key in the [Claude Console](https://platform.claude.com/settings/keys) and select a
 workspace for it there. A key that is not scoped to one workspace is refused unless each request
-names its workspace; for such a key, also set `ANTHROPIC_WORKSPACE_ID`.
+names its workspace; for such a key, also set `ANTHROPIC_WORKSPACE_ID`. In a Claude Code cloud
+session a variable named `ANTHROPIC_API_KEY` is not passed to commands: save the key there under
+another name, for example `PMFA_ANTHROPIC_API_KEY`, and name it in `models.api_key_env`.
 
 Rebuild the frozen data first. This step reads public Kalshi market data and Federal Reserve and BLS
 pages and needs no key. The snapshot build is resumable: after an interruption, run it again and it
@@ -240,15 +242,16 @@ uv run pmfa shadow
 ### A Kalshi demo key: approved orders on the demo exchange
 
 Create an API key on Kalshi's demo exchange (mock funds), restricted to one numbered subaccount
-(default 1, `kalshi.demo_subaccount`). Then:
+(default 1, `kalshi.demo_subaccount`). A new demo account has no numbered subaccount and keeps its
+mock funds in its main balance: set `kalshi.demo_subaccount = 0` to trade from there. Then:
 
 ```bash
 export KALSHI_DEMO_KEY_ID=...
 export KALSHI_DEMO_PRIVATE_KEY_PATH=/path/to/demo-key.pem
 ```
 
-`KALSHI_DEMO_PRIVATE_KEY` can hold the PEM text instead of a path. Demo mode also needs
-`ANTHROPIC_API_KEY`.
+`KALSHI_DEMO_PRIVATE_KEY` can hold the PEM text instead of a path, or the key's base64 body alone.
+Demo mode also needs `ANTHROPIC_API_KEY`.
 
 ```bash
 uv run pmfa demo
