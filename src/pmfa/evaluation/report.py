@@ -29,6 +29,12 @@ FIGURES_DIR = "figures"
 FIGURES = ("brier_by_horizon.png", "reliability.png", "equity_curve.png")
 COMMITTED = ("manifest.json", "forecasts.csv", "metrics.json", REPORT_FILE)
 """Files of a published run; ``figures/`` and ``traces/`` are copied whole beside them."""
+ROWS = "forecasts.csv"
+SCORES_ONLY_NOTE = (
+    "Published as scores only: the per-forecast table and the saved traces are left out, because "
+    "they hold exchange prices and Kalshi's Developer Agreement does not allow data from its API "
+    "to be shared without written permission. They stay in the local run directory."
+)
 PUBLISH_ROOT = Path("evaluation") / "runs"
 
 # Reference categorical hues, in a fixed order per system (never cycled), and text inks.
@@ -1220,6 +1226,7 @@ def publish_run(
     *,
     root: str | Path = PUBLISH_ROOT,
     allow_supplied: bool = False,
+    scores_only: bool = False,
 ) -> Path:
     """Copy the committed artifact set of ``run_dir`` to ``root/name`` and return it.
 
@@ -1229,6 +1236,10 @@ def publish_run(
     published manifest's ``outputs`` lists exactly what was copied. A run made
     from a tree with uncommitted changes is published with that said in its
     manifest notes and in a logged warning (and in the report).
+
+    ``scores_only`` leaves out the per-forecast table and the traces, the two
+    parts that hold exchange prices, and says so in the published manifest's
+    notes: the manifest, the metrics, the report and its figures are published.
 
     A run whose models were supplied by the caller (scripted answers in a test,
     or a rehearsal) is not a result, so publishing it is refused with a
@@ -1249,15 +1260,16 @@ def publish_run(
     target = Path(root) / name
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
-    for file in COMMITTED:
+    files = [f for f in COMMITTED if not (scores_only and f == ROWS)]
+    for file in files:
         shutil.copy2(run_dir / file, target / file)
     shutil.copytree(run_dir / FIGURES_DIR, target / FIGURES_DIR)
     traces = run_dir / "traces"
-    if traces.is_dir() and any(traces.iterdir()):
+    if not scores_only and traces.is_dir() and any(traces.iterdir()):
         shutil.copytree(traces, target / "traces")
     manifest = read_manifest(target)
     outputs = [
-        *COMMITTED,
+        *files,
         *(f"{FIGURES_DIR}/{p.name}" for p in sorted((target / FIGURES_DIR).iterdir())),
         *(
             f"traces/{p.name}"
@@ -1265,6 +1277,8 @@ def publish_run(
         ),
     ]
     notes = list(manifest.notes)
+    if scores_only and SCORES_ONLY_NOTE not in notes:
+        notes.append(SCORES_ONLY_NOTE)
     if manifest.git_dirty:
         notice = dirty_notice(manifest)
         logging.getLogger(__name__).warning("publishing %s: %s", name, notice)

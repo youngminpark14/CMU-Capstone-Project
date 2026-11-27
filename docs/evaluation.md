@@ -359,9 +359,14 @@ its exits after the forecast step say little about trading. `--publish NAME` cop
 and the published manifest's `outputs` lists exactly those files. It refuses a run whose models were
 supplied by the caller (scripted answers in a test, or a rehearsal): it prints `not published: ...`,
 exits 1 and copies nothing to `evaluation/runs/` (the report is still built in the run directory).
-`trades.csv` and `episodes.jsonl` stay in the local run directory. A run made from a working tree
-with uncommitted changes says so in its report, in the published manifest's notes and in a warning
-when it is published: its commit does not hold exactly the code that produced it.
+`trades.csv` and `episodes.jsonl` stay in the local run directory. With `--scores-only`, the
+per-forecast table and the traces stay there too: they hold exchange prices, which Kalshi's
+Developer Agreement does not allow to be shared without permission
+([Sources and credits](#sources-and-credits)), so only the manifest, the metrics, the report and its
+figures are published, and the published manifest's notes say so. The owner chose scores only for
+every run with model forecasts (2026-11-27). A run made from a working tree with uncommitted changes
+says so in its report, in the published manifest's notes and in a warning when it is published: its
+commit does not hold exactly the code that produced it.
 
 ## Results
 

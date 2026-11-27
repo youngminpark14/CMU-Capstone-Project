@@ -542,7 +542,7 @@ time.
 | `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
 | `pmfa data status` | Print the corpus and snapshot manifests. |
 | `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
-| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). |
+| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). `--scores-only` leaves the per-forecast table and the traces out of the published copy. |
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |

@@ -254,3 +254,23 @@ def test_published_outputs_list_exactly_what_was_copied(full_run: FullRun, tmp_p
     copied |= {f"traces/{p.name}" for p in (target / "traces").iterdir()}
     assert set(outputs) == copied - {"figures", "traces"}
     assert "trades.csv" not in outputs and "episodes.jsonl" not in outputs
+
+
+def test_a_scores_only_publication_leaves_out_the_rows_and_the_traces_and_says_so(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """The per-forecast table and the traces hold exchange prices; scores only leaves them home."""
+    from pmfa.evaluation.manifest import read_manifest
+    from pmfa.evaluation.report import SCORES_ONLY_NOTE, build_report, publish_run
+
+    build_report(full_run.run_dir)
+    target = publish_run(
+        full_run.run_dir, "scores", root=tmp_path / "runs", allow_supplied=True, scores_only=True
+    )
+    published = {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()}
+    assert {p for p in published if "/" not in p} == {"manifest.json", "metrics.json", "report.md"}
+    assert {p.split("/")[0] for p in published if "/" in p} == {"figures"}
+    manifest = read_manifest(target)
+    assert set(manifest.outputs) == published
+    assert SCORES_ONLY_NOTE in manifest.notes
+    assert (full_run.run_dir / "forecasts.csv").exists()  # the rows stay in the run directory
