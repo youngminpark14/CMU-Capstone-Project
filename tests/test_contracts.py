@@ -167,3 +167,11 @@ def test_an_empty_config_variable_means_not_set(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PMFA_CONFIG", "")
     assert load_config() == Config()
+
+
+def test_an_unknown_order_outcome_is_a_status_of_its_own_and_not_an_exit():
+    from pmfa.records.decision import ProposalStatus
+    from pmfa.records.episode import EpisodeStatus, Exit
+
+    assert EpisodeStatus("outcome_unknown") and ProposalStatus("outcome_unknown")
+    assert "outcome_unknown" not in {e.value for e in Exit}

@@ -7,6 +7,8 @@ The beam search runs as its own nodes (``forecast_start``, then
 checkpointer saves the search between levels. ``pause`` only calls
 ``interrupt()``; ``review`` applies the human's answer after the resume; and
 ``execute`` is separate from both, so resuming never repeats a side effect.
+The same holds for an order whose outcome is unknown: ``hold`` only calls
+``interrupt()``, and ``reconcile`` looks the order up after the resume and never sends.
 ``mermaid()`` draws the same wiring for the docs.
 """
 
@@ -39,10 +41,13 @@ EDGES: dict[str, tuple[str, ...]] = {
     "route": ("execute", "pause", "record"),
     "pause": ("review",),
     "review": ("gate", "record"),
-    "execute": ("size", "record"),
+    "execute": ("size", "hold", "record"),
+    "hold": ("reconcile",),
+    "reconcile": ("hold", "record"),
     "record": (END,),
 }
-"""Where each node can go next. ``record`` runs last on every path."""
+"""Where each node can go next. ``record`` runs last on every path that ends the episode;
+``hold`` is where an episode whose order outcome is unknown waits."""
 
 RECURSION_LIMIT = 200
 """Steps one invocation may take: a re-match and a recompute stay far below it."""

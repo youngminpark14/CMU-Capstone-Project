@@ -10,7 +10,9 @@
   the two equal); ``config check [PATH]`` validates a file and prints the problems.
 - ``report-status [--mode]`` prints the monitoring report the spec asks for in
   place of a dashboard: P&L, drawdown, exits and gate rejections by reason, fill
-  quality, overrides, calibration by category, the stage and the halt state.
+  quality, overrides, calibration by category, the stage and the halt state,
+  how many orders have an unknown outcome, and each unfinished episode that is
+  not waiting for a review, with the command that settles it.
 """
 
 from __future__ import annotations
@@ -371,12 +373,31 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
     from pmfa.evaluation.pnl import equity_curve, max_drawdown, pnl_summary
     from pmfa.evaluation.rows import ForecastRow
     from pmfa.evaluation.summary import episode_tallies
-    from pmfa.records.decision import ReviewDecision
+    from pmfa.live.text import unknown_outcome_sentence
+    from pmfa.records.decision import ProposalStatus, ReviewDecision
+    from pmfa.records.episode import EpisodeStatus
 
     lines = [f"pmfa status report ({mode.value})"]
     stage, halt = store.get_stage(), store.get_halt()
     lines.append(f"stage: {stage.stage.value}" + (f" ({stage.reason})" if stage.reason else ""))
     lines.append(f"halt: HALTED - {halt.reason}" if halt.halted else "halt: not halted")
+
+    def episodes(status: EpisodeStatus) -> list:
+        return [e for e in store.list_episodes(status=status, limit=1_000_000) if e.mode is mode]
+
+    if unknown := episodes(EpisodeStatus.OUTCOME_UNKNOWN):
+        lines.append(
+            f"orders with an unknown outcome: {len(unknown)}. " + unknown_outcome_sentence(mode)
+        )
+    decided = (ProposalStatus.APPROVED, ProposalStatus.RESIZED)
+    for e in episodes(EpisodeStatus.RUNNING) + episodes(EpisodeStatus.PENDING_REVIEW):
+        found = store.get_proposal(e.proposal.proposal_id) if e.proposal else None
+        if e.status is EpisodeStatus.RUNNING or (found and found[1] in decided):
+            lines.append(
+                f"unfinished episode {e.episode_id} ({e.status.value}): if no process is still "
+                f"running it, pmfa reconcile --mode {mode.value} --episode {e.episode_id} settles "
+                "any order it may have sent"
+            )
 
     trades = _trade_rows(store, mode)
     pnl = pnl_summary(trades)

@@ -2,10 +2,12 @@
 
 Each command first says what it will and will not do, then builds the world,
 runs one pass (``--once``, the default) or passes ``--interval`` seconds apart
-(``--loop``, until Ctrl-C), prints a short line per episode, and says where
-pending proposals wait. A project error (an unreachable source or exchange) is
-printed as one line, never a traceback: inside a pass it is a note and the loop
-goes on; outside one the command exits 1. Imports happen inside the commands.
+(``--loop``, until Ctrl-C), prints a short line per episode, says where
+pending proposals wait, and names any order whose outcome is unknown (the next
+pass, or ``pmfa reconcile``, asks again). A project error (an unreachable
+source or exchange) is printed as one line, never a traceback: inside a pass it
+is a note and the loop goes on; outside one the command exits 1. Imports happen
+inside the commands.
 """
 
 from __future__ import annotations

@@ -7,14 +7,23 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pmfa.records.base import RunMode
 from pmfa.records.decision import OrderResult, Proposal, ProposalStatus, ReviewCard
-from pmfa.records.episode import EpisodeRecord, Exit
+from pmfa.records.episode import EpisodeRecord, EpisodeStatus, Exit
 
 from .loop import EpisodeOutcome, PassSummary
 
 
 def when(moment: datetime | None) -> str:
     return "-" if moment is None else f"{moment:%Y-%m-%d %H:%M} UTC"
+
+
+def unknown_outcome_sentence(mode: RunMode) -> str:
+    """What an order whose outcome is unknown means for the operator, in one sentence."""
+    return (
+        "Such an order may stand on the exchange: nothing more will be sent for it, the next "
+        f"pass asks the exchange again, and pmfa reconcile --mode {mode.value} asks now."
+    )
 
 
 def proposal_line(p: Proposal) -> str:
@@ -75,9 +84,17 @@ def pass_lines(s: PassSummary) -> list[str]:
         lines.append(f"HALTED: {s.halt_reason} (no order will be placed)")
     if not s.triggers:
         lines.append("no triggers")
+    if s.reconciled:
+        lines.append(f"order outcomes learned by asking again: {len(s.reconciled)}")
+        lines.extend(f"  {r}" for r in s.reconciled)
     lines.extend(episode_line(o) for o in s.episodes)
     for o in s.episodes:
         lines.extend(f"  {line}" for line in order_lines(o.orders))
+    if s.outcome_unknown:
+        lines.append(
+            f"order outcome unknown for proposal(s) {', '.join(s.outcome_unknown)}. "
+            + unknown_outcome_sentence(s.mode)
+        )
     if s.equity is not None:
         lines.append(f"equity ${s.equity}")
     lines.extend(f"note: {n}" for n in s.notes)
@@ -120,6 +137,11 @@ def card_lines(card: ReviewCard) -> list[str]:
 def decision_lines(record: EpisodeRecord) -> list[str]:
     """What happened after a review: executed with fills, gate rejected, expired, ..."""
     exit = record.exit
+    if exit is None and record.status is EpisodeStatus.OUTCOME_UNKNOWN:
+        return [
+            f"order outcome unknown for episode {record.episode_id}. "
+            + unknown_outcome_sentence(record.mode)
+        ]
     if exit is None:
         return [f"episode {record.episode_id} is {record.status.value}"]
     if exit is Exit.EXECUTED:
@@ -142,5 +164,6 @@ __all__ = [
     "pass_lines",
     "pending_line",
     "proposal_line",
+    "unknown_outcome_sentence",
     "when",
 ]

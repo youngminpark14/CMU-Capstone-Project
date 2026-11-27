@@ -21,13 +21,20 @@ outcome runs on a copy re-dated to its start (see *Late start*). A price-move or
 [records/evidence.py](../src/pmfa/records/evidence.py).
 
 **Episode.** One pass of the pipeline for one trigger and one event. Its id is deterministic, so
-running the same trigger twice returns the first result. `EpisodeRecord` in
+running the same trigger twice returns the first result (an episode whose order outcome is unknown
+is asked about again instead). `EpisodeRecord` in
 [records/episode.py](../src/pmfa/records/episode.py); run by
 [episode/controller.py](../src/pmfa/episode/controller.py).
 
 **Exit.** The one named way an episode ended: `no_match`, `no_evidence`, `insufficient_origins`,
 `rules_mismatch`, `low_coverage`, `no_edge`, `gate_rejected`, `rejected_by_human`, `expired`,
 `halted`, `stale_price`, `executed`, or `error`. `Exit` in [records/episode.py](../src/pmfa/records/episode.py).
+
+**Outcome unknown.** The status of an episode and its proposal when an order was sent and the
+exchange has not said what became of it. It is not an exit: nothing more is sent for the proposal,
+and the order is looked up again by its client order id (each live pass, or `pmfa reconcile`) until
+the exchange answers. `EpisodeStatus.OUTCOME_UNKNOWN` in
+[records/episode.py](../src/pmfa/records/episode.py).
 
 **As-of time.** The moment an episode runs "at". Nothing published or priced after it may be read;
 every retrieval and exchange read filters on it inside the call. The one exception is the candle

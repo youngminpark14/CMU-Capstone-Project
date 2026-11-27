@@ -196,3 +196,23 @@ def test_expire_and_expire_due() -> None:
         q.expire("prop-2")
     assert [p.proposal_id for p in q.expire_due(lambda ticker: moved)] == ["prop-3"]
     assert q.pending() == []
+
+
+def test_a_proposal_whose_order_outcome_is_unknown_cannot_be_decided_or_expired() -> None:
+    """Its order may stand on the exchange: no review or expiry may close it, even late."""
+    q, store, clock = queue()
+    store.set_proposal_status("prop-1", ProposalStatus.OUTCOME_UNKNOWN)
+    clock.set(proposal().expires_at + timedelta(minutes=5))
+    assert q.pending() == []
+    for decision, extra in (
+        (ReviewDecision.APPROVE, {}),
+        (ReviewDecision.RESIZE, {"contracts": 1}),
+        (ReviewDecision.REJECT, {"reason_code": ReasonCode.OTHER}),
+    ):
+        with pytest.raises(ReviewRefused, match="outcome_unknown"):
+            q.decide("prop-1", decision, **extra)
+    with pytest.raises(ReviewRefused, match="outcome_unknown"):
+        q.expire("prop-1")
+    assert q.expire_due() == []
+    assert store.list_reviews() == []
+    assert q.get("prop-1")[1] is ProposalStatus.OUTCOME_UNKNOWN

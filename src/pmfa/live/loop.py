@@ -6,15 +6,19 @@ A pass (``run_once``), in order:
    the events index; new documents (from a poll of the live sources, plus any
    published since the last look) go into the evidence index.
 2. **Resolve outcomes** with ``pmfa.evaluation.resolver.resolve_outcomes``.
-3. **Expire due proposals**: a pending proposal past its time, or whose price
+3. **Reconcile orders whose outcome is unknown**: every ``OUTCOME_UNKNOWN``
+   episode is asked about again (``EpisodeController.reconcile``, which never
+   sends). A reconcile that fails is a note, and the pass goes on.
+4. **Expire due proposals**: a pending proposal past its time, or whose price
    has passed its edge bound, ends its episode ``expired``.
-4. **Apply the self-halt conditions** (``pmfa.execution.halt.enforce``), and
+5. **Apply the self-halt conditions** (``pmfa.execution.halt.enforce``), and
    demote a stage when the daily loss stop tripped on two days of the last seven
    (``StageManager.check_demotion``).
-5. **Detect triggers** (``pmfa.live.triggers``) and run one episode per
+6. **Detect triggers** (``pmfa.live.triggers``) and run one episode per
    trigger. When the agent is halted the episodes still run and record their
-   forecasts, and the pipeline refuses every order (exit ``halted``).
-6. **Mark equity** in the state store, through the executor's own ``mark``:
+   forecasts, and the pipeline refuses every order (exit ``halted``). A trigger
+   whose episode exists and is not done is left alone: another process may be in it.
+7. **Mark equity** in the state store, through the executor's own ``mark``:
    holdings at their own side's best bid, at cost without one. The paper
    executor marks at every fill and settlement the same way, so the equity
    series behind the daily loss stop and the drawdown halt has one definition.
@@ -95,6 +99,11 @@ class PassSummary(Record):
     episodes: list[EpisodeOutcome] = []
     pending_review: list[str] = []
     """Proposal ids waiting for a human after this pass."""
+    reconciled: list[str] = []
+    """One line per order outcome learned in this pass by asking again: the proposal id and
+    what was found."""
+    outcome_unknown: list[str] = []
+    """Proposal ids whose order outcome is still unknown after this pass (asked again next pass)."""
     equity: Dollars | None = None
     notes: list[str] = []
     stopped: str = ""
@@ -260,6 +269,40 @@ def _expire_due(world: World, controller: EpisodeController, notes: list[str]) -
     return expired
 
 
+def reconcile_unknown(world: World, controller: EpisodeController, notes: list[str]) -> list[str]:
+    """Ask again about every episode whose order outcome is unknown; one line per outcome learned.
+
+    A reconcile sends nothing, so one that fails (with any exception) is a note and the
+    others still run: a pass must not lose its self-halt checks or its equity mark to
+    an exchange that cannot answer yet. An episode still unknown afterwards adds no
+    line; ``PassSummary.outcome_unknown`` lists it.
+    """
+    learned = []
+    for episode in world.store.list_episodes(status=EpisodeStatus.OUTCOME_UNKNOWN, limit=1_000_000):
+        who = (
+            f"proposal {episode.proposal.proposal_id}"
+            if episode.proposal is not None
+            else f"episode {episode.episode_id}"
+        )
+        try:
+            record = controller.reconcile(episode.episode_id)
+        except Exception as exc:  # a reconcile sends nothing: report it and go on
+            notes.append(f"{who}: order outcome still unknown, reconcile failed: {exc}")
+            continue
+        if record.status is EpisodeStatus.OUTCOME_UNKNOWN:
+            continue
+        end = record.exit.value if record.exit is not None else record.status.value
+        learned.append(f"{who}: {end}: {record.exit_detail}")
+    return learned
+
+
+def unknown_proposals(world: World) -> list[str]:
+    """Proposal ids whose order outcome is unknown now."""
+    from pmfa.records.decision import ProposalStatus
+
+    return [p.proposal_id for p, _ in world.store.list_proposals(ProposalStatus.OUTCOME_UNKNOWN)]
+
+
 def outcome(record: EpisodeRecord, trigger: Trigger, *, already_run: bool) -> EpisodeOutcome:
     return EpisodeOutcome(
         trigger=trigger,
@@ -297,7 +340,7 @@ def mark_equity(world: World) -> Decimal:
 def run_once(
     world: World, controller: EpisodeController, *, resolver: Resolver | None = None
 ) -> PassSummary:
-    """One pass: refresh, resolve, expire, self-halt, detect triggers, run episodes, mark equity.
+    """One pass: refresh, resolve, reconcile, expire, self-halt, triggers and episodes, mark equity.
 
     ``resolver`` replaces ``pmfa.evaluation.resolver.resolve_outcomes`` (tests).
     """
@@ -323,6 +366,7 @@ def run_once(
     passages = _index(world.knowledge, "index_documents", documents)
 
     resolved = _resolve(world, resolver, notes)
+    reconciled = reconcile_unknown(world, controller, notes)
     expired = _expire_due(world, controller, notes)
     stops = enforce(store, world.executor, config, clock, world.evidence)
     demoted = StageManager(store, config, clock).check_demotion()
@@ -343,8 +387,12 @@ def run_once(
     outcomes: list[EpisodeOutcome] = []
     stopped = ""
     for trigger in found:
-        episode_id = episode_id_for(world.mode, trigger)
-        already = store.get_episode(episode_id) is not None
+        stored = store.get_episode(episode_id_for(world.mode, trigger))
+        if stored is not None and stored.status is not EpisodeStatus.DONE:
+            # Unfinished: another process may be in it (a review in a second terminal).
+            outcomes.append(outcome(stored, trigger, already_run=True))
+            continue
+        episode_id, already = episode_id_for(world.mode, trigger), stored is not None
         try:
             record = controller.run(trigger)
         except RunBudgetExhausted as exc:
@@ -386,6 +434,8 @@ def run_once(
         triggers=found,
         episodes=outcomes,
         pending_review=[p.proposal_id for p, _ in store.list_proposals(ProposalStatus.PENDING)],
+        reconciled=reconciled,
+        outcome_unknown=unknown_proposals(world),
         equity=equity,
         notes=notes,
         stopped=stopped,

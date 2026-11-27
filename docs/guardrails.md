@@ -35,8 +35,8 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | Limit orders only, immediate-or-cancel only, at valid ticks | Code | [records/decision.py](../src/pmfa/records/decision.py), [gate.py](../src/pmfa/decision/gate.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `limit_order`, `immediate_or_cancel` and `valid_tick` cases of `test_each_check_fails_alone` in [test_gate.py](../tests/decision/test_gate.py); `test_buying_yes_is_a_bid_at_the_limit_price` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The price is re-read before sending; nothing offered at the limit means no order | Code | [pipeline.py](../src/pmfa/episode/pipeline.py) (`execute`) | `test_08_the_price_moves_past_the_edge_before_execution_and_no_order_is_sent`, `test_08_after_approval_a_price_above_the_limit_exits_stale_price` |
 | A retry or second resume cannot double an order | Code | deterministic client order ids in [pipeline.py](../src/pmfa/episode/pipeline.py), [paper.py](../src/pmfa/execution/paper.py), [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_resuming_twice_does_not_place_a_second_order`, `test_a_first_run_finds_an_order_already_placed_under_its_client_order_id_and_sends_no_other` in [test_controller.py](../tests/episodes/test_controller.py); `test_a_duplicate_client_order_id_is_looked_up_not_resent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
-| An episode continued after a crash or an exchange error looks its order up by client order id and never places one | Code | [controller.py](../src/pmfa/episode/controller.py), `_reconcile` in [pipeline.py](../src/pmfa/episode/pipeline.py), `find_order` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_a_continued_episode_that_died_before_sending_sends_nothing`, `test_a_continued_episode_that_died_after_sending_records_its_order_and_sends_no_other`, `test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_other`, `test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outcome_is_unknown` in [test_controller.py](../tests/episodes/test_controller.py) |
-| An order the exchange rejects ends the episode `error`, not `executed`; an order whose outcome stays unknown (the exchange failed while sending, and the lookup by client order id fails or finds nothing) ends it `error` with the proposal still approved and no rejection recorded; an unknown outcome that the demo exchange answers has no such order is a rejection | Code | `_order_outcome` and `execute` in [pipeline.py](../src/pmfa/episode/pipeline.py), `place` in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled`, `test_an_exchange_error_while_sending_with_no_order_found_ends_in_error_and_is_recorded` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_an_unknown_outcome_whose_lookup_fails_raises_instead_of_rejecting`, `test_a_duplicate_client_order_id_whose_lookup_fails_raises_instead_of_rejecting`, `test_an_unknown_outcome_whose_lookup_answers_with_no_order_is_rejected` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
+| An episode continued after a crash or an exchange error looks its order up by client order id and never places one | Code | [controller.py](../src/pmfa/episode/controller.py), `_reconcile` in [pipeline.py](../src/pmfa/episode/pipeline.py), `find_order` in [paper.py](../src/pmfa/execution/paper.py) and [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_a_continued_episode_that_died_before_sending_sends_nothing`, `test_a_continued_episode_that_died_after_sending_records_its_order_and_sends_no_other`, `test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_other`, `test_a_continuation_whose_order_lookup_fails_sends_nothing_and_waits_with_the_outcome_unknown` in [test_controller.py](../tests/episodes/test_controller.py) |
+| An order the exchange rejects ends the episode `error`, not `executed`; an order whose outcome is unknown (the exchange failed while sending, and the lookup by client order id fails or finds nothing) leaves the episode and the proposal `outcome_unknown`, with no exit and no rejection recorded; an unknown outcome that the demo exchange answers has no such order is a rejection | Code | `_order_outcome` and `execute` in [pipeline.py](../src/pmfa/episode/pipeline.py), `place` in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_the_exchange_rejected_ends_in_error_and_the_proposal_is_cancelled`, `test_an_exchange_error_while_sending_with_no_order_found_waits_with_the_outcome_unknown` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_an_unknown_outcome_whose_lookup_fails_raises_instead_of_rejecting`, `test_a_duplicate_client_order_id_whose_lookup_fails_raises_instead_of_rejecting`, `test_an_unknown_outcome_whose_lookup_answers_with_no_order_is_rejected` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | The halt flag blocks every order, in every mode | Code | the gate; `execute` at its start and again immediately before sending; [paper.py](../src/pmfa/execution/paper.py); [demo.py](../src/pmfa/world/kalshi/demo.py) before the order and again before it is sent | `test_10_halt_flag_set_means_no_order_in_any_mode`, `test_10_a_halt_set_during_the_review_blocks_the_approved_order`, `test_10_b_a_halt_set_after_the_gate_approved_stops_the_order_before_it_is_sent`, `test_10_c_a_halt_set_while_execute_reads_the_book_stops_the_order`, `test_10_d_a_halt_set_between_the_gate_and_execute_stops_before_the_book_is_read` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_halted_orders_are_refused_and_not_stored` in [test_paper.py](../tests/execution/test_paper.py); `test_a_halted_executor_sends_no_order`, `test_the_halt_flag_is_read_again_right_before_the_order_is_sent` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
 | `pmfa halt` with no `--mode` halts every live mode, setting every flag before it contacts any exchange | Code | [cli/oversight.py](../src/pmfa/cli/oversight.py) | `test_halt_without_a_mode_stops_every_live_mode`, `test_a_halt_sets_every_flag_before_any_exchange_and_survives_missing_demo_keys` in [test_operations.py](../tests/cli/test_operations.py) |
 | The agent halts itself on a stop condition | Code | [halt.py](../src/pmfa/execution/halt.py), run before the gate and on every live pass | [test_halt.py](../tests/execution/test_halt.py); `test_a_self_halt_condition_before_the_gate_halts_and_sends_nothing` in [test_scenarios.py](../tests/episodes/test_scenarios.py); a changed or withdrawn live source: [test_live.py](../tests/world/evidence/test_live.py); rejected demo orders count as fill failures: `test_repeated_demo_rejections_trip_the_fill_failure_halt` in [test_demo.py](../tests/world/kalshi/test_demo.py) |
@@ -199,7 +199,9 @@ first three passages with source, title, publish time and a 40-word excerpt, the
 - **reject**: needs a reason code: `stale_evidence`, `wrong_market`, `size_too_large`,
   `disagree_with_forecast`, or `other`, with an optional note.
 
-The `pmfa review` commands list pending proposals, show a card, and record each choice.
+The `pmfa review` commands list pending proposals, show a card, and record each choice. A proposal
+whose order outcome is unknown, whose order may already have been sent, or whose episode has ended
+cannot be decided: the command says which, records nothing, and exits 1.
 
 A resize or a reject is recorded on the ledger entry as an override, so overrides become data.
 
@@ -222,20 +224,25 @@ then on the executor with `find_order`), so a retry finds the order instead of s
   and the proposal is cancelled. An order the exchange accepted ends it `executed`, whether it
   filled fully, partly or not at all.
 - **Exchange failure while sending.** The order is looked up by its client order id. When it is
-  found it is recorded; when it is not, or the lookup itself fails, the episode ends `error` and
-  says the outcome is unknown. The proposal keeps its approval and no rejection is recorded,
-  because an order may stand on the exchange. The demo executor makes the same lookup when an
-  order's outcome is unknown (no response, a 408 or a 5xx) or the exchange answers
-  `order_already_exists`: it returns an order it finds, and the episode records it; it returns
-  `REJECTED` when the exchange answers that none exists; and it raises when the lookup fails, so
-  the episode ends as above.
+  found it is recorded. When it is not, or the lookup itself fails, the outcome is unknown: the
+  episode and the proposal are saved `outcome_unknown`, with no exit and no rejection recorded,
+  because an order may stand on the exchange. Nothing more is sent for that proposal. Each live
+  pass, and `pmfa reconcile`, looks the order up again: found, it is recorded and the episode ends
+  by what the exchange did; the exchange lists none, the proposal is cancelled and the episode ends
+  `error`; the exchange cannot be asked, the episode stays `outcome_unknown`. The demo executor
+  makes the same lookup when an order's outcome is unknown (no response, a 408 or a 5xx) or the
+  exchange answers `order_already_exists`: it returns an order it finds, and the episode records
+  it; it returns `REJECTED` when the exchange answers that none exists; and it raises when the
+  lookup fails, so the episode waits as above.
 - **Continued episodes.** When the process stopped at `execute` (a crash, or an error that escaped
-  after the approval), the controller continues the episode at that node, and a continued episode
-  only reconciles: it looks the order up by its client order id and records what it finds, and it
-  never places an order. When no order exists, the proposal is cancelled and the episode ends
-  `error` with nothing placed; when the exchange cannot be asked, the episode ends `error` and says
-  the outcome is unknown. The approval behind the stopped episode is stale (its gate ran at an older
-  price, and the human may since have rejected it), so it is never acted on again.
+  after the approval), the episode stays unfinished, and whatever continues it (`run` of the same
+  trigger, a review, an expiry, or `pmfa reconcile --episode ID`) only reconciles: it looks the
+  order up by its client order id and records what it finds, and it never places an order. When no
+  order exists, the proposal is cancelled and the episode ends `error` with nothing placed; when
+  the exchange cannot be asked, the episode waits `outcome_unknown`. The approval behind the
+  stopped episode is stale (its gate ran at an older price, and the human may since have rejected
+  it), so it is never acted on again. A live pass leaves an unfinished episode alone, because
+  another process may be in it; `pmfa report-status` lists it with the command that settles it.
 
 ## Halt: the command and the self-halt conditions
 
@@ -370,6 +377,11 @@ corpus and the caches are ignored by git, and `.env.example` lists the variables
 
 ## What is not guaranteed
 
+- **An episode that died while its order was being sent is not swept up automatically.** A live
+  pass cannot tell a dead process from one still sending, so it leaves the episode alone.
+  `pmfa report-status` lists it; a person runs `pmfa reconcile --episode ID` once nothing else is
+  working on it. An `outcome_unknown` episode whose checkpoint file has been deleted cannot be
+  finished at all: the reconcile message names the client order id to look up on the exchange.
 - **A wrong forecast can still lose money, up to the caps.** The caps bound one order to 25
   contracts, one market to 5% of bankroll, and one event to 10%; the daily stop and the drawdown
   halt stop further trading. Within those limits, a confident wrong forecast loses.

@@ -1,9 +1,14 @@
-"""``pmfa review``, ``pmfa halt`` and ``pmfa stage``: human oversight of the live modes.
+"""``pmfa review``, ``pmfa reconcile``, ``pmfa halt`` and ``pmfa stage``: oversight of the live modes.
 
 - ``review list | show ID | approve ID | resize ID --contracts N | reject ID --reason CODE``.
   Deciding resumes the paused episode through a controller built on the same
   state and checkpoint files as the process that paused it, and prints what
   happened (executed with fills, gate rejected at the current price, expired, ...).
+- ``reconcile [--episode ID]`` asks the exchange now about every order whose
+  outcome is unknown (an exchange error while sending, and no lookup could find
+  it), or about the one named episode whose order may be on the exchange. It
+  looks each order up by its client order id and never sends one, halted or not,
+  and prints one line per episode; it exits 1 while any outcome is still unknown.
 - ``halt [--reason TEXT]`` sets the persisted flag, then cancels every open
   order; ``halt --resume`` clears it; ``halt --status`` shows it. Without
   ``--mode``, halt acts on every live mode (shadow and demo): all the flags are
@@ -132,8 +137,9 @@ def _decide(
     from pmfa.errors import ConfigError, NotFound
     from pmfa.execution.review import ReviewRefused
     from pmfa.live import session as live_session
-    from pmfa.live.text import decision_lines
-    from pmfa.records.decision import Review
+    from pmfa.live.text import decision_lines, unknown_outcome_sentence
+    from pmfa.records.decision import ProposalStatus, Review
+    from pmfa.records.episode import EpisodeStatus
 
     config = _config()
     try:
@@ -142,6 +148,24 @@ def _decide(
             if found is None:
                 raise _fail(f"no proposal {proposal_id!r} ({mode.value})")
             proposal = found[0]
+            if found[1] is ProposalStatus.OUTCOME_UNKNOWN:
+                raise _fail(
+                    f"not decided: the order for {proposal_id} was sent and its outcome is "
+                    "unknown, so a review cannot change it. "
+                    + unknown_outcome_sentence(mode.run_mode)
+                )
+            episode = s.world.store.get_episode(proposal.episode_id)
+            if episode is not None and episode.status is EpisodeStatus.DONE:
+                raise _fail(
+                    f"not decided: {proposal_id} is {found[1].value}, not pending: "
+                    "its episode has ended"
+                )
+            if episode is not None and s.controller.in_doubt(proposal.episode_id):
+                raise _fail(
+                    f"not decided: {proposal_id} is already {found[1].value}, and its order may "
+                    f"have been sent. If no process is still running it, pmfa reconcile --mode "
+                    f"{mode.value} --episode {proposal.episode_id} settles it."
+                )
             review = Review(
                 proposal_id=proposal_id,
                 decision=decision,
@@ -210,6 +234,78 @@ def review_reject(
     from pmfa.records.decision import ReviewDecision
 
     _decide(mode, proposal_id, ReviewDecision.REJECT, reason_code=_reason(reason), note=note)
+
+
+# --------------------------------------------------------------------------- reconcile
+
+
+def reconcile(
+    mode: LiveMode = MODE_OPTION,
+    episode_id: str | None = typer.Option(
+        None, "--episode", help="Only this episode, also one that died while sending its order."
+    ),
+) -> None:
+    """Ask the exchange now about every order whose outcome is unknown. Sends nothing.
+
+    One line per such order: what the exchange said, or that it still cannot say.
+    Exits 0 when no outcome remains unknown, 1 when one does.
+    """
+    from pmfa.errors import ConfigError, PmfaError
+    from pmfa.live import session as live_session
+    from pmfa.live.text import unknown_outcome_sentence
+    from pmfa.records.episode import EpisodeStatus
+
+    config = _config()
+    remaining = 0
+    failed = 0
+    try:
+        with live_session.open_session(mode.run_mode, config) as s:
+            waiting = (
+                [episode_id]
+                if episode_id
+                else [
+                    e.episode_id
+                    for e in s.world.store.list_episodes(
+                        status=EpisodeStatus.OUTCOME_UNKNOWN, limit=1_000_000
+                    )
+                ]
+            )
+            if episode_id and s.world.store.get_episode(episode_id) is None:
+                raise _fail(f"no episode {episode_id!r} ({mode.value})")
+            if not waiting:
+                typer.echo(f"no order with an unknown outcome ({mode.value})")
+                return
+            for eid in waiting:
+                stored = s.world.store.get_episode(eid)
+                who = (
+                    f"proposal {stored.proposal.proposal_id}"
+                    if stored and stored.proposal
+                    else f"episode {eid}"
+                )
+                try:
+                    record = s.controller.reconcile(eid)
+                except PmfaError as exc:
+                    typer.echo(f"{who}: still unknown, the reconcile failed: {exc}")
+                    failed += 1
+                    continue
+                if record.status is EpisodeStatus.OUTCOME_UNKNOWN:
+                    last = record.trace[-1] if record.trace else None
+                    reason = str(last.data.get("detail", "")) if last is not None else ""
+                    typer.echo(f"{who}: still unknown" + (f": {reason}" if reason else ""))
+                    remaining += 1
+                    continue
+                end = record.exit.value if record.exit is not None else record.status.value
+                typer.echo(f"{who}: {end}" + (f": {record.exit_detail}" if record.exit else ""))
+    except ConfigError as exc:
+        raise _fail(f"cannot open {mode.value} mode: {exc}", 2) from None
+    if remaining:
+        typer.echo(
+            f"{remaining} order outcome(s) still unknown. "
+            + unknown_outcome_sentence(mode.run_mode)
+        )
+    if remaining or failed:
+        raise typer.Exit(1)
+    typer.echo(f"no order outcome remains unknown ({mode.value})")
 
 
 # --------------------------------------------------------------------------- halt
@@ -412,8 +508,9 @@ def stage_demote(
 
 def register(app: typer.Typer) -> None:
     app.add_typer(review_app, name="review")
+    app.command("reconcile")(reconcile)
     app.command("halt")(halt)
     app.add_typer(stage_app, name="stage")
 
 
-__all__ = ["halt", "register", "review_app", "stage_app"]
+__all__ = ["halt", "reconcile", "register", "review_app", "stage_app"]

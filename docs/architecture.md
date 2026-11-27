@@ -41,13 +41,17 @@ flowchart TD
     route -->|halted| record
     review -->|"rejected_by_human, expired"| record
     execute -->|"executed, stale_price, halted, error"| record
+    execute -->|"the order's outcome is unknown"| hold
+    hold["hold: interrupt only"] --> reconcile
+    reconcile["reconcile: look the order up, never send"] -->|"the exchange cannot be asked"| hold
+    reconcile -->|"executed, error"| record
     record["record"]
 
     classDef llm fill:#fde2c8,stroke:#b5651d,color:#000
     classDef code fill:#eeeeee,stroke:#666666,color:#000
     classDef human fill:#d6e6ff,stroke:#2b5797,color:#000
     class match,research,forecast llm
-    class trigger,size,gate,route,pause,execute,record code
+    class trigger,size,gate,route,pause,execute,hold,reconcile,record code
     class review human
 ```
 
@@ -78,7 +82,8 @@ What each step does, in the code's terms:
 | gate | code | Runs the self-halt conditions, then re-verifies every limit with its own arithmetic. | `gate_rejected`, `halted` |
 | route | code | Scores the risk and assigns the *routing tier*: auto, approve or halt. The price move it scores is measured from the forecast-time price, so a recompute cannot re-base it. | `halted` |
 | pause, review | human | The graph stops and waits ([below](#the-human-approval-pause)). | `rejected_by_human`, `expired` |
-| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. When the exchange fails while the order is sent and the lookup by client order id finds nothing or fails itself, the outcome is unknown: the episode ends `error`, the proposal keeps its approval and no rejection is recorded. | `executed`, `stale_price`, `halted`, `error` |
+| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. When the exchange fails while the order is sent and the lookup by client order id finds nothing or fails itself, the outcome is unknown: the episode and the proposal are saved `outcome_unknown`, with no exit and no rejection recorded, and nothing more is sent. | `executed`, `stale_price`, `halted`, `error` |
+| hold, reconcile | code | Only for an order whose outcome is unknown. `hold` waits. `reconcile` looks the order up by its client order id and never sends: an order it finds is recorded and the episode ends by what the exchange did; when the exchange lists none, the proposal is cancelled and the episode ends `error`; when the exchange cannot be asked, the episode waits again. | `executed`, `error` |
 | record | code | Writes the forecast and one *ledger* entry per market, with the forecast-time price, and closes the episode record. | |
 
 ## The parts: roles, code, gateway, state, ports
@@ -177,8 +182,10 @@ the current price before the order is sent.
 The worlds are assembled in [recorded.py](../src/pmfa/world/recorded.py),
 [backtest.py](../src/pmfa/world/backtest.py) and [live.py](../src/pmfa/world/live.py). In shadow and
 demo mode a foreground loop ([live/loop.py](../src/pmfa/live/loop.py)) repeats one pass: refresh the
-indexes, resolve settled outcomes, expire due proposals, apply the self-halt conditions and the
-stage demotion rule, detect triggers and run their episodes, and record a *marked equity* point.
+indexes, resolve settled outcomes, ask again about orders whose outcome is unknown, expire due
+proposals, apply the self-halt conditions and the stage demotion rule, detect triggers and run
+their episodes (a trigger whose episode exists and is not finished is left alone), and record a
+*marked equity* point.
 The command for each mode is `pmfa replay NAME`, `pmfa backtest`, `pmfa shadow` or `pmfa demo`
 (see [Commands](#commands)).
 
@@ -401,14 +408,23 @@ An approve-tier proposal is decided by a person, possibly in another process and
    the store, then on the executor), checks the halt flag, re-reads the book, checks the flag again,
    and places the order. An order already placed under that id is recorded, not sent again, so a
    second resume cannot double it. When the exchange fails while the order is sent, the order is
-   looked up again; when none is found or the lookup fails, the episode ends `error` with the
-   outcome unknown, and the proposal keeps its approval.
+   looked up again; when none is found or the lookup fails, the outcome is unknown: the episode and
+   the proposal are saved `outcome_unknown`, with no exit, and the graph waits in `hold`.
 
-If the process stops at `execute` (a crash, or an error that escaped after the approval),
-`run`, `resume` and `expire` all continue the episode at that node, and a continued episode only
-reconciles: it records the order it finds by its client order id and never places one. When none
-exists, the proposal is cancelled and the episode ends `error`, nothing placed. The approval it
-would have acted on is stale, so it is never acted on again.
+An order whose outcome is unknown is asked about again, never sent again. Each live pass, and
+`pmfa reconcile`, resumes the waiting episode into the `reconcile` node, which looks the order up by
+its client order id: found, it is recorded and the episode ends by what the exchange did; the
+exchange lists none, the proposal is cancelled and the episode ends `error`, nothing placed; the
+exchange cannot be asked, the episode stays `outcome_unknown`. `pmfa review` refuses to decide such
+a proposal.
+
+If the process stops at `execute` (a crash, or an error that escaped after the approval), the
+episode stays unfinished. `run`, `resume`, `expire` and `reconcile` all continue it at that node,
+and a continued episode only reconciles: it records the order it finds by its client order id and
+never places one. When none exists, the proposal is cancelled and the episode ends `error`, nothing
+placed. The approval it would have acted on is stale, so it is never acted on again. Nothing sweeps
+for such an episode automatically, because another process may still be in it: `pmfa report-status`
+lists it, and `pmfa reconcile --episode ID` settles it.
 
 `expire(episode_id)` ends a paused episode as `expired` without an order. The test
 `test_a_pause_in_one_controller_resumes_in_a_second_built_over_the_same_files` in
@@ -530,12 +546,13 @@ time.
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
+| `pmfa reconcile` | Ask the exchange now about every order whose outcome is unknown, by client order id; it sends nothing (`--mode`). `--episode ID` settles one episode that died while its order was being sent. |
 | `pmfa halt` | Set the persisted halt flag and cancel all open orders. With no `--mode` it halts every live mode (shadow and demo); `--mode` narrows it to one; `--status`, `--resume`. |
 | `pmfa stage` | `status`, `advance` and `demote` the autonomy stage; `advance` refuses unless the benchmark is met. `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a backtest run's scored forecasts. |
 | `pmfa state-server` | Serve a state database over MCP on stdio, for browsing episodes with any MCP client. |
 | `pmfa resolve` | Run the outcome resolver once and print what resolved. |
 | `pmfa config` | `show` the effective configuration, or `check` a file. |
-| `pmfa report-status` | Print the monitoring report: P&L, drawdown, exits, rejections, fills, overrides, calibration. |
+| `pmfa report-status` | Print the monitoring report: P&L, drawdown, exits, rejections, fills, overrides, calibration, orders whose outcome is unknown, and unfinished episodes with the command that settles each. |
 
 `pmfa replay` prints the hand-made-fixture notice first, then the trigger and as-of time, the
 numbered trace (thought, action, observation), the forecast for each market next to the market

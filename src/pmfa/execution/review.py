@@ -4,9 +4,10 @@ A proposal routed to the approve tier is saved ``PENDING`` with a review card.
 The human approves, resizes (smaller only), or rejects it with a reason code.
 A proposal expires when the clock passes its ``expires_at`` or when the best
 ask on its side has moved above its edge-preserving bound; an expired or
-already decided proposal cannot be decided. Approval does not place anything:
-the episode re-runs the gate at the current price and places the order in a
-separate step.
+already decided proposal cannot be decided, nor can one whose order outcome is
+unknown (``OUTCOME_UNKNOWN``): a review cannot unsend an order. Approval does
+not place anything: the episode re-runs the gate at the current price and
+places the order in a separate step.
 """
 
 from __future__ import annotations

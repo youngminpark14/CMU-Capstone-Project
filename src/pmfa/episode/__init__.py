@@ -1,7 +1,8 @@
 """The episode controller: one LangGraph pipeline that runs an episode for a trigger.
 
 - ``EpisodeController(world, *, checkpointer=None)`` with ``run(trigger)``,
-  ``resume(episode_id, review)``, ``expire(episode_id)`` and ``close()``;
+  ``resume(episode_id, review)``, ``expire(episode_id)``, ``reconcile(episode_id)``
+  (ask again about an order whose outcome is unknown; it never sends) and ``close()``;
 - ``open_checkpointer(path)``: the SQLite checkpointer for pausing in one process
   and resuming in another;
 - ``build_graph(world, ...)``: the compiled graph; ``mermaid()``: its wiring as Mermaid text;

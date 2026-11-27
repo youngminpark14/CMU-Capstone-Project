@@ -382,8 +382,18 @@ def render_decision(console: Console, episode: EpisodeRecord, card: ReviewCard |
 
 
 def render_orders(console: Console, episode: EpisodeRecord) -> None:
+    from pmfa.live.text import unknown_outcome_sentence
+    from pmfa.records.episode import EpisodeStatus
+
+    if episode.status is EpisodeStatus.OUTCOME_UNKNOWN:
+        console.print(
+            "No order is recorded, and its outcome is unknown. "
+            + unknown_outcome_sentence(episode.mode)
+        )
+        return
     if not episode.orders:
-        console.print("No order was sent.")
+        done = episode.status is EpisodeStatus.DONE
+        console.print("No order was sent." if done else "No order is recorded yet.")
         return
     for order in episode.orders:
         console.print(

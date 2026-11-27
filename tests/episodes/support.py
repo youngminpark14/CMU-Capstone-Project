@@ -616,3 +616,75 @@ def check_trace(record: EpisodeRecord) -> None:
 
 def advance(world: RecordedWorld, seconds: float) -> None:
     world.clock.advance(seconds)  # type: ignore[attr-defined]
+
+
+# --------------------------------------------------------------------------- an exchange in doubt
+
+
+def exchange_account(world: RecordedWorld) -> Any:
+    """A second paper account standing in for the exchange's own record of orders."""
+    from pmfa.execution.paper import PaperExecutor
+    from pmfa.state.store import MEMORY, SqliteStore
+
+    return PaperExecutor(
+        SqliteStore(MEMORY), world.clock, world.config, world.exchange, RecordedBooks(world.file)
+    )
+
+
+class DoubtfulExchange:
+    """An executor whose answers about an order are scripted, for unknown order outcomes.
+
+    ``place`` records the intent in ``placed``, hands it to ``exchange`` (the exchange's
+    own record, which fills it) when ``accept`` is set, and then raises ``ExchangeError``,
+    as an answer lost on the way back would. Before any order is sent the exchange
+    answers lookups; after one is sent, ``find_order`` raises ``ExchangeError`` for the
+    next ``failures`` lookups (``crash`` instead raises ``RuntimeError`` once, as a
+    process dying there would), and then asks ``exchange``. Everything else is the
+    inner executor's. ``placed`` may be shared, so several worlds count one exchange.
+    """
+
+    def __init__(
+        self,
+        inner: Any,
+        exchange: Any,
+        *,
+        accept: bool = True,
+        failures: int = 1,
+        placed: list[Any] | None = None,
+    ) -> None:
+        self._inner = inner
+        self.exchange = exchange
+        self.accept = accept
+        self.failures = failures
+        self.crash = False
+        self.placed: list[Any] = placed if placed is not None else []
+
+    def place(self, intent: Any) -> Any:
+        from pmfa.errors import ExchangeError
+
+        self.placed.append(intent)
+        if self.accept:
+            self.exchange.place(intent)
+        raise ExchangeError("POST /portfolio/events/orders -> 504 gateway_timeout")
+
+    def find_order(self, intent: Any) -> Any:
+        from pmfa.errors import ExchangeError
+
+        if self.placed and self.crash:
+            self.crash = False
+            raise RuntimeError("the process died during the order lookup")
+        if self.placed and self.failures > 0:
+            self.failures -= 1
+            raise ExchangeError("GET /portfolio/orders -> 503 service_unavailable")
+        return self.exchange.find_order(intent)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def doubtful(world: RecordedWorld, exchange: Any = None, **settings: Any) -> RecordedWorld:
+    """``world`` with its executor wrapped in a ``DoubtfulExchange`` (see there)."""
+    account = exchange if exchange is not None else exchange_account(world)
+    return dataclasses.replace(
+        world, executor=DoubtfulExchange(world.executor, account, **settings)
+    )
