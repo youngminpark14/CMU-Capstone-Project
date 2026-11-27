@@ -560,8 +560,10 @@ uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full
 
 `YYYY-MM-DD` is the date the run started; `pmfa backtest` prints the run directory when it finishes.
 Publishing commits the manifest, the per-forecast table, the metrics, the report and figures, and the
-saved traces. The notebook [notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the
-newest published run.
+saved traces; with `--scores-only` it leaves out the per-forecast table and the traces. The notebook
+[notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the newest published run: it
+recomputes the scores when the per-forecast table is there, and reads them from `metrics.json` when
+the run was published as scores only.
 
 ## Limitations
 
