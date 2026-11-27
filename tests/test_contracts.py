@@ -48,6 +48,13 @@ def test_per_order_cap_must_stay_below_the_exchange_breaker():
         load_config(overrides={"caps": {"max_contracts_per_order": 50}})
 
 
+def test_the_demo_subaccount_is_the_main_balance_or_a_numbered_one():
+    assert load_config(overrides={"kalshi": {"demo_subaccount": 0}}).kalshi.demo_subaccount == 0
+    for bad in (-1, 64):
+        with pytest.raises(ConfigError, match="demo_subaccount"):
+            load_config(overrides={"kalshi": {"demo_subaccount": bad}})
+
+
 def test_unknown_configuration_keys_are_rejected():
     with pytest.raises(ConfigError):
         load_config(overrides={"caps": {"per_market_fracton": "0.05"}})

@@ -65,10 +65,15 @@ def load_private_key(pem: str | bytes) -> PrivateKey:
     """Parse an unencrypted PEM private key (PKCS#8 or PKCS#1).
 
     PEM text copied into a single-line environment variable often carries
-    literal ``\\n`` sequences instead of newlines; those are accepted.
+    literal ``\\n`` sequences instead of newlines; those are accepted. So is
+    the key's base64 body alone, without its ``BEGIN`` and ``END`` lines, which
+    is what an environment-variable form keeps of a pasted multi-line value: it
+    is read as a PKCS#8 key.
     """
     text = pem.decode("utf-8") if isinstance(pem, bytes) else pem
     text = text.strip().replace("\\r\\n", "\n").replace("\\n", "\n")
+    if "-----BEGIN" not in text:
+        text = f"-----BEGIN PRIVATE KEY-----\n{text}\n-----END PRIVATE KEY-----"
     try:
         key = serialization.load_pem_private_key(text.encode("utf-8"), password=None)
     except (ValueError, TypeError, UnsupportedAlgorithm):

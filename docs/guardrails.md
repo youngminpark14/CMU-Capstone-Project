@@ -167,7 +167,8 @@ in code:
 - **One subaccount.** Every order, balance, position and cancel request names the configured
   numbered subaccount (default 1). The key itself is meant to be created on Kalshi restricted to
   that subaccount; Kalshi documents that a restricted key cannot transfer funds or manage
-  subaccounts or keys.
+  subaccounts or keys. `kalshi.demo_subaccount = 0` names the account's main balance instead,
+  where a new demo account's mock funds are; the exchange-side bound does not apply then.
 - **An order group as a breaker.** Every order joins an order group with a limit of 50 contracts over
   Kalshi's rolling 15-second window. Hitting it cancels the group's resting orders and rejects new
   ones until the group is reset, and this executor never resets it. Because one order is capped at

@@ -280,6 +280,7 @@ class KalshiConfig(Section):
     demo_private_key_env: str = "KALSHI_DEMO_PRIVATE_KEY"
     demo_private_key_path_env: str = "KALSHI_DEMO_PRIVATE_KEY_PATH"
     demo_subaccount: int = 1
+    """1 to 63 names a numbered subaccount; 0 is the account's main balance."""
     max_requests_per_second: float = 2.0
     request_timeout_seconds: float = 30.0
 
@@ -479,8 +480,8 @@ class Config(Section):
                 problems.append(
                     f"models.catalog has no entry for {assignment.model} (slot {slot.value})"
                 )
-        if not (1 <= self.kalshi.demo_subaccount <= 63):
-            problems.append("kalshi.demo_subaccount must be between 1 and 63")
+        if not (0 <= self.kalshi.demo_subaccount <= 63):
+            problems.append("kalshi.demo_subaccount must be between 0 and 63")
         if problems:
             raise ValueError("; ".join(problems))
         return self
