@@ -7,7 +7,7 @@ from pmfa.errors import BudgetExhausted, CassetteMiss, ModelOutputError, RunBudg
 from pmfa.models import CassettePlayer, CassetteRecorder, Gateway
 from pmfa.models.roles.runner import DirectRunner
 from pmfa.ports import Models
-from pmfa.records.roles import MatchDecision, ModelSlot, RoleTask
+from pmfa.records.roles import MatchDecision, ModelSlot, RoleTask, ScoreOutput
 
 from .fakes import FakeBackend, ok, raw
 from .fixtures import AS_OF, INPUTS, OUTPUTS, make_config
@@ -350,6 +350,21 @@ def test_a_replay_charges_the_same_seconds_as_the_live_calls_did(tmp_path):
     assert gw.usage("ep-1").seconds == 4.94  # four attempts of 1.235 s
     assert gw.usage("ep-2").seconds == 2.47
 
+    # Uneven attempts: 0.3 s, then a repaired call of 0.1 s and 0.2 s. Their float sum is
+    # not 0.6 unless the meter keeps seconds to the millisecond.
+    ends = iter([0.0, 0.3, 0.3, 0.4, 0.4, 0.6])
+    uneven, _ = gateway(
+        [ok(MATCH_OUT), raw("bad"), ok(MATCH_OUT)],
+        recorder=CassetteRecorder(tmp_path / "uneven"),
+        timer=lambda: next(ends),
+    )
+    for _ in range(2):
+        uneven.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-3")
+    player = CassettePlayer.from_paths(tmp_path / "uneven")
+    for _ in range(2):
+        player.call(RoleTask.MATCH, MATCH_IN, episode_id="ep-3")
+    assert player.usage("ep-3") == uneven.usage("ep-3")
+
 
 def test_replay_with_a_changed_input_is_a_cassette_miss(tmp_path):
     gw, _ = gateway([ok(MATCH_OUT)], recorder=CassetteRecorder(tmp_path))
@@ -385,3 +400,133 @@ def test_cassette_files_are_readable_json(tmp_path):
         entry
     )
     assert entry["input"]["trigger"]["headline"] == MATCH_IN.trigger.headline
+
+
+SCORE_OUT = OUTPUTS[RoleTask.SCORE]
+ONE_SCORE = SCORE_OUT.model_copy(update={"scores": SCORE_OUT.scores[:1]})  # s1 only, s2 missing
+
+
+def cached_outputs(directory) -> list[dict]:
+    return [json.loads(p.read_text())["output"] for p in directory.glob("*.json")]
+
+
+def test_a_score_answer_missing_a_scenario_gets_the_repair_retry(tmp_path):
+    gw, backend = gateway([ok(ONE_SCORE), ok(SCORE_OUT)], cache_dir=tmp_path)
+    result = gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert result.output == SCORE_OUT and result.meta.repaired
+    assert len(backend.requests) == 2
+    repair_text = backend.requests[1]["user"]
+    assert "s1" in repair_text and "s2" in repair_text
+    assert cached_outputs(tmp_path) == [SCORE_OUT.model_dump(mode="json")]
+
+
+def test_a_score_answer_missing_a_scenario_twice_is_a_model_output_error(tmp_path):
+    gw, backend = gateway([ok(ONE_SCORE), ok(ONE_SCORE)], cache_dir=tmp_path)
+    with pytest.raises(ModelOutputError):
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert len(backend.requests) == 2
+    assert cached_outputs(tmp_path) == []
+
+
+def test_a_cached_score_answer_missing_a_scenario_is_not_served(tmp_path):
+    from pmfa.models.cache import CachedAnswer, ResponseCache, cache_key
+    from pmfa.models.roles.prompts import render
+    from pmfa.records.roles import TASKS
+
+    config = make_config()
+    assignment = config.models.slots[TASKS[RoleTask.SCORE].default_slot]
+    prompt = render(RoleTask.SCORE, SCORE_IN)
+    key = cache_key(
+        model=assignment.model,
+        effort=assignment.effort,
+        max_tokens=assignment.max_tokens,
+        system=prompt.system,
+        user=prompt.user,
+        output_type=ScoreOutput,
+    )
+    ResponseCache(tmp_path).put(  # as a cache made before the gateway checked it holds one
+        CachedAnswer(
+            key=key,
+            task="score",
+            model=assignment.model,
+            served_model=assignment.model,
+            effort=assignment.effort,
+            output=ONE_SCORE.model_dump(mode="json"),
+            input_tokens=1000,
+            output_tokens=200,
+            cost_usd=Decimal("0.01"),
+            latency_ms=10,
+        )
+    )
+    gw, backend = gateway([ok(SCORE_OUT)], config=config, cache_dir=tmp_path)
+    result = gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert result.output == SCORE_OUT and result.meta.source == "live"
+    assert len(backend.requests) == 1
+    assert cached_outputs(tmp_path) == [SCORE_OUT.model_dump(mode="json")]
+
+
+def test_a_complete_score_answer_is_taken_as_it_is(tmp_path):
+    gw, backend = gateway([ok(SCORE_OUT)], cache_dir=tmp_path)
+    result = gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert result.output == SCORE_OUT and not result.meta.repaired
+    assert len(backend.requests) == 1
+    assert cached_outputs(tmp_path) == [SCORE_OUT.model_dump(mode="json")]
+
+
+def test_the_retry_of_a_score_answer_missing_a_scenario_also_needs_budget():
+    worst = score_worst_case(make_config())
+    cap = str(worst + Decimal("0.05"))  # room for the first call's worst case, not a second
+    config = make_config(budget={"max_usd_per_episode": cap, "max_usd_per_run": "25"})
+    gw, backend = gateway([ok(ONE_SCORE, tokens=(40_000, 2_000)), ok(SCORE_OUT)], config=config)
+    with pytest.raises(BudgetExhausted, match="dollar"):
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e")
+    assert len(backend.requests) == 1
+
+
+def test_a_tapped_call_that_failed_after_being_charged_replays_its_charge():
+    """The tap records what the gateway charged for a failed call, so its trace replays the same."""
+    from pmfa.models.cassette import ModelTap
+
+    worst = score_worst_case(make_config())
+    cap = str(worst + Decimal("0.05"))  # the repair retry is refused after a charged attempt
+    config = make_config(budget={"max_usd_per_episode": cap, "max_usd_per_run": "25"})
+    answers = [ok(MATCH_OUT), raw("a"), raw("b"), raw("bad", tokens=(40_000, 2_000))]
+    gw, _ = gateway(answers, config=config, timer=Ticker(1.5))
+    tap = ModelTap(gw, config)
+    tap.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    with pytest.raises(ModelOutputError):
+        tap.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    with pytest.raises(BudgetExhausted):
+        tap.call(RoleTask.SCORE, SCORE_IN, episode_id="b")
+
+    player = CassettePlayer({e: tap.cassette(e) for e in ("e", "b")})
+    player.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    with pytest.raises(ModelOutputError):
+        player.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    with pytest.raises(BudgetExhausted):
+        player.call(RoleTask.SCORE, SCORE_IN, episode_id="b")
+    assert player.usage("e") == gw.usage("e") and gw.usage("e").calls == 3
+    assert player.usage("b") == gw.usage("b") and gw.usage("b").calls == 1
+
+
+def test_a_transport_error_is_a_model_output_error_and_is_charged():
+    """An error from the API client (after its own retries) ends the episode, not the run."""
+    from pmfa.errors import ModelCallFailed
+
+    def times_out(request):  # type: ignore[no-untyped-def]
+        raise TimeoutError("request timed out after the SDK's retries")
+
+    gw, _ = gateway([times_out, ok(MATCH_OUT)], timer=Ticker(2.0))
+    with pytest.raises(ModelCallFailed, match="TimeoutError") as raised:
+        gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert isinstance(raised.value, ModelOutputError)
+    assert isinstance(raised.value.__cause__, TimeoutError)
+    assert gw.usage("e").calls == 1 and gw.usage("e").seconds == 2.0
+    assert gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e").output == MATCH_OUT
+
+    def interrupted(request):  # type: ignore[no-untyped-def]
+        raise KeyboardInterrupt
+
+    gw, _ = gateway([interrupted])
+    with pytest.raises(KeyboardInterrupt):  # not an error of the call: it passes through
+        gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e")

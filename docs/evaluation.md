@@ -15,7 +15,7 @@ The code is in [src/pmfa/evaluation/](../src/pmfa/evaluation/) and the backtest 
 
 | Area | State |
 | --- | --- |
-| Pipeline and tests | Built end to end. The offline suite of 1,369 tests runs with no keys and no network in about two minutes on one machine (1,365 passed in 123 seconds on 2026-11-27). Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
+| Pipeline and tests | Built end to end. The offline suite of more than 1,400 tests runs with no keys and no network in about two and a half minutes on one machine. Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
 | Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](../tests/episodes/test_scenarios.py). |
 | Offline replay | Five sample episodes replay with one command and match their committed outputs. |
 | Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](../evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](../scripts/rehearse_backtest.py)), which checks the data and the pipeline around the models but not the model side (the gateway, the cache, the dollar caps): its forecasts mean nothing. |
@@ -48,7 +48,7 @@ A test whose keys are missing is skipped. CI never sets `PMFA_SMOKE`.
 
 ### The frozen data
 
-A backtest never calls a live service. It reads two local files, both rebuilt by one command and
+A backtest reads no live market data or evidence; its only network calls are the model calls. It reads two local files, both rebuilt by one command and
 both ignored by git:
 
 - **The exchange snapshot** ([world/snapshot/](../src/pmfa/world/snapshot/)): for each enabled
@@ -210,7 +210,7 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
 | A canary document dated one day after the window, containing `evaluation.canary_text` and the words every query uses, sits in the evidence index but not in the corpus. A guard on the knowledge port raises `LeakageDetected` the moment any retrieval returns it, and every finished episode is scanned for it. One hit aborts the run and marks it aborted. The manifest's `leakage_checks` counts the retrievals and episodes checked, and the report says so; a market-only run builds no index, so its canary is not exercised. Dated after every as-of time, the canary catches a missing as-of filter, not one that lets documents through hours or days late. | `CanaryGuard`, `assert_episode_clean` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | Every decision reads the order book as of the as-of time; only the paper fill is priced from a later candle, and no role or decision sees that book (see "Fill assumptions and their limits" below). The order's outcome, filled or not, has a time: the end of the candle that priced it, or, when no candle was found, an hour after the arrival time (the end of the hour searched), or the arrival time when the market had closed by then (see "Fill assumptions and their limits"). The fills are stamped with it and the order carries it as `outcome_at`. The paper account's balance and positions are read as of the clock, each equity point values the account as of its own time, and the stops that read orders (fill failures, a changed source) count an order only from its outcome time on. So no decision made before that time sees the order's price or outcome, not even a second episode at the same clock time. | [snapshot/book.py](../src/pmfa/world/snapshot/book.py), [execution/paper.py](../src/pmfa/execution/paper.py), [execution/halt.py](../src/pmfa/execution/halt.py) |
 | In the trading pass an episode starts at the latest of its trigger's time, the clock's time and the latest stored order outcome. An episode that starts later than its trigger runs with that later time as its as-of time, and the report counts these late starts. The scoring pass keeps its fixed as-of times and relies on the time filter of the row above. | `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
-| No web access: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and no port holds an HTTP client. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
+| No web access for data: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and neither holds an HTTP client; the only network calls are the model calls through the gateway. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | The response cache key includes the as-of time, which every role input carries, so a question asked at a later time is a different entry. | [models/cache.py](../src/pmfa/models/cache.py) |
 | The knowledge-cutoff guard described above, and no server-side refusal fallback in a backtest, so only the assigned models can answer. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py); `backtest_config` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 
@@ -230,7 +230,7 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   so a call that could take the run past the cap is not sent and the cap is a ceiling. When it trips, the run stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
   `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
-  pipeline) when it stopped part way, `not run: ...` when the cap came before its first forecast.
+  pipeline, counting the trigger whose episode the cap ended `error`) when it stopped part way, `not run: ...` when the cap came before its first forecast.
   The report marks the rows of a system scored on fewer points, and shows no P&L when the trading
   pass ran no trigger. `--cap` changes it for one run.
 - **Response cache.** Validated answers are stored on disk by content under `data/cache/models`, so
@@ -365,11 +365,16 @@ its exits after the forecast step say little about trading. `--publish NAME` cop
 and the published manifest's `outputs` lists exactly those files. It refuses a run whose models were
 supplied by the caller (scripted answers in a test, or a rehearsal): it prints `not published: ...`,
 exits 1 and copies nothing to `evaluation/runs/` (the report is still built in the run directory).
+It refuses a dry run, an aborted or unfinished run, and a run directory missing a file of the set
+the same way, so an earlier publication of that name is left as it was.
 `trades.csv` and `episodes.jsonl` stay in the local run directory. With `--scores-only`, the
 per-forecast table and the traces stay there too: they hold exchange prices, which Kalshi's
 Developer Agreement does not allow to be shared without permission
 ([Sources and credits](#sources-and-credits)), so only the manifest, the metrics, the report and its
-figures are published, and the published manifest's notes say so. The owner chose scores only for
+figures are published, and the published manifest's notes say so. The published metrics leave out
+the parts from which a fill or market price can be worked out (the equity curve, P&L by market and
+by event, and each system's event and markets with the largest share of the error), and the report
+and figures are drawn again from them. The owner chose scores only for
 every run with model forecasts (2026-11-27). A run made from a working tree with uncommitted changes
 says so in its report, in the published manifest's notes and in a warning when it is published: its
 commit does not hold exactly the code that produced it.
@@ -566,7 +571,8 @@ uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full
 
 `YYYY-MM-DD` is the date the run started; `pmfa backtest` prints the run directory when it finishes.
 Publishing commits the manifest, the per-forecast table, the metrics, the report and figures, and the
-saved traces; with `--scores-only` it leaves out the per-forecast table and the traces. The notebook
+saved traces; with `--scores-only` it leaves out the per-forecast table, the traces and the
+price-revealing parts of the metrics. The notebook
 [notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the newest published run: it
 recomputes the scores when the per-forecast table is there, and reads them from `metrics.json` when
 the run was published as scores only.

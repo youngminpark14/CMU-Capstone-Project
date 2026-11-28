@@ -68,14 +68,15 @@ def load_private_key(pem: str | bytes) -> PrivateKey:
     literal ``\\n`` sequences instead of newlines; those are accepted. So is
     the key's base64 body alone, without its ``BEGIN`` and ``END`` lines, which
     is what an environment-variable form keeps of a pasted multi-line value: it
-    is read as a PKCS#8 key.
+    is read as DER, which holds a PKCS#8 or a PKCS#1 key alike.
     """
     text = pem.decode("utf-8") if isinstance(pem, bytes) else pem
     text = text.strip().replace("\\r\\n", "\n").replace("\\n", "\n")
-    if "-----BEGIN" not in text:
-        text = f"-----BEGIN PRIVATE KEY-----\n{text}\n-----END PRIVATE KEY-----"
     try:
-        key = serialization.load_pem_private_key(text.encode("utf-8"), password=None)
+        if "-----BEGIN" in text:
+            key = serialization.load_pem_private_key(text.encode("utf-8"), password=None)
+        else:
+            key = serialization.load_der_private_key(base64.b64decode(text), password=None)
     except (ValueError, TypeError, UnsupportedAlgorithm):
         # The exception text can quote the input, so it is not chained or repeated.
         raise ConfigError("the Kalshi private key is not a valid unencrypted PEM key") from None

@@ -22,7 +22,7 @@ An episode whose order may already be on the exchange is only ever reconciled,
 never sent again, by whichever call reaches it (``run``, ``resume``, ``expire``,
 ``reconcile``): one saved ``OUTCOME_UNKNOWN``, and an unfinished one whose
 thread stopped (the process died, or an exception escaped) at ``execute``,
-``hold`` or ``reconcile``. A thread stopped at ``execute`` is continued there
+``hold``, ``reconcile`` or ``record``. A thread stopped at ``execute`` is continued there
 marked ``continued``, so ``execute`` only looks the order up. The approval
 behind a stopped thread is stale, so it is never acted on again. Nothing looks
 for unfinished episodes on its own: a person names one to ``reconcile``.
@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 from pmfa.errors import NotFound, PmfaError, RunBudgetExhausted
 from pmfa.ports import World
 from pmfa.records.decision import ProposalStatus, Review
-from pmfa.records.episode import EpisodeRecord, EpisodeStatus
+from pmfa.records.episode import EpisodeRecord, EpisodeStatus, Exit
 from pmfa.records.evidence import Trigger
 from pmfa.state.client import StateClient
 from pmfa.state.service import StateService
@@ -171,13 +171,21 @@ class EpisodeController:
                 answer = {"kind": "review", "review": dump(recorded)}
         elif status is ProposalStatus.EXPIRED:
             answer = {"kind": "expired", "detail": "the proposal expired before the review"}
-        else:  # decided earlier, but the graph never resumed: use the recorded decision
+        else:  # decided earlier, but the graph never resumed: act on it only if it is repeated
             recorded_reviews = [
                 r for r in self.world.store.list_reviews() if r.proposal_id == proposal.proposal_id
             ]
             if not recorded_reviews:
                 raise NotPaused(f"proposal {proposal.proposal_id} is {status.value}")
-            answer = {"kind": "review", "review": dump(recorded_reviews[-1])}
+            earlier = recorded_reviews[-1]
+            if (earlier.decision, earlier.contracts) == (review.decision, review.contracts):
+                answer = {"kind": "review", "review": dump(earlier)}
+            else:  # the human has changed their mind: send nothing
+                answer = {
+                    "kind": "expired",
+                    "detail": f"the {earlier.decision.value} of {earlier.decided_at.isoformat()} "
+                    f"was never carried out, and a later {review.decision.value} differs",
+                }
         return self._resume(episode_id, answer)
 
     def expire(self, episode_id: str) -> EpisodeRecord:
@@ -206,11 +214,37 @@ class EpisodeController:
         """Ask the exchange again about an episode whose order may be on it. Sends nothing.
 
         Returns the episode as it then stands: ``DONE``, or still ``OUTCOME_UNKNOWN``
-        when the exchange could not be asked. Any other episode is returned unchanged.
+        when the exchange could not be asked. An episode whose process stopped after a
+        review and before sending (its thread waits at ``gate`` or ``review``) ends
+        ``expired``, since that approval is stale. Any other episode is returned unchanged.
         Raises ``NotPaused`` when this checkpointer holds no thread for an
         ``OUTCOME_UNKNOWN`` episode, and ``NotFound`` for an unknown id.
         """
         stored = self._stored(episode_id)
+        config = self._config(episode_id)
+        snapshot = self.graph.get_state(config)
+        reviewed = snapshot.values.get("answer") is not None
+        if (
+            stored.status is not EpisodeStatus.DONE
+            and reviewed
+            and snapshot.next
+            in (
+                ("gate",),
+                ("review",),
+            )
+        ):
+            # The process stopped after a review and before sending: the approval is stale.
+            self.graph.update_state(
+                config,
+                {
+                    "exit": Exit.EXPIRED.value,
+                    "exit_detail": "the process stopped after the review and before sending; "
+                    "the approval is stale",
+                    "goto": "record",
+                },
+                as_node=snapshot.next[0],
+            )
+            return self._invoke(episode_id, None)
         if not self._in_doubt(stored):
             return stored
         return self._settle(stored)
@@ -276,7 +310,7 @@ class EpisodeController:
         if stored.status is EpisodeStatus.DONE:
             return False
         nxt = tuple(self.graph.get_state(self._config(stored.episode_id)).next)
-        return nxt in (("execute",), ("hold",), ("reconcile",))
+        return nxt in (("execute",), ("hold",), ("reconcile",), ("record",))
 
     def _settle(self, stored: EpisodeRecord) -> EpisodeRecord:
         """Continue a thread whose order may be on the exchange, from wherever it stopped.

@@ -284,20 +284,13 @@ class ModelTap:
         try:
             result = self.inner.call(task, payload, episode_id=episode_id, slot=slot)
         except BudgetExhausted as exc:
-            self._add(episode_id, base, outcome="budget_exhausted", error=str(exc), calls=0)
+            self._add_failed(episode_id, base, before, "budget_exhausted", exc)
             raise
         except RunBudgetExhausted as exc:
-            self._add(episode_id, base, outcome="run_budget_exhausted", error=str(exc), calls=0)
+            self._add_failed(episode_id, base, before, "run_budget_exhausted", exc)
             raise
         except ModelOutputError as exc:
-            after = self.inner.usage(episode_id)
-            self._add(
-                episode_id,
-                base,
-                outcome="model_output_error",
-                error=str(exc),
-                calls=max(1, after.calls - before.calls),
-            )
+            self._add_failed(episode_id, base, before, "model_output_error", exc, at_least=1)
             raise
         meta = result.meta
         self.sources[meta.source] = self.sources.get(meta.source, 0) + 1
@@ -331,6 +324,32 @@ class ModelTap:
             calls=2 if meta.repaired else 1,
         )
         return result
+
+    def _add_failed(
+        self,
+        episode_id: str,
+        fields: dict[str, Any],
+        before: Usage,
+        outcome: str,
+        exc: Exception,
+        *,
+        at_least: int = 0,
+    ) -> None:
+        """Record a failed call with what the inner port charged for it, so a replay charges it too."""
+        after = self.inner.usage(episode_id)
+        self._add(
+            episode_id,
+            fields,
+            outcome=outcome,
+            error=str(exc),
+            calls=max(at_least, after.calls - before.calls),
+            usage=EntryUsage(
+                input_tokens=after.input_tokens - before.input_tokens,
+                output_tokens=after.output_tokens - before.output_tokens,
+                cost_usd=after.cost_usd - before.cost_usd,
+            ),
+            latency_ms=round((after.seconds - before.seconds) * 1000),
+        )
 
     def _add(self, episode_id: str, fields: dict[str, Any], **more: Any) -> None:
         cassette = self.cassettes.setdefault(episode_id, Cassette(episode_id=episode_id))

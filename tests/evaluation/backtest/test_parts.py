@@ -306,3 +306,31 @@ def test_a_scores_only_publication_leaves_out_the_rows_and_the_traces_and_says_s
     assert SCORES_ONLY_NOTE not in local
     same = [line for line in local.splitlines() if line.startswith(("## ", "| "))]
     assert all(line in report for line in same)
+
+
+def test_a_scores_only_publication_leaves_out_what_gives_fill_or_market_prices(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """Cash at each fill, P&L by market, and one market's squared error each give its prices."""
+    import json
+
+    from pmfa.evaluation.report import build_report, publish_run
+
+    build_report(full_run.run_dir)
+    local = json.loads((full_run.run_dir / "metrics.json").read_text())
+    assert local["pnl"]["equity_curve"] and local["pnl"]["summary"]["by_market"]
+    assert any("error_concentration" in s for s in local["systems"].values())
+    target = publish_run(
+        full_run.run_dir, "scores", root=tmp_path / "runs", allow_supplied=True, scores_only=True
+    )
+    text = (target / "metrics.json").read_text()
+    for key in ("equity_curve", "by_market", "by_event", "top_markets", "top_event"):
+        assert f'"{key}"' not in text, key
+    published = json.loads(text)
+    assert published["systems"].keys() == local["systems"].keys()
+    assert published["pnl"]["summary"]["total"] == local["pnl"]["summary"]["total"]
+    report = (target / "report.md").read_text()
+    assert "The event with the largest share" not in report
+    for ticker in local["pnl"]["summary"]["by_market"]:
+        assert ticker not in report
+    assert json.loads((full_run.run_dir / "metrics.json").read_text()) == local  # left as it was

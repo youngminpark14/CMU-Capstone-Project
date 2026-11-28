@@ -149,8 +149,8 @@ def register(app: typer.Typer) -> None:
         scores_only: bool = typer.Option(
             False,
             "--scores-only",
-            help="With --publish: leave out the per-forecast table and the traces, "
-            "which hold exchange prices.",
+            help="With --publish: leave out the per-forecast table, the traces and the parts "
+            "of the metrics that give exchange prices.",
         ),
     ) -> None:
         """Build report.md and figures/ for a run, and optionally publish it."""

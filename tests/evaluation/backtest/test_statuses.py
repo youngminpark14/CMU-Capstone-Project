@@ -50,7 +50,8 @@ def test_a_cap_in_the_trading_pass_leaves_the_scoring_systems_run(
     assert manifest.progress.points_not_run == []
     for system in ("market", "prompt_only", "single_pass", "single_pass_similarity"):
         assert manifest.systems[system] == "run", system
-    assert manifest.systems["pipeline"].startswith("partial: 6 of 6 points, 0 of 3 triggers")
+    # The first trigger's episode ran until the cap ended it (exit error), so it counts as run.
+    assert manifest.systems["pipeline"].startswith("partial: 6 of 6 points, 1 of 3 triggers")
 
 
 def test_unrequested_systems_are_not_requested_even_without_a_key(

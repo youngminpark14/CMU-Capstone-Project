@@ -12,7 +12,7 @@ The backend ([backend.py](../../src/pmfa/models/backend.py)) passes effort as `o
 
 ## Consequences
 
-A refusal or a truncated answer is unusable and gets the same single repair retry as a malformed one. Costs follow the model that answered.
+A refusal, a truncated answer, or a Critic answer that does not score each scenario it was given exactly once is unusable and gets the same single repair retry as a malformed one; an unusable answer is never cached, and a cached one that fails the check is asked again. Costs follow the model that answered.
 
 ## Origin
 

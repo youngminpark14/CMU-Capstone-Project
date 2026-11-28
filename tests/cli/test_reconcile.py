@@ -245,3 +245,128 @@ def test_a_pass_after_a_pass_that_died_while_sending_leaves_the_stopped_episode_
     with shadow_store() as store:
         assert store.get_episode(before.episode_id).exit is Exit.EXECUTED
     assert len(exchange.placed) == 1
+
+
+@pytest.mark.parametrize("later", [("reject", "--reason", "other"), ("resize", "--contracts", "1")])
+def test_a_different_review_after_an_approval_that_never_resumed_sends_nothing(
+    live, exchange, monkeypatch: pytest.MonkeyPatch, later: tuple[str, ...]
+):
+    from pmfa.episode.controller import EpisodeController
+
+    live.last_look()
+    exchange.failures = 0
+    paused = invoke("shadow", "--once", "--review")
+    pid = re.search(r"proposal (\S+): buy", paused.output).group(1)
+
+    real = EpisodeController._resume
+    calls = {"n": 0}
+
+    def dies_once(self, episode_id, answer):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:  # the approval is stored, then the process dies
+            raise RuntimeError("died before the graph resumed")
+        return real(self, episode_id, answer)
+
+    monkeypatch.setattr(EpisodeController, "_resume", dies_once)
+    with pytest.raises(RuntimeError, match="died"):
+        invoke("review", "approve", pid)
+    with shadow_store() as store:
+        assert store.get_proposal(pid)[1] is ProposalStatus.APPROVED
+
+    result = invoke("review", later[0], pid, *later[1:])
+    assert result.exit_code == 0, result.output
+    assert "expired" in result.output
+    assert exchange.placed == []
+    with shadow_store() as store:
+        [episode] = store.list_episodes()
+    assert episode.status is EpisodeStatus.DONE and episode.exit is Exit.EXPIRED
+
+
+def ledger_dies_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The next ``record`` dies after ``execute`` stored the order: no ledger entry is written."""
+    real = SqliteStore.add_ledger_entries
+    calls = {"n": 0}
+
+    def dies_once(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("died in record")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(SqliteStore, "add_ledger_entries", dies_once)
+
+
+def test_an_episode_that_died_in_record_after_its_order_is_settled_when_named(
+    live, exchange, monkeypatch: pytest.MonkeyPatch
+):
+    live.last_look()
+    exchange.failures = 0
+    ledger_dies_once(monkeypatch)
+    with pytest.raises(RuntimeError, match="died in record"):
+        invoke("shadow", "--once")
+    with shadow_store() as store:
+        [episode] = store.list_episodes()
+    assert episode.status is EpisodeStatus.RUNNING and len(exchange.placed) == 1
+
+    settled = invoke("reconcile", "--episode", episode.episode_id)
+    assert settled.exit_code == 0, settled.output
+    with shadow_store() as store:
+        assert store.get_episode(episode.episode_id).exit is Exit.EXECUTED
+    assert len(exchange.placed) == 1
+
+
+def test_a_reconcile_that_died_in_record_is_finished_by_the_next_one(
+    live, exchange, monkeypatch: pytest.MonkeyPatch
+):
+    live.last_look()
+    assert invoke("shadow", "--once").exit_code == 0  # the outcome is unknown
+    assert len(unknown_proposals(live)) == 1
+
+    exchange.failures = 0
+    ledger_dies_once(monkeypatch)
+    with pytest.raises(RuntimeError, match="died in record"):
+        invoke("reconcile")
+
+    with shadow_store() as store:
+        [episode] = store.list_episodes()
+    assert episode.status is EpisodeStatus.OUTCOME_UNKNOWN  # record saved nothing new
+    settled = invoke("reconcile", "--episode", episode.episode_id)
+    assert settled.exit_code == 0, settled.output
+    with shadow_store() as store:
+        assert store.get_episode(episode.episode_id).exit is Exit.EXECUTED
+    assert len(exchange.placed) == 1
+
+
+def test_an_approval_whose_process_died_in_the_gate_is_ended_by_reconcile(
+    live, exchange, monkeypatch: pytest.MonkeyPatch
+):
+    from pmfa.execution import halt as halt_module
+
+    live.last_look()
+    exchange.failures = 0
+    paused = invoke("shadow", "--once", "--review")
+    pid = re.search(r"proposal (\S+): buy", paused.output).group(1)
+
+    real = halt_module.enforce
+    calls = {"n": 0}
+
+    def dies_once(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:  # the process dies in the gate after the approval
+            raise RuntimeError("died in the gate")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(halt_module, "enforce", dies_once)
+    with pytest.raises(RuntimeError, match="died in the gate"):
+        invoke("review", "approve", pid)
+    with shadow_store() as store:
+        [episode] = store.list_episodes()
+    assert episode.status is EpisodeStatus.PENDING_REVIEW
+
+    settled = invoke("reconcile", "--episode", episode.episode_id)
+    assert settled.exit_code == 0, settled.output
+    assert "expired" in settled.output
+    with shadow_store() as store:
+        ended = store.get_episode(episode.episode_id)
+    assert ended.status is EpisodeStatus.DONE and ended.exit is Exit.EXPIRED
+    assert exchange.placed == []

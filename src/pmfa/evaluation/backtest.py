@@ -584,7 +584,9 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
             )
         except RunBudgetExhausted as exc:
             run.stopped = f"the run's dollar cap was reached at {trigger.trigger_id}: {exc}"
-            run.progress.triggers_not_run.extend(t.trigger_id for t in triggers[i:])
+            # Its episode ran and is recorded (exit error); the triggers after it did not run.
+            run.progress.triggers_done.append(trigger.trigger_id)
+            run.progress.triggers_not_run.extend(t.trigger_id for t in triggers[i + 1 :])
             return world
         run.progress.triggers_done.append(trigger.trigger_id)
         if episode.event_ticker is not None:

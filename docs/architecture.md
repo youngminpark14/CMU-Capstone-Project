@@ -59,8 +59,9 @@ A thirteenth exit, `error`, can leave from any node: a model answer that fails v
 budget cap reached outside the tree search, the run's dollar cap (see
 [budgets](guardrails.md#budgets-per-episode-and-per-run)), or any other project error a node raises,
 such as an unknown fee type or an exchange failure. At `execute` it also covers an order the
-exchange rejected, a send whose outcome could not be established, and a continued episode that
-finds no order (see [sending an order](guardrails.md#sending-an-order)). Every episode ends in
+exchange rejected, and a continued episode whose lookup finds no order (see [sending an
+order](guardrails.md#sending-an-order)). A send whose outcome cannot be established is not an exit:
+the episode waits `outcome_unknown` in `hold`. Every episode ends in
 exactly one exit. A few errors are not turned into exits and stop the run instead: a read past the
 as-of time (the backtest's canary among them), a replay that no longer matches its recording, an
 error inside `record` itself, and an unexpected exception that is not one of the project's own
@@ -196,7 +197,7 @@ The command for each mode is `pmfa replay NAME`, `pmfa backtest`, `pmfa shadow` 
 | [records/](../src/pmfa/records/) | Immutable Pydantic records that cross module boundaries: the shared vocabulary. Prices and money are decimals; times are timezone-aware UTC. |
 | [ports.py](../src/pmfa/ports.py) | The protocols every world implements, and the `World` that bundles them. |
 | [config.py](../src/pmfa/config.py) | One typed configuration with every limit, threshold, source, model slot and followed series. It is validated at load, including that the caps agree with each other. |
-| [episode/](../src/pmfa/episode/) | The LangGraph controller: `run(trigger)`, `resume(episode_id, review)`, `expire(episode_id)`, and the trace writer. |
+| [episode/](../src/pmfa/episode/) | The LangGraph controller: `run(trigger)`, `resume(episode_id, review)`, `expire(episode_id)`, `reconcile(episode_id)`, and the trace writer. |
 | [world/](../src/pmfa/world/) | Adapters behind the ports: the Kalshi client (signing, fixed-point parsing, pagination, throttling), the snapshot builder and reader, the evidence sources, clocks, and the recorded, backtest and live worlds. |
 | [knowledge/](../src/pmfa/knowledge/) | Chunking, embedders, the Chroma indexes with the as-of filter inside every query, origin resolution, and ranking. |
 | [state/](../src/pmfa/state/) | The SQLite store, the state service, and its MCP server for either MCP SDK line. |
@@ -360,9 +361,10 @@ most 9 parents: 1, then the beam plus the protected slot at each of the next two
 parent takes one Generator and one Critic call, so 9 of each. Evidence follow-ups come on top: at
 most 3 per episode, each with at most one Researcher call to filter its results, and a parent whose
 follow-ups added passages has its children scored once more, so the Critic gives at most 12
-answers. Each count is of answers: an answer that fails validation gets one repair retry, which is
-one more call. `full_tree_calls` in [config.py](../src/pmfa/config.py) counts the 18 answers without
-the follow-ups or the retries.
+answers. Each count is of answers: an answer that fails validation (for the Critic, also one that
+does not score each scenario exactly once) gets one repair retry, which is one more call.
+`full_tree_calls` in [config.py](../src/pmfa/config.py) counts the 18 answers without the
+follow-ups or the retries.
 
 ## From forecast to order: one example
 
@@ -542,7 +544,7 @@ time.
 | `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
 | `pmfa data status` | Print the corpus and snapshot manifests. |
 | `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
-| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). `--scores-only` leaves the per-forecast table and the traces out of the published copy. |
+| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). `--scores-only` leaves the per-forecast table, the traces and the price-revealing parts of the metrics out of the published copy. |
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |

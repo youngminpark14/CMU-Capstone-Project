@@ -53,7 +53,7 @@ What the executor does, per the spec's "Execution and oversight" section:
   ``stable_id("demo-rejected", client_order_id)``, so distinct rejections are
   stored as distinct orders and count toward the fill-failure halt.
 - **Scope.** Balance, positions, orders and cancels are for the configured
-  numbered subaccount only (``config.kalshi.demo_subaccount``).
+  subaccount only (``config.kalshi.demo_subaccount``: 1 to 63, or 0 for the main balance).
 
 The executor refuses to be built for any host but the demo one.
 """

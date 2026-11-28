@@ -109,6 +109,13 @@ def test_a_key_given_as_its_base64_body_alone_loads_as_the_same_key() -> None:
     loaded = load_private_key(body)
     assert isinstance(loaded, Ed25519PrivateKey)
     assert loaded.sign(b"m") == ed.sign(b"m")  # Ed25519 signatures are deterministic
+    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    for fmt in (serialization.PrivateFormat.PKCS8, serialization.PrivateFormat.TraditionalOpenSSL):
+        lines = pem(rsa_key, fmt).strip().splitlines()
+        for body in ("".join(lines[1:-1]), "\n".join(lines[1:-1])):  # one line, or several
+            loaded_rsa = load_private_key(body)
+            assert isinstance(loaded_rsa, rsa.RSAPrivateKey)
+            assert loaded_rsa.private_numbers() == rsa_key.private_numbers()
     with pytest.raises(ConfigError) as info:
         load_private_key("not-a-key-SECRETVALUE")
     assert "SECRETVALUE" not in str(info.value)

@@ -51,11 +51,19 @@ def run_notebook(root: Path) -> dict:
 
 
 def copied_run(tmp_path: Path, *, rows: bool) -> Path:
-    """A directory whose only published run is the market baseline, with or without its table."""
+    """A directory whose only published run is the market baseline, with or without its table.
+
+    Without its table it is published as scores only, so its metrics are filtered the same way.
+    """
+    from pmfa.evaluation.report import _scores_only_metrics
+
     target = tmp_path / "evaluation" / "runs" / WITH_ROWS.name
     target.mkdir(parents=True)
     for name in ("manifest.json", "metrics.json", *(["forecasts.csv"] if rows else [])):
         shutil.copy(WITH_ROWS / name, target / name)
+    if not rows:
+        metrics = json.loads((target / "metrics.json").read_text(encoding="utf-8"))
+        (target / "metrics.json").write_text(json.dumps(_scores_only_metrics(metrics)))
     return tmp_path
 
 

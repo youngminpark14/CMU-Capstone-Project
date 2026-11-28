@@ -467,3 +467,90 @@ def test_window_start_skips_points_before_it(tmp_path: Path) -> None:
     manifest = run_backtest(config, run_dir=tmp_path / "r", systems=["market"], dry_run=True)
     assert f"{FED}@7d" in " ".join(manifest.plan.skipped_points)
     assert manifest.plan.scoring_points == 5
+
+
+@pytest.mark.parametrize("scores_only", [False, True])
+def test_a_dry_run_is_not_published_and_an_earlier_publication_is_left_alone(
+    data_config: Config, full_run: FullRun, tmp_path: Path, scores_only: bool
+) -> None:
+    from pmfa.evaluation.report import build_report, publish_run
+
+    root = tmp_path / "published"
+    build_report(full_run.run_dir)
+    earlier = publish_run(full_run.run_dir, "name", root=root, allow_supplied=True)
+    before = {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()}
+    run_dir = tmp_path / "runs" / "dry"
+    run_backtest(
+        data_config, run_dir=run_dir, systems=["market"], models=scripted(data_config), dry_run=True
+    )
+    with pytest.raises(ValueError, match="this run is dry_run"):
+        publish_run(run_dir, "name", root=root, allow_supplied=True, scores_only=scores_only)
+    assert {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()} == before
+
+    (full_run.run_dir / "metrics.json").rename(tmp_path / "metrics.json")
+    try:
+        with pytest.raises(ValueError, match=r"no metrics\.json"):
+            publish_run(full_run.run_dir, "name", root=root, allow_supplied=True)
+    finally:
+        (tmp_path / "metrics.json").rename(full_run.run_dir / "metrics.json")
+    assert {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()} == before
+
+
+def test_a_dry_run_report_points_at_no_missing_file_and_claims_no_score(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "dry"
+    run_backtest(
+        data_config,
+        run_dir=run_dir,
+        systems=ALL_SYSTEMS,
+        models=scripted(data_config),
+        dry_run=True,
+    )
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "This run wrote no metrics.json and no forecasts.csv; it has no scores" in text
+    assert "`forecasts.csv`" not in text and "- `metrics.json`" not in text
+    assert "with a result was scored" not in text and "Nothing was scored in this run." in text
+    assert "(this is a dry run)" in text and "was would run" not in text
+
+
+def test_a_run_with_no_scoring_pass_does_not_call_itself_a_pilot_of_zero_events(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "noscore"
+    run_backtest(
+        data_config,
+        run_dir=run_dir,
+        systems=["pipeline"],
+        models=scripted(data_config),
+        score=False,
+    )
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "covered only 0" not in text and "This is a pilot" not in text
+    assert "**No forecast was scored in this run**" in text
+
+
+def test_the_trigger_whose_episode_reached_the_cap_counts_as_run(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """Its episode ran and ended error, so the report's counts agree with its Exits table."""
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "capped-trading"
+    models = CappedModels(scripted(data_config), allowed=6)
+    manifest = run_backtest(
+        data_config, run_dir=run_dir, systems=["pipeline"], models=models, score=False
+    )
+    assert manifest.status == "partial"
+    assert manifest.progress.triggers_done == [
+        "doc:fed-statement-2026-08-10",
+        "doc:bls-cpi-2026-08-14",
+    ]
+    assert manifest.progress.triggers_not_run == ["doc:fed-speech-2026-08-21"]
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "it ran 2 trading triggers and left 1 unrun" in text
+    assert "Trading pass, 2 episode(s)" in text

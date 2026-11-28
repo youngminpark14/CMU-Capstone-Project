@@ -31,11 +31,16 @@ COMMITTED = ("manifest.json", "forecasts.csv", "metrics.json", REPORT_FILE)
 """Files of a published run; ``figures/`` and ``traces/`` are copied whole beside them."""
 ROWS = "forecasts.csv"
 SCORES_ONLY_NOTE = (
-    "Published as scores only: the per-forecast table and the saved traces are left out, because "
-    "they hold exchange prices and Kalshi's Developer Agreement does not allow data from its API "
-    "to be shared without written permission. They stay in the local run directory."
+    "Published as scores only: the per-forecast table and the saved traces are left out, and so "
+    "are the parts of the metrics from which a fill or market price can be worked out (the "
+    "equity curve, P&L by market and by event, and the events and markets with the largest share "
+    "of the error), because they hold exchange prices and Kalshi's Developer Agreement does not "
+    "allow data from its API to be shared without written permission. They stay in the local run "
+    "directory."
 )
 PUBLISH_ROOT = Path("evaluation") / "runs"
+NO_METRICS = ("dry_run", "aborted", "running")
+"""Run statuses that wrote no ``metrics.json`` and no ``forecasts.csv``."""
 
 # Reference categorical hues, in a fixed order per system (never cycled), and text inks.
 SYSTEM_COLORS = {
@@ -103,6 +108,8 @@ def _ran(status: str) -> bool:
 
 def _trading_not_run(manifest: Any) -> str:
     """Why the trading simulation did not run, or ``""`` when it ran at least one trigger."""
+    if manifest.status == "dry_run":
+        return "this is a dry run"
     pipe = manifest.systems.get(PIPELINE, "not requested")
     if not _ran(pipe):
         return f"the pipeline was {pipe}"
@@ -255,7 +262,8 @@ def _figures(folder: Path, manifest: Any, metrics: dict[str, Any]) -> None:
 
     # 3. Equity curve of the trading simulation.
     fig, ax = plt.subplots(figsize=(7.5, 3.8), dpi=120)
-    curve = metrics.get("pnl", {}).get("equity_curve") or []
+    pnl = metrics.get("pnl", {})
+    curve = pnl.get("equity_curve") or []
     if curve:
         from datetime import datetime
 
@@ -276,6 +284,8 @@ def _figures(folder: Path, manifest: Any, metrics: dict[str, Any]) -> None:
         ax.legend(frameon=False, fontsize=8, labelcolor=TEXT)
         fig.autofmt_xdate()
         _axes(ax)
+    elif pnl and "equity_curve" not in pnl:
+        _empty(ax, "The equity curve is left out of a scores-only publication.")
     else:
         why = _trading_not_run(manifest)
         _empty(
@@ -322,6 +332,7 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
     report that says which files were left out and does not point at them.
     """
     scores_only = SCORES_ONLY_NOTE in manifest.notes
+    no_metrics = manifest.status in NO_METRICS
     cfg = manifest.config
     ev = cfg["evaluation"]
     horizons = [str(h) for h in sorted(ev["horizons_days"], reverse=True)]
@@ -338,8 +349,13 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
     w(
         f"Run status: **{manifest.status}**. Created {manifest.created_at.isoformat()}"
         + (f", finished {manifest.finished_at.isoformat()}" if manifest.finished_at else "")
-        + ". Every number below comes from this run's `manifest.json` and `metrics.json`"
-        + (".\n" if scores_only else "; the per-forecast table is `forecasts.csv`.\n")
+        + (
+            ". This run wrote no metrics.json and no forecasts.csv; it has no scores (its plan "
+            "is in manifest.json).\n"
+            if no_metrics
+            else ". Every number below comes from this run's `manifest.json` and `metrics.json`"
+            + (".\n" if scores_only else "; the per-forecast table is `forecasts.csv`.\n")
+        )
     )
     if scores_only:
         w(f"**{SCORES_ONLY_NOTE}**\n")
@@ -363,7 +379,9 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         )
     )
     w("")
-    if any(_status_of(manifest, s).startswith("not run: no API key") for s in SYSTEMS):
+    if not no_metrics and any(
+        _status_of(manifest, s).startswith("not run: no API key") for s in SYSTEMS
+    ):
         w(
             'The systems marked "not run: no API key" need a model, and no Anthropic API key '
             "was available when this run was made. They produced no forecasts, and this report "
@@ -884,13 +902,18 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
             f"; {len(manifest.plan.releases_without_event)} release(s) in the window had no "
             "event in the snapshot (see Left out of scoring)"
         )
-    w(
-        f"- **This is a pilot.** {held}. That is a handful "
+    pilot = (
+        "- **No forecast was scored in this run** (the scoring pass did not run or scored "
+        "nothing).\n"
+        if scored == []
+        else f"- **This is a pilot.** {held}. That is a handful "
         "per series, and each carries several correlated markets (five per Fed meeting, "
         "twenty or more per CPI release). The events, not the markets, are the independent "
         "observations, so the intervals are wide and no difference here separates skill from "
         "luck.\n"
-        f"- The market price is {MARKET_PRICE_RULE}, read from candles. Far strikes "
+    )
+    w(
+        pilot + f"- The market price is {MARKET_PRICE_RULE}, read from candles. Far strikes "
         "often have one side of the quote empty, so their price is a last trade (kept inside "
         "the standing quote); markets priced at 0.01 or 0.99 dominate the row count and pull "
         "every Brier score toward zero.\n"
@@ -920,6 +943,12 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         )
     else:
         left_out = ""
+    if no_metrics:
+        w(
+            "- `manifest.json`: configuration, models, window, data manifests, plan, progress.\n"
+            f"- `{FIGURES_DIR}/`: the three figures.\n"
+        )
+        return "\n".join(out).rstrip() + "\n"
     w(
         "- `manifest.json`: configuration, models, window, data manifests, plan, progress.\n"
         + ("" if scores_only else f"- `forecasts.csv`: {rows}.\n")
@@ -1007,6 +1036,9 @@ def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
     skipped_markets = metrics.get("skipped_markets") or []
     unresolved = metrics.get("unresolved_rows") or []
     w("## Left out of scoring\n")
+    if manifest.status in NO_METRICS:
+        w("Nothing was scored in this run.\n")
+        return
     if not (
         plan.releases_without_event
         or dropped
@@ -1114,7 +1146,9 @@ def _error_concentration(w: Any, manifest: Any, metrics: dict[str, Any], shown: 
             )
         )
         w("")
-        top = block["top_event"]
+        top = block.get("top_event")
+        if top is None:  # left out of a scores-only publication
+            continue
         w(
             f"The event with the largest share is {top['name']}: {_percent(top['share'])} of "
             f"the error, from {top['n_rows']} row(s). The markets with the largest shares: "
@@ -1241,6 +1275,25 @@ def dirty_notice(manifest: Any) -> str:
     )
 
 
+def _scores_only_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """``metrics`` without the parts from which exchange prices can be worked out.
+
+    Cash and equity at each fill and settlement give the fill price, and so does a
+    market's or an event's P&L; one market's squared error against its public
+    outcome gives the market's prices. Aggregates over many rows stay.
+    """
+    out = json.loads(json.dumps(metrics))
+    pnl = out.get("pnl", {})
+    pnl.pop("equity_curve", None)
+    for block in (pnl.get("summary", {}), *pnl.get("by_routing", {}).values()):
+        block.pop("by_market", None)
+        block.pop("by_event", None)
+    for entry in out.get("systems", {}).values():
+        for key in ("top_event", "top_markets"):
+            (entry.get("error_concentration") or {}).pop(key, None)
+    return out
+
+
 def publish_run(
     run_dir: str | Path,
     name: str,
@@ -1258,33 +1311,50 @@ def publish_run(
     from a tree with uncommitted changes is published with that said in its
     manifest notes and in a logged warning (and in the report).
 
-    ``scores_only`` leaves out the per-forecast table and the traces, the two
-    parts that hold exchange prices, and says so in the published manifest's
-    notes: the manifest, the metrics, the report and its figures are published.
+    ``scores_only`` leaves out the per-forecast table and the traces, which hold
+    exchange prices, and publishes the metrics without the parts from which a
+    price can be worked out (``_scores_only_metrics``), with the report and its
+    figures drawn again from them. The published manifest's notes say so.
 
     A run whose models were supplied by the caller (scripted answers in a test,
     or a rehearsal) is not a result, so publishing it is refused with a
     ``ValueError`` before anything is written, unless ``allow_supplied`` is set.
-    The command line never sets it.
+    The command line never sets it. So is a run that is not complete or partial
+    (a dry run, an aborted or unfinished one), or one missing a file of the set.
     """
     import logging
 
     run_dir = Path(run_dir)
-    if read_manifest(run_dir).models_source == "supplied" and not allow_supplied:
+    source = read_manifest(run_dir)
+    if source.models_source == "supplied" and not allow_supplied:
         raise ValueError(
             "this run's answers came from models supplied by the caller (scripted answers "
             "or a rehearsal), not from the live gateway, so it is not a result and is not "
             "published"
         )
+    if source.status not in ("complete", "partial"):
+        raise ValueError(
+            f"only a complete or partial run is published; this run is {source.status}"
+        )
     if not (run_dir / REPORT_FILE).exists():
         build_report(run_dir)
+    files = [f for f in COMMITTED if not (scores_only and f == ROWS)]
+    missing = [f for f in files if not (run_dir / f).exists()]
+    if missing:
+        raise ValueError(f"the run directory has no {', '.join(missing)}")
     target = Path(root) / name
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
-    files = [f for f in COMMITTED if not (scores_only and f == ROWS)]
     for file in files:
         shutil.copy2(run_dir / file, target / file)
-    shutil.copytree(run_dir / FIGURES_DIR, target / FIGURES_DIR)
+    if scores_only:
+        metrics = _scores_only_metrics(_read_metrics(run_dir))
+        (target / "metrics.json").write_text(
+            json.dumps(metrics, indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        _figures(target / FIGURES_DIR, read_manifest(run_dir), metrics)
+    else:
+        shutil.copytree(run_dir / FIGURES_DIR, target / FIGURES_DIR)
     traces = run_dir / "traces"
     if not scores_only and traces.is_dir() and any(traces.iterdir()):
         shutil.copytree(traces, target / "traces")
