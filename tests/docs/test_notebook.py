@@ -144,4 +144,17 @@ def test_a_run_published_as_scores_only_is_drawn_from_metrics_json_and_says_so(
     assert namespace["tables"]["market"].model_dump(mode="json") == published
     assert any(b["count"] and b["mean_forecast"] is None for b in published["bins"])
     assert published != metrics["reliability"]["market"]["answered"]
+    # A withheld mean reads "withheld"; an empty bin reads "empty"; the two never look alike.
+    for b in published["bins"]:
+        row = f"| [{b['lower']:.1f}, {b['upper']:.1f}) | {b['count']} |"
+        if not b["count"]:
+            assert f"{row} empty | empty |" in printed
+        elif b["mean_forecast"] is None:
+            assert f"{row} withheld | {b['observed_frequency']:.3f} |" in printed
+    # The table that scores abstentions as the market, and its error, are left out.
+    other = metrics["reliability"]["market"]["abstain_as_market"]
+    assert (
+        f"With abstentions scored as the market price ({other['n_rows']} forecasts): the table "
+        "and its ECE are left out of a scores-only publication."
+    ) in printed
     assert_figures_drawn(namespace)

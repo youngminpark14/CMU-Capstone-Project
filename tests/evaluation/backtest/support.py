@@ -440,7 +440,7 @@ class CappedModels:
         self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
     ) -> ModelResult:
         if self.made >= self.allowed:
-            raise RunBudgetExhausted("run dollar cap reached: $25.00 spent of $25.00")
+            raise RunBudgetExhausted("run dollar cap reached: $25.00 charged of $25.00")
         self.made += 1
         return self.inner.call(task, payload, episode_id=episode_id, slot=slot)
 

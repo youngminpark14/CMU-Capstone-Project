@@ -6,6 +6,8 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
 
+from pydantic import Field
+
 from pmfa.records.base import Dollars, Record, RunMode, Stage, UtcTime
 from pmfa.records.decision import GateResult, OrderResult, Proposal, Review, Routing
 from pmfa.records.evidence import Origin, Trigger
@@ -64,12 +66,25 @@ class ModelResult(Record):
     meta: CallMeta
 
 
+def _zero(value: Any) -> bool:
+    return not value
+
+
 class Usage(Record):
+    """Model calls, tokens, dollars and seconds charged to an episode or a run."""
+
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: Decimal = Decimal("0")
+    """Everything charged against the dollar caps, ``failed_cost_usd`` included."""
     seconds: float = 0.0
+    failed_calls: int = Field(default=0, exclude_if=_zero)
+    """Attempts that failed in the API client before reporting their usage."""
+    failed_cost_usd: Decimal = Field(default=Decimal("0"), exclude_if=_zero)
+    """The worst-case price charged for those attempts. The provider may have billed less or
+    nothing. Both fields are left out of the JSON while zero, so a record written before
+    they existed reads and writes the same."""
 
 
 class TraceStep(Record):

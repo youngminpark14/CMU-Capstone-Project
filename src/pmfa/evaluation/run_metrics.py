@@ -249,6 +249,9 @@ def compute_metrics(
         tallies["auto_executed"] = sum(
             e.routing is not None and e.routing.tier is RoutingTier.AUTO for e in executed
         )
+        # Worst-case charges for calls that failed before reporting usage, inside cost_usd.
+        tallies["failed_calls"] = sum(e.usage.failed_calls for e in group)
+        tallies["failed_cost_usd"] = str(sum((e.usage.failed_cost_usd for e in group), Decimal(0)))
         out["episodes"][name] = tallies
     out["self_halts"] = {
         name: None if (found := self_halt(group)) is None else found.model_dump(mode="json")

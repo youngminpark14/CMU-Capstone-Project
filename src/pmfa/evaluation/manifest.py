@@ -83,9 +83,15 @@ class RunUsage(Record):
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: Decimal = Decimal("0")
-    """New spending in this run; answers from the response cache cost nothing."""
+    """What new model calls charged against the run's cap; answers from the response cache
+    cost nothing. Includes ``failed_cost_usd``."""
     cache_answers: int = 0
     live_answers: int = 0
+    failed_calls: int = 0
+    """Attempts that failed in the API client before reporting their usage."""
+    failed_cost_usd: Decimal = Decimal("0")
+    """The worst-case price charged for those attempts; the provider may have billed less or
+    nothing for them."""
 
 
 class RunManifest(Record):

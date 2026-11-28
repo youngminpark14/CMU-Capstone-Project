@@ -55,7 +55,7 @@ in the [glossary](glossary.md); the pipeline is drawn in [architecture.md](archi
 | Orders, balance and positions are scoped to one numbered subaccount | Code and exchange | [demo.py](../src/pmfa/world/kalshi/demo.py); the key's restriction is set on Kalshi | `test_balance_and_positions_are_for_the_configured_subaccount` in [test_demo.py](../tests/world/kalshi/test_demo.py) (code side only) |
 | The key cannot transfer funds or manage subaccounts | Exchange | a subaccount-restricted key, created on Kalshi | not tested here |
 | More than 50 contracts in 15 seconds cancels the group's orders and blocks new ones | Exchange | order group joined in [demo.py](../src/pmfa/world/kalshi/demo.py) | `test_an_order_group_is_created_once_when_missing` in [test_demo.py](../tests/world/kalshi/test_demo.py) (code side only) |
-| Each episode is capped in calls, dollars and seconds; each run in dollars. The dollar caps are ceilings: a call whose worst case would pass one is not sent | Code | [meter.py](../src/pmfa/models/meter.py), [gateway.py](../src/pmfa/models/gateway.py) | `test_the_call_cap_stops_before_calling`, `test_the_episode_dollar_cap_is_a_ceiling`, `test_a_repair_retry_also_needs_dollar_budget_for_its_worst_case`, `test_an_enforced_seconds_cap_bounds_each_calls_timeout_by_the_time_left`, `test_the_run_dollar_cap_raises_run_budget_exhausted`, `test_a_call_that_fails_in_the_client_is_charged_its_worst_case_and_reaches_the_cap` in [test_gateway.py](../tests/models/test_gateway.py) |
+| Each episode is capped in calls, dollars and seconds; each run in dollars. The meter never ends above a dollar cap: a call whose worst case, over every send the API client may make, would pass one is not sent | Code | [meter.py](../src/pmfa/models/meter.py), [gateway.py](../src/pmfa/models/gateway.py) | `test_the_call_cap_stops_before_calling`, `test_the_episode_dollar_cap_is_a_ceiling`, `test_a_repair_retry_also_needs_dollar_budget_for_its_worst_case`, `test_an_enforced_seconds_cap_bounds_each_calls_timeout_by_the_time_left`, `test_the_run_dollar_cap_raises_run_budget_exhausted`, `test_a_call_that_fails_in_the_client_is_charged_its_worst_case_and_reaches_the_cap`, `test_the_reservation_covers_every_send_the_client_may_make` in [test_gateway.py](../tests/models/test_gateway.py) |
 | Every episode ends in exactly one exit, `error` for any project error a node raises; a read past the as-of time aborts the run instead | Code | `_guarded` in [pipeline.py](../src/pmfa/episode/pipeline.py) | `test_every_exit_writes_exactly_one_episode_record`, `test_an_unknown_fee_type_ends_the_episode_in_error_with_no_order`, `test_13_an_as_of_violation_from_a_port_aborts_the_run_instead_of_ending_the_episode` |
 | Secrets come from the environment only and are never logged or stored | Code | [backend.py](../src/pmfa/models/backend.py), [signing.py](../src/pmfa/world/kalshi/signing.py) | `test_the_key_is_read_from_the_environment_at_call_time` in [test_backend.py](../tests/models/test_backend.py); `test_it_never_reads_the_credential_variables` in [test_production.py](../tests/world/kalshi/test_production.py) |
 | Money is decimal, never float | Code | [records/base.py](../src/pmfa/records/base.py), [fees.py](../src/pmfa/decision/fees.py) | `test_money_is_never_a_float` in [test_fees.py](../tests/decision/test_fees.py) |
@@ -345,14 +345,25 @@ the paper executor.
 ## Budgets per episode and per run
 
 The gateway's meter ([meter.py](../src/pmfa/models/meter.py)) is checked before every model call,
-so a capped call is never sent. A call's cost is known only after it returns, so the dollar caps are
-checked against the call's worst case: an upper estimate of its input tokens plus its full output
-token limit, priced on the assigned model. A call that could take either dollar cap past its limit
-is refused, so the caps are ceilings, not thresholds that one last call can overshoot. A repair
-retry is checked the same way. A call that fails in the API client (a timeout, a server error) ends
-the episode with exit `error` and is charged its worst case, because the provider may have answered
-and billed it; repeated failures therefore reach the caps. When the seconds cap is enforced, each call's timeout is the
-configured request timeout or the seconds the episode has left, whichever is shorter.
+so a capped call is never sent. A call's cost is known only after it returns, and the API client
+retries a failed request by itself (twice by default), so one call can be up to three sends, each
+of which the provider may bill. The dollar caps are therefore checked against the worst case of all
+those sends: an upper estimate of the input tokens plus the full output token limit, priced on the
+assigned model, times the sends. A call that could take either dollar cap past its limit is refused.
+A repair retry is checked the same way. A call that returns is charged the usage it reports. A call
+that fails in the API client (a timeout, a server error) ends the episode with exit `error` and is
+charged the whole reservation, because each send may have been answered and billed; repeated
+failures therefore reach the caps. What the caps promise: the meter never ends above a cap, as far
+as the input-token estimate is an upper bound. What the meter cannot see: when the client retried a
+send that timed out and the retry succeeded, the call is metered at the successful send's reported
+usage only, though the provider may have billed the first send too. Worst-case charges for failed
+calls are counted apart (`failed_calls`, `failed_cost_usd` in the usage records), and the report
+says how much of what was charged is that, rather than spending. Because of the three-send
+reservation, a call is refused once the episode's charges exceed its cap minus three times the
+call's worst case: at the defaults, about $0.89 before a depth-1 score on Opus 5.5 and about $1.45
+before a deeper score on Sonnet 5.5. When the seconds cap is enforced,
+each call's timeout is the configured request timeout or the seconds the episode has left,
+whichever is shorter.
 
 | Cap | Default |
 | --- | --- |

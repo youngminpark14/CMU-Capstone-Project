@@ -294,8 +294,8 @@
       "task": "generate",
       "slot": "generator",
       "role": "Generator",
-      "model": "claude-haiku-5-5",
-      "served_model": "claude-haiku-5-5",
+      "model": "claude-sonnet-5-5",
+      "served_model": "claude-sonnet-5-5",
       "effort": "medium",
       "source": "scripted",
       "input": {
@@ -418,8 +418,8 @@
       "task": "score",
       "slot": "critic_depth1",
       "role": "Critic",
-      "model": "claude-fable-5-2",
-      "served_model": "claude-fable-5-2",
+      "model": "claude-opus-5-5",
+      "served_model": "claude-opus-5-5",
       "effort": "high",
       "source": "scripted",
       "input": {
@@ -597,8 +597,8 @@
       "task": "generate",
       "slot": "generator",
       "role": "Generator",
-      "model": "claude-haiku-5-5",
-      "served_model": "claude-haiku-5-5",
+      "model": "claude-sonnet-5-5",
+      "served_model": "claude-sonnet-5-5",
       "effort": "medium",
       "source": "scripted",
       "input": {
@@ -910,8 +910,8 @@
       "task": "generate",
       "slot": "generator",
       "role": "Generator",
-      "model": "claude-haiku-5-5",
-      "served_model": "claude-haiku-5-5",
+      "model": "claude-sonnet-5-5",
+      "served_model": "claude-sonnet-5-5",
       "effort": "medium",
       "source": "scripted",
       "input": {

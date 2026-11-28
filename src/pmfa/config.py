@@ -155,8 +155,9 @@ class ModelsConfig(Section):
     that sets a forecast: the Critic's first-level scoring, which every deeper probability
     is conditional on, and the one-call baselines it is compared with. Sonnet 5.5 does the
     middle work: the Critic's deeper, narrower scoring, writing scenarios, and the fast
-    path's one short write-and-score call. Haiku 5.5 does the sorting: matching a document
-    to an event, planning queries and selecting passages. See decision 0046.
+    path's two short calls (one writes scenarios, one scores them). Haiku 5.5 does the
+    sorting: matching a document to an event, planning queries and selecting passages.
+    See decision 0046.
     """
 
     slots: dict[ModelSlot, ModelAssignment] = {

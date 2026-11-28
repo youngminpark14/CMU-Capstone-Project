@@ -13,17 +13,23 @@ metrics, the report with its figures, and the saved traces.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import shutil
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pmfa.evaluation.baselines import MARKET_PRICE_RULE, PIPELINE, SYSTEMS
+from pmfa.evaluation.baselines import MARKET, MARKET_PRICE_RULE, PIPELINE, SYSTEMS
 from pmfa.evaluation.manifest import MANIFEST_FILE, read_manifest, write_manifest
 from pmfa.evaluation.schedule import RELEASE_MATCH
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from pmfa.evaluation.rows import ForecastRow
 
 REPORT_FILE = "report.md"
 FIGURES_DIR = "figures"
@@ -31,20 +37,32 @@ FIGURES = ("brier_by_horizon.png", "reliability.png", "equity_curve.png")
 COMMITTED = ("manifest.json", "forecasts.csv", "metrics.json", REPORT_FILE)
 """Files of a published run; ``figures/`` and ``traces/`` are copied whole beside them."""
 ROWS = "forecasts.csv"
-SCORES_ONLY_MIN_FILLS = 10
-"""With fewer fills than this, the dollar results are enough to work out the fill prices."""
 SCORES_ONLY_MIN_BIN = 5
-"""A reliability bin with fewer forecasts than this would show single forecasts."""
+"""A bin of the market's reliability table smaller than this would show single prices."""
+SCORES_ONLY_MIN_MISSING = 10
+"""Fewer forecasts than this, answered by one system and not by another, can be one small event's."""
 SCORES_ONLY_NOTE = (
-    "Published as scores only: the per-forecast table and the saved traces are left out, and so "
-    "are the parts of the metrics from which a fill or market price can be worked out (the "
-    "equity curve, P&L by market and by event, the events and markets with the largest share "
-    f"of the error, the mean forecast of a reliability bin with fewer than {SCORES_ONLY_MIN_BIN} "
-    f"forecasts and, when there are fewer than {SCORES_ONLY_MIN_FILLS} fills, the dollar results "
-    "of the trading simulation), because they hold exchange prices and Kalshi's Developer "
-    "Agreement does not allow data from its API to be shared without written permission. They "
-    "stay in the local run directory."
+    "Published as scores only. Left out: the per-forecast table, the saved traces, the trades, "
+    "every dollar result of a trading simulation that made a fill, the equity curve, each "
+    "system's events and markets with the largest share of its error, the mean of any bin of the "
+    f"market's reliability table with fewer than {SCORES_ONLY_MIN_BIN} forecasts (and the "
+    "market's calibration error when it would give the one such mean back), and every system's "
+    "reliability table in which abstentions are scored as the market price, with its calibration "
+    "error. Most of these hold exchange prices or let them be worked out, and Kalshi's Developer "
+    "Agreement does not allow data from its API to be shared without written permission; the "
+    "rest break a score down to single events and markets. They stay in the local run "
+    "directory. What is published: aggregate scores and counts, model-call costs, and the run's "
+    "manifest (its configuration, plan and progress). The scores are aggregates, not a promise "
+    "that nothing about a price can be inferred from them."
 )
+DOLLAR_STOPS = ("daily loss stop", "drawdown")
+"""Self-halt conditions whose reason states dollars of the simulation (``halt.stop_reasons``)."""
+STOP_NAMES = (*DOLLAR_STOPS, "fill failures", "source changed", "source withdrawn", "calibration")
+"""Every self-halt condition's name; each reason starts with its name and a colon."""
+DOLLAR_REASON = re.compile(
+    rf"\b({'|'.join(DOLLAR_STOPS)}): .*?(?=; (?:{'|'.join(STOP_NAMES)}): |$)"
+)
+"""One dollar-stating stop reason, up to the next reason in a ``"; "``-joined list or the end."""
 WITHHELD = "withheld"
 PUBLISH_ROOT = Path("evaluation") / "runs"
 NO_METRICS = ("dry_run", "aborted", "running")
@@ -448,9 +466,7 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
             # A run that never finished wrote its manifest before any call: its spend is unknown.
             "What this run spent on model calls was not recorded: it did not finish.\n"
             if manifest.status == "running"
-            else f"Spent on new model calls: ${float(manifest.usage.cost_usd):.4f} "
-            f"({manifest.usage.live_answers} new answers, {manifest.usage.cache_answers} from "
-            "the cache).\n"
+            else usage_sentence(manifest.usage) + "\n"
         )
     )
     w("")
@@ -657,8 +673,15 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         if not table:
             w(f"{SYSTEM_LABELS[s]}: not run.\n")
             continue
+        # A scores-only publication withholds an error that would give back a withheld mean.
+        ece = (
+            WITHHELD
+            if table["ece"] is None and any(b["count"] for b in table["bins"])
+            else _num(table["ece"])
+        )
         w(
-            f"{SYSTEM_LABELS[s]}, answered forecasts, all horizons (expected calibration error {_num(table['ece'])}):\n"
+            f"{SYSTEM_LABELS[s]}, answered forecasts, all horizons "
+            f"(expected calibration error {ece}):\n"
         )
         w(
             _table(
@@ -679,6 +702,19 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
             )
         )
         w("")
+        other = metrics["reliability"][s].get("abstain_as_market")
+        if other:
+            w(
+                f"With abstentions scored as the market price ({other['n_rows']} forecasts), "
+                + (
+                    f"the expected calibration error is {_num(other['ece'])}; that table is in "
+                    "`metrics.json`.\n"
+                    if "bins" in other
+                    else "the table and its calibration error are left out of a scores-only "
+                    "publication, because set beside the one above they give the market's "
+                    "price on the abstained forecasts.\n"
+                )
+            )
 
     # -- trading
     w("## Simulated trading after fees\n")
@@ -734,10 +770,11 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         w("")
         if withheld:
             w(
-                f"The dollar results are {WITHHELD} from this scores-only publication: with "
-                f"{withheld['why']}, a profit and its fees are enough to work out the fill "
-                "prices. They are in the local run directory. So few fills say nothing about "
-                "trading either way.\n"
+                "The dollar results of the trading simulation are left out of a scores-only "
+                "publication: a profit and its fees over a few fills, in one routing tier or "
+                "one event, are enough to work out the fill prices. They are in the local run "
+                f"directory. The simulation made {summary.get('n_trades', 0)} fill(s), and its "
+                f"realized result after fees was {withheld['result']}.\n"
             )
         trading_halt = (metrics.get("self_halts") or {}).get("trading")
         if trading_halt:
@@ -849,6 +886,14 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
             "Cost per episode is what its answers cost when they were first made; an answer "
             "from the cache costs the run nothing new.\n"
         )
+        failed = sum(int(t.get("failed_calls", 0)) for t in eps.values())
+        if failed:
+            charged = sum(Decimal(str(t.get("failed_cost_usd", "0"))) for t in eps.values())
+            w(
+                f"These costs include {_money(charged)} charged at the worst-case price of "
+                f"{failed} call(s) that failed before reporting their usage; the provider may "
+                "have billed less or nothing for them.\n"
+            )
 
     # -- pruning
     w("## Pruning audit\n")
@@ -1305,6 +1350,23 @@ def _canary_sentence(manifest: Any) -> str:
     )
 
 
+def usage_sentence(usage: Any) -> str:
+    """What a run's new model calls cost, with worst-case charges for failed calls told apart.
+
+    A call that failed in the API client before reporting its usage is charged its
+    worst case against the cap; that is not known spending, so it is named as such.
+    """
+    answers = f"{usage.live_answers} new answers, {usage.cache_answers} from the cache"
+    if not usage.failed_calls:
+        return f"Spent on new model calls: ${float(usage.cost_usd):.4f} ({answers})."
+    return (
+        f"Charged against the cap for new model calls: ${float(usage.cost_usd):.4f} ({answers}), "
+        f"of which ${float(usage.failed_cost_usd):.4f} is the worst-case price of "
+        f"{usage.failed_calls} call(s) that failed before reporting their usage, which the "
+        "provider may have billed less or nothing for."
+    )
+
+
 def _latest_cutoff(manifest: Any) -> str:
     cutoffs = [i.knowledge_cutoff for i in manifest.models.values() if i.knowledge_cutoff]
     return max(cutoffs).isoformat() if cutoffs else "not listed"
@@ -1339,18 +1401,25 @@ def dirty_notice(manifest: Any) -> str:
 
 
 def _scores_only_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
-    """``metrics`` without the parts from which exchange prices can be worked out.
+    """``metrics`` without the parts that hold exchange prices or let one be worked out.
 
     Cash and equity at each fill and settlement give the fill price, and so does a
     market's or an event's P&L; one market's squared error against its public
-    outcome gives the market's prices. With only a few fills, the totals do too:
-    whole contracts, cent prices and the fee schedule leave one answer for a
-    profit and its fees, and a bootstrap interval over two events is twice each
-    event's result. So with fewer than ``SCORES_ONLY_MIN_FILLS`` fills the dollar
-    results are withheld, and ``pnl.withheld`` says so with the sign of the
-    result. A reliability bin with fewer than ``SCORES_ONLY_MIN_BIN`` forecasts
-    would show single forecasts, which for the market are exchange prices, so its
-    mean forecast is withheld. Aggregates over many rows stay.
+    outcome gives the market's prices. The dollar totals do too, even over many
+    fills: a routing tier or an event can hold a single fill, and whole contracts,
+    cent prices and the fee schedule leave one answer for a profit and its fees. So
+    when the simulation made any fill, every dollar result is set to null (counts
+    stay), and ``pnl.withheld`` says whether it ended in a gain or a loss. A
+    self-halt reason of the daily loss stop or the drawdown states the day's
+    starting or peak equity, so it is cut to its name. The market's forecasts are
+    exchange prices, so a bin of its reliability table with fewer than
+    ``SCORES_ONLY_MIN_BIN`` forecasts would show single prices: its mean is withheld,
+    and when exactly one bin is, so is the market's calibration error, a
+    count-weighted sum over the bins that would give that mean back. The other
+    systems' bins hold their own forecasts and stay. Every system's table that
+    scores abstentions as the market price is left out with its calibration error:
+    set beside the answered table it gives the market's price on the abstained
+    rows. Its row count stays.
     """
     out = json.loads(json.dumps(metrics))
     pnl = out.get("pnl", {})
@@ -1360,11 +1429,10 @@ def _scores_only_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     for block in (summary, *tiers):
         block.pop("by_market", None)
         block.pop("by_event", None)
-    fills = int(summary.get("n_trades", 0) or 0)
-    if 0 < fills < SCORES_ONLY_MIN_FILLS:
+    if int(summary.get("n_trades", 0) or 0):
         total = Decimal(str(summary.get("total") or "0"))
         pnl["withheld"] = {
-            "why": f"fewer than {SCORES_ONLY_MIN_FILLS} fills",
+            "why": "scores only",
             "result": "a gain" if total > 0 else "a loss" if total < 0 else "no gain or loss",
         }
         for block in (summary, *tiers):
@@ -1376,15 +1444,73 @@ def _scores_only_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
         for key in ("estimate", "lower", "upper"):
             if key in pnl.get("interval", {}):
                 pnl["interval"][key] = None
+    for halt in (out.get("self_halts") or {}).values():
+        if halt:
+            halt["reason"] = _without_dollars(halt["reason"])
     for entry in out.get("systems", {}).values():
         for key in ("top_event", "top_markets"):
             (entry.get("error_concentration") or {}).pop(key, None)
     for tables in out.get("reliability", {}).values():
-        for table in tables.values():
-            for b in (table or {}).get("bins", []):
-                if 0 < b["count"] < SCORES_ONLY_MIN_BIN:
-                    b["mean_forecast"] = None
+        for key in ("bins", "ece"):
+            (tables.get("abstain_as_market") or {}).pop(key, None)
+    market = (out.get("reliability", {}).get(MARKET) or {}).get("answered") or {}
+    small = [b for b in market.get("bins", []) if 0 < b["count"] < SCORES_ONLY_MIN_BIN]
+    for b in small:
+        b["mean_forecast"] = None
+    if len(small) == 1:
+        market["ece"] = None
     return out
+
+
+def _without_dollars(reason: str) -> str:
+    """A self-halt reason with each daily-loss or drawdown part cut to the condition's name."""
+    return DOLLAR_REASON.sub(
+        r"\1 (its dollar figures are left out of a scores-only publication)", reason
+    )
+
+
+def scores_only_refusal(rows: Iterable[ForecastRow]) -> str:
+    """Why a run with these forecasts cannot be published as scores only, or ``""``.
+
+    Each system's scores are published over the forecasts it answered, with the
+    market's score on those same forecasts beside them. Where one system answered
+    forecasts that another did not (it abstained, a call failed, or a point was not
+    run), the difference between those market scores is the market's summed squared
+    error on exactly those forecasts. Over the twenty-odd markets of an inflation
+    event that is one more aggregate. Over a few forecasts it is not: a rate
+    decision has five markets whose prices nearly determine one another, so their
+    sum gives the prices back. So in each block (each horizon, and the
+    news-triggered forecasts) the forecasts one system answered and another did
+    not, and the forecasts the run holds that a system did not answer, must number
+    zero or at least ``SCORES_ONLY_MIN_MISSING``. A system that answered nothing in
+    a block has no scores there and is not counted.
+    """
+    held: dict[str, set[tuple[Any, ...]]] = {}
+    answered: dict[str, dict[str, set[tuple[Any, ...]]]] = {}
+    for r in rows:
+        name = (
+            "the news-triggered forecasts"
+            if r.horizon_days is None
+            else f"the {r.horizon_days}-day horizon"
+        )
+        key = (r.trigger_id, r.event_ticker, r.market_ticker, r.as_of)
+        held.setdefault(name, set()).add(key)
+        if r.probability is not None:
+            answered.setdefault(name, {}).setdefault(r.system, set()).add(key)
+    for name, systems in answered.items():
+        sets = {"": held[name], **systems}
+        for (a, has), (b, lacks) in itertools.permutations(sets.items(), 2):
+            n = len(has - lacks)
+            if b and 0 < n < SCORES_ONLY_MIN_MISSING:
+                return (
+                    f"this run cannot be published as scores only: {b} did not answer {n} "
+                    f"forecast(s) in {name} that {a + ' answered' if a else 'the run holds'}, "
+                    f"fewer than {SCORES_ONLY_MIN_MISSING}, and scores over so few forecasts "
+                    "can give away the market's prices on them. Keep it unpublished, or run it "
+                    "again so that those forecasts are answered (answers already in the "
+                    "response cache cost nothing)"
+                )
+    return ""
 
 
 def publish_run(
@@ -1407,7 +1533,9 @@ def publish_run(
     ``scores_only`` leaves out the per-forecast table and the traces, which hold
     exchange prices, and publishes the metrics without the parts from which a
     price can be worked out (``_scores_only_metrics``), with the report and its
-    figures drawn again from them. The published manifest's notes say so.
+    figures drawn again from them. The published manifest's notes say so. A run
+    in which one system answered a few forecasts that another did not is refused
+    as scores only (``scores_only_refusal``), before anything is written.
 
     A run whose models were supplied by the caller (scripted answers in a test,
     or a rehearsal) is not a result, so publishing it is refused with a
@@ -1416,6 +1544,8 @@ def publish_run(
     (a dry run, an aborted or unfinished one), or one missing a file of the set.
     """
     import logging
+
+    from pmfa.evaluation.backtest import read_forecasts
 
     run_dir = Path(run_dir)
     source = read_manifest(run_dir)
@@ -1429,6 +1559,12 @@ def publish_run(
         raise ValueError(
             f"only a complete or partial run is published; this run is {source.status}"
         )
+    if scores_only:
+        if not (run_dir / ROWS).exists():
+            raise ValueError(f"the run directory has no {ROWS}")
+        refusal = scores_only_refusal(row for row, _ in read_forecasts(run_dir / ROWS))
+        if refusal:
+            raise ValueError(refusal)
     if not (run_dir / REPORT_FILE).exists():
         build_report(run_dir)
     files = [f for f in COMMITTED if not (scores_only and f == ROWS)]
@@ -1486,4 +1622,6 @@ __all__ = [
     "build_report",
     "dirty_notice",
     "publish_run",
+    "scores_only_refusal",
+    "usage_sentence",
 ]

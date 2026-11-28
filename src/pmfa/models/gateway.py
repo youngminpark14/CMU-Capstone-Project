@@ -13,15 +13,21 @@ Role and input record in, validated output record out. The gateway owns:
   A call's cost is known only once it returns, so each live call (the repair
   retry included) is checked at its worst case: ``input_token_bound`` of the
   rendered prompt times the assigned model's input price, plus ``max_tokens``
-  times its output price. A call that could take the episode or run dollar cap
-  past its limit is refused, so the caps are ceilings as far as the input-token
-  bound holds (and the model served is the one assigned). A call that fails in
-  the API client is charged that worst case, because it may have been answered
-  and billed all the same, so repeated failures reach the caps too. A cached
-  answer costs the run nothing new and is checked as any answer was before:
-  against what was already spent. When the seconds cap is enforced (live modes), each call's
-  timeout is the configured ``request_timeout_seconds`` or the episode's seconds
-  left, whichever is shorter;
+  times its output price, times the requests one attempt may send
+  (``sends_per_attempt``: the API client's own retries included, 1 for any
+  backend that does not say). A call that could take the episode or run dollar
+  cap past its limit is refused. An attempt that returns is charged the usage it
+  reports; one that fails in the API client is charged the whole reservation,
+  because each of its sends may have been answered and billed, and that charge
+  is also counted in ``failed_calls`` and ``failed_cost_usd``. So the meter never
+  ends above a cap, as far as the input-token bound holds (and a model served by
+  a fallback costs no more than the one assigned). What the meter cannot see:
+  when the client retried a send that timed out and the retry succeeded, only
+  the successful send's reported usage is charged, though the provider may have
+  billed the first one too. A cached answer costs the run nothing new and is
+  checked as any answer was before: against what was already charged. When the
+  seconds cap is enforced (live modes), each call's timeout is the configured
+  ``request_timeout_seconds`` or the episode's seconds left, whichever is shorter;
 - the content-addressed response cache (``pmfa.models.cache``); a cached answer
   that fails its input check is treated as not cached;
 - cassette recording (``pmfa.models.cassette``).
@@ -152,6 +158,9 @@ class Gateway:
         self.recorder = recorder
         self.meter = Meter(config.budget, enforce_seconds=enforce_seconds)
         self._timer = timer
+        backend_used = getattr(runner, "backend", None)
+        self.sends_per_attempt = max(1, int(getattr(backend_used, "sends_per_attempt", 1)))
+        """Requests one attempt may send, as the backend says; each is reserved at its worst case."""
 
     # ------------------------------------------------------------------ the port
 
@@ -247,7 +256,7 @@ class Gateway:
         return self.meter.episode(episode_id)
 
     def run_usage(self) -> Usage:
-        """What the whole run has spent: new calls, tokens, dollars, and seconds."""
+        """What the whole run has charged: new calls, tokens, dollars, and seconds."""
         return self.meter.run()
 
     # ------------------------------------------------------------------ helpers
@@ -278,13 +287,15 @@ class Gateway:
         repair: Repair | None,
         worst: Decimal,
     ) -> tuple[Completion, float]:
-        """One request. ``worst`` is the most it can cost, charged when the client fails.
+        """One attempt. ``worst`` is the most it can cost, charged when the client fails.
 
-        A request that fails in the API client may still have been answered and
+        An attempt that fails in the API client may still have been answered and
         billed (a timeout after the answer was written, an error raised by the
         runner after the call), and the client's own retries may have sent it
         more than once. Nothing says what it cost, so the attempt is charged its
-        worst case: the caps stay ceilings, and repeated failures reach them.
+        worst case, which covers every send it may have made: the meter never ends
+        above a cap, and repeated failures reach it. The charge is also counted as
+        a failed call, so a report can tell it from known spending.
         """
         timeout = self.config.models.request_timeout_seconds
         left = self.meter.seconds_left(episode_id)
@@ -303,7 +314,12 @@ class Gateway:
             seconds = self._elapsed(started)
             if isinstance(exc, Exception) and not isinstance(exc, PmfaError):
                 # A timeout or server error from the API client ends the episode, not the run.
-                self.meter.add(episode_id, usage_of(cost_usd=worst, seconds=seconds))
+                self.meter.add(
+                    episode_id,
+                    usage_of(
+                        cost_usd=worst, seconds=seconds, failed_calls=1, failed_cost_usd=worst
+                    ),
+                )
                 raise ModelCallFailed(
                     f"{task.value}: the model call failed: {type(exc).__name__}: {exc}"
                 ) from exc
@@ -332,13 +348,14 @@ class Gateway:
     def _worst_case(
         self, output_type: type[Record], assignment: ModelAssignment, prompt: Prompt
     ) -> Decimal:
-        """The most one call with ``prompt`` can cost on the assigned model."""
-        return cost(
+        """The most one attempt with ``prompt`` can cost on the assigned model, over all its sends."""
+        one_send = cost(
             assignment.model,
             input_token_bound(prompt, output_type),
             assignment.max_tokens,
             catalog=self.config.models.catalog,
         )
+        return one_send * self.sends_per_attempt
 
     def _price(self, requested: str, completion: Completion) -> Decimal:
         catalog = self.config.models.catalog
@@ -468,6 +485,8 @@ class Gateway:
                 input_tokens=after.input_tokens - before.input_tokens,
                 output_tokens=after.output_tokens - before.output_tokens,
                 cost_usd=after.cost_usd - before.cost_usd,
+                failed_calls=after.failed_calls - before.failed_calls,
+                failed_cost_usd=after.failed_cost_usd - before.failed_cost_usd,
             ),
             latency_ms=round((after.seconds - before.seconds) * 1000),
             repaired=False,

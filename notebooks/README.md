@@ -7,7 +7,11 @@
   recomputes every Brier score, skill and reliability table from that table with the project's own
   functions in `pmfa.evaluation`, and stops if a number differs from `metrics.json`.
 - A run published as scores only has no per-forecast table in the repository. The notebook draws
-  its tables and figures from `metrics.json` and says that nothing was recomputed.
+  its tables and figures from `metrics.json` and says that nothing was recomputed. A bin of the
+  market's reliability table whose mean was withheld (fewer than five forecasts) reads `withheld`,
+  an empty bin `empty`, and a calibration error withheld with such a mean reads `withheld`. The
+  reliability table that scores abstentions as the market price, and its calibration error, are
+  left out of such a publication; the notebook says so in a sentence.
 
 It needs no API key and no network, and the notebook is committed without outputs.
 

@@ -1,4 +1,4 @@
-# 0008. The depth-1 Critic defaults to Fable 5.2
+# 0008. The depth-1 Critic defaulted to Fable 5.2 (superseded by 0046)
 
 **Superseded by [0046](0046-models-by-reasoning-needed.md):** the depth-1 Critic and the baselines now default to Opus 5.5.
 

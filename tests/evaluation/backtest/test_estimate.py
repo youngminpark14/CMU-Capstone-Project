@@ -84,7 +84,8 @@ def test_the_pipeline_plan_says_its_maximum_counts_no_repair_retries(
     data_config: Config, tmp_path
 ) -> None:  # type: ignore[no-untyped-def]
     """Each unusable answer gets one metered retry, which the maximum does not count: the
-    plan says so next to it, and names the run's dollar cap as the real ceiling."""
+    plan says so next to it, and names the run's dollar cap as the ceiling on what the meter
+    charges (not on what may be billed for a send the client retried)."""
     from pmfa.evaluation.backtest import run_backtest
 
     manifest = run_backtest(
@@ -94,3 +95,4 @@ def test_the_pipeline_plan_says_its_maximum_counts_no_repair_retries(
     [note] = [n for n in pipeline.notes if "repair retr" in n]
     assert "no repair retries" in note and "dollar cap" in note
     assert f"${data_config.budget.max_usd_per_run}" in note
+    assert "is the ceiling on what the meter charges" in note and "real ceiling" not in note

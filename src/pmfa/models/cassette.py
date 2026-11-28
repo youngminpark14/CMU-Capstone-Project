@@ -21,7 +21,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from pmfa.errors import BudgetExhausted, CassetteMiss, ModelOutputError, RunBudgetExhausted
 from pmfa.models.meter import add_usage, usage_of
@@ -42,12 +42,20 @@ _ERRORS: dict[str, type[Exception]] = {
 }
 
 
+def _zero(value: Any) -> bool:
+    return not value
+
+
 class EntryUsage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: Decimal = Decimal("0")
+    failed_calls: int = Field(default=0, exclude_if=_zero)
+    """Attempts charged their worst case because the API client failed (as in ``Usage``)."""
+    failed_cost_usd: Decimal = Field(default=Decimal("0"), exclude_if=_zero)
+    """Their worst-case price, part of ``cost_usd``. Both are left out of the JSON while zero."""
 
 
 class CassetteEntry(BaseModel):
@@ -235,6 +243,8 @@ class CassettePlayer:
             output_tokens=entry.usage.output_tokens,
             cost_usd=entry.usage.cost_usd,
             seconds=entry.latency_ms / 1000,
+            failed_calls=entry.usage.failed_calls,
+            failed_cost_usd=entry.usage.failed_cost_usd,
         )
         self._usage[episode_id] = add_usage(self._usage.get(episode_id, Usage()), delta)
 
@@ -347,6 +357,8 @@ class ModelTap:
                 input_tokens=after.input_tokens - before.input_tokens,
                 output_tokens=after.output_tokens - before.output_tokens,
                 cost_usd=after.cost_usd - before.cost_usd,
+                failed_calls=after.failed_calls - before.failed_calls,
+                failed_cost_usd=after.failed_cost_usd - before.failed_cost_usd,
             ),
             latency_ms=round((after.seconds - before.seconds) * 1000),
         )

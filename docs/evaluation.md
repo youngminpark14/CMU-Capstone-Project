@@ -226,10 +226,20 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   evidence follow-up's re-score priced on the critic slot of its level. When the ceiling exceeds the
   run's cap, the plan says the run would stop partial.
 - **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $100)
-  before every call ([meter.py](../src/pmfa/models/meter.py)), against the call's worst-case cost,
-  so a call that could take the run past the cap is not sent and the cap is a ceiling. A call that
-  fails in the API client is charged that worst case, since it may have been answered and billed,
-  so repeated failures reach the cap too. When it trips, the run stops cleanly,
+  before every call ([meter.py](../src/pmfa/models/meter.py)). The API client retries a failed
+  request by itself (twice by default), so one call can be up to three sends, each of which the
+  provider may bill. Before each call the meter reserves the worst case of all of them: an upper
+  bound of the prompt's input tokens plus the full output limit, priced on the assigned model,
+  times the sends. A call that could take the run past the cap is not sent. A call that returns is
+  charged the usage it reports; one that fails in the API client is charged the whole reservation.
+  What the cap promises: the meter never ends above it, as far as the input-token bound holds. What
+  the meter cannot see: when the client retried a send that timed out and the retry succeeded, the
+  call is charged at the successful send's reported usage only, though the provider may have
+  billed the first send too. A worst-case charge is not known spending, so the manifest's `usage`
+  counts it apart (`failed_calls`, `failed_cost_usd`), and the report then says how much of the
+  total charged against the cap is the worst-case price of calls that failed before reporting
+  their usage, which the provider may have billed less or nothing for. When the cap trips, the run
+  stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
   `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
   pipeline, counting the trigger whose episode the cap ended `error`) when it stopped part way, `not run: ...` when the cap came before its first forecast.
@@ -239,7 +249,11 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   rerunning the same questions costs nothing.
 - **Subsample first.** `--limit N` keeps an evenly spaced subsample of N scoring points and N
   triggers; the manifest lists what was left out.
-- **Per-episode caps**: 30 model calls and $2.00 per episode.
+- **Per-episode caps**: 30 model calls and $2.00 per episode, the dollars reserved and charged the
+  same way as the run's. Because each call reserves three sends' worst case, a call is refused once
+  the episode's charges exceed the cap minus three times its worst case: at the defaults, about
+  $0.89 before a depth-1 score on Opus 5.5 (worst case about $0.37) and about $1.45 before a deeper
+  score on Sonnet 5.5 (about $0.18).
 
 ### Fill assumptions and their limits
 
@@ -373,18 +387,42 @@ the same way, so an earlier publication of that name is left as it was.
 per-forecast table and the traces stay there too: they hold exchange prices, which Kalshi's
 Developer Agreement does not allow to be shared without permission
 ([Sources and credits](#sources-and-credits)), so only the manifest, the metrics, the report and its
-figures are published, and the published manifest's notes say so. The published metrics leave out
-the parts from which a fill or market price can be worked out, and the report and figures are drawn
-again from them:
+figures are published, and the published manifest's notes say so. The trades (`trades.csv`) are
+never published. The published metrics leave out the parts that hold exchange prices or from which
+one can be worked out, and the report and figures are drawn again from them:
 
+- every dollar result of the trading simulation, whenever it made a fill: realized P&L, fees and
+  open cost in total and per routing tier, the maximum drawdown and the P&L interval are null.
+  Whole contracts, cent prices and the fee schedule leave a single answer for one trade's profit
+  and fee, a routing tier or an event can hold a single fill however many there are in all, and an
+  interval over two events is twice each event's result. Counts stay, and the publication says how
+  many fills there were and whether the result was a gain, a loss, or neither. A self-halt reason
+  of the daily loss stop or the drawdown states the day's starting or the peak equity, so it is cut
+  to the condition's name; other halt reasons hold no dollars and stay whole;
 - the equity curve, P&L by market and by event, and each system's event and markets with the
   largest share of the error;
-- the mean forecast of a reliability bin holding fewer than five forecasts (for the market system
-  that is one or a few exchange prices);
-- with fewer than ten fills, every dollar result of the trading simulation (profit, fees, drawdown,
-  the interval): whole contracts, cent prices and the fee schedule leave a single answer for one
-  trade's profit and fee, and an interval over two events is twice each event's result. The
-  publication says how many fills there were and whether the result was a gain or a loss.
+- the mean of a bin of the market's reliability table holding fewer than five forecasts: the
+  market's forecasts are exchange prices, so such a mean is one or a few of them. When exactly one
+  bin is withheld the market's calibration error is withheld too, since that error is a
+  count-weighted sum over the bins and would give the mean back. The other systems' bins hold
+  their own forecasts and are published;
+- every system's reliability table in which abstentions are scored as the market price, with its
+  calibration error. Set beside the answered table, it gives the market's price on the abstained
+  forecasts. Its forecast count stays.
+
+What is published are aggregate scores and counts, model-call costs, and the run's manifest. They
+are aggregates, not a promise that nothing about a price can be inferred from them. Each system's
+scores are published with the market's score on the same forecasts beside them, so where one system
+answered forecasts that another did not (it abstained, a call failed, or a point was not run), the
+difference is the market's summed squared error on exactly those forecasts. Over the twenty-odd
+markets of an inflation event that is one more aggregate. Over a few forecasts it is not: a rate
+decision has five markets whose prices nearly determine one another, so their sum gives the prices
+back. So in each horizon, and among the news-triggered forecasts, the forecasts one system answered
+and another did not, and the forecasts the run holds that a system did not answer, must number zero
+or at least ten. Otherwise the run is refused as scores only, before anything is written or
+deleted: `pmfa report --publish NAME --scores-only` prints `not published: this run cannot be
+published as scores only: ...` and exits 1. Keep such a run unpublished, or run it again so that
+those forecasts are answered (answers already in the response cache cost nothing).
 
 The owner chose scores only for
 every run with model forecasts (2026-11-27). A run made from a working tree with uncommitted changes
@@ -527,7 +565,7 @@ single_pass_similarity   not run: no API key           21      21-21            
 pipeline                 not run: no API key           76      76-1683          0.04-81.66
                           scheduled episodes by tree depth: depth 1: 18, depth 2: 3
                           55 news-triggered episode(s), each bounded with a full depth-3 tree after one Monitor call
-                          the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($100) is the real ceiling
+                          the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($100) is the ceiling on what the meter charges
                           the floor assumes every episode stops after its first call (no candidate event, or no evidence)
 
 Estimated total: $8.49 to $90.10 (run cap $100)
@@ -576,13 +614,14 @@ uv run pmfa backtest --systems market,prompt_only,single_pass,single_pass_simila
 ```
 
 ```bash
-uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full
+uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full --scores-only
 ```
 
 `YYYY-MM-DD` is the date the run started; `pmfa backtest` prints the run directory when it finishes.
-Publishing commits the manifest, the per-forecast table, the metrics, the report and figures, and the
-saved traces; with `--scores-only` it leaves out the per-forecast table, the traces and the
-price-revealing parts of the metrics. The notebook
+Publishing without `--scores-only` commits the manifest, the per-forecast table, the metrics, the
+report and figures, and the saved traces. With `--scores-only`, which the owner chose for every
+run with model forecasts, it leaves out the per-forecast table, the traces and the price-revealing
+parts of the metrics. The notebook
 [notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the newest published run: it
 recomputes the scores when the per-forecast table is there, and reads them from `metrics.json` when
 the run was published as scores only.

@@ -134,10 +134,9 @@ def register(app: typer.Typer) -> None:
         typer.echo(f"Run {manifest.status}: {run_dir}")
         for system, status in manifest.systems.items():
             typer.echo(f"  {system}: {status}")
-        typer.echo(
-            f"Spent ${float(manifest.usage.cost_usd):.4f} on {manifest.usage.live_answers} new "
-            f"answer(s); {manifest.usage.cache_answers} from the cache."
-        )
+        from pmfa.evaluation.report import usage_sentence
+
+        typer.echo(usage_sentence(manifest.usage))
         typer.echo(f"Next: pmfa report {run_dir}")
 
     @app.command("report")

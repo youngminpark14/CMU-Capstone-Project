@@ -14,9 +14,13 @@ The meter is checked before every call, so a capped call is never sent:
 A call's cost is known only after it returns, so the caller passes the call's
 worst case (``worst_case_usd``): the gateway prices an upper estimate of the
 prompt's input tokens plus the full ``max_tokens`` of output on the assigned
-model. The dollar caps are then ceilings, as far as the input-token estimate is
-an upper bound. An answer that costs nothing new (cached, cassette, scripted) is
-checked with no worst case, exactly as before. The seconds cap is held the same
+model, times the requests the API client may send for it (its own retries
+included). The meter then never ends above a dollar cap, as far as the
+input-token estimate is an upper bound. A worst case charged for a call that
+failed before reporting its usage is also counted in ``failed_calls`` and
+``failed_cost_usd``, because it is a charge against the cap, not known spending.
+An answer that costs nothing new (cached, cassette, scripted) is checked with no
+worst case, exactly as before. The seconds cap is held the same
 way: when it is enforced, the gateway gives each call a timeout no longer than
 :meth:`Meter.seconds_left`. Seconds are model-call seconds only.
 """
@@ -43,6 +47,8 @@ def add_usage(a: Usage, b: Usage) -> Usage:
         output_tokens=a.output_tokens + b.output_tokens,
         cost_usd=a.cost_usd + b.cost_usd,
         seconds=round(a.seconds + b.seconds, 3),
+        failed_calls=a.failed_calls + b.failed_calls,
+        failed_cost_usd=a.failed_cost_usd + b.failed_cost_usd,
     )
 
 
@@ -70,7 +76,7 @@ class Meter:
         could = f"; the next call could cost up to ${worst}" if worst else ""
         if run.cost_usd >= b.max_usd_per_run or run.cost_usd + worst > b.max_usd_per_run:
             raise RunBudgetExhausted(
-                f"run dollar cap reached: ${run.cost_usd} spent of ${b.max_usd_per_run}{could}"
+                f"run dollar cap reached: ${run.cost_usd} charged of ${b.max_usd_per_run}{could}"
             )
         if episode.calls + 1 > b.max_calls_per_episode:
             raise BudgetExhausted(
@@ -82,7 +88,7 @@ class Meter:
             or episode.cost_usd + worst > b.max_usd_per_episode
         ):
             raise BudgetExhausted(
-                f"episode {episode_id}: dollar cap reached (${episode.cost_usd} of "
+                f"episode {episode_id}: dollar cap reached (${episode.cost_usd} charged of "
                 f"${b.max_usd_per_episode}{could})"
             )
         if self.enforce_seconds and episode.seconds >= b.max_seconds_per_episode:
@@ -122,6 +128,8 @@ def usage_of(
     output_tokens: int = 0,
     cost_usd: Decimal | None = None,
     seconds: float = 0.0,
+    failed_calls: int = 0,
+    failed_cost_usd: Decimal = Decimal("0"),
 ) -> Usage:
     """A ``Usage`` delta for one call."""
     return Usage(
@@ -130,6 +138,8 @@ def usage_of(
         output_tokens=output_tokens,
         cost_usd=Decimal("0") if cost_usd is None else cost_usd,
         seconds=seconds,
+        failed_calls=failed_calls,
+        failed_cost_usd=failed_cost_usd,
     )
 
 

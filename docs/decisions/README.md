@@ -13,14 +13,14 @@ Read 0001 to 0012 first (how the design changed from the checkpoints), then 0013
 | [0005](0005-protected-slot-only-tail-rule.md) | The protected slot is the only tail rule | checkpoints 4.1 and 5.1; spec item 5 |
 | [0006](0006-frozen-not-discarded.md) | Scenarios outside the beam are frozen, not discarded | checkpoint 4.1; spec item 6 |
 | [0007](0007-critic-scores-siblings.md) | The Critic scores sibling scenarios together | checkpoint 4.1; spec item 7 |
-| [0008](0008-depth1-critic-fable-5-2.md) | The depth-1 Critic defaults to Fable 5.2 | checkpoint 4.1; spec item 8 |
+| [0008](0008-depth1-critic-fable-5-2.md) | The depth-1 Critic defaulted to Fable 5.2 (superseded by 0046) | checkpoint 4.1; spec item 8 |
 | [0009](0009-generated-reports.md) | Dashboards are generated reports | checkpoint 6.1; spec item 9 |
 | [0010](0010-no-real-money.md) | Real-money trading is out of scope | checkpoints 1.1, 2.1 and 6.1; spec item 10 |
 | [0011](0011-official-sources-only.md) | Evidence is official sources only in v1 | checkpoints 1.1, 2.1 and 3.1; spec item 11 |
 | [0012](0012-ioc-limit-orders.md) | Orders are immediate-or-cancel limit orders | checkpoints 2.1 and 6.1; spec item 12 |
 | [0013](0013-two-dependency-sets.md) | Two dependency sets: CrewAI with MCP SDK 1.x, or MCP SDK 2.x without CrewAI | build |
 | [0014](0014-crewai-single-agent-kickoffs.md) | Roles run as single-agent CrewAI kickoffs bound to the gateway | build; checkpoint 4.1 |
-| [0015](0015-claude-api-usage.md) | How the Claude API is called | build; checkpoints 4.1 and 5.1 |
+| [0015](0015-claude-api-usage.md) | How the Claude API is called | build; checkpoint 4.1 |
 | [0016](0016-what-a-role-sees.md) | What a role may see | build; checkpoints 2.1 and 5.1 |
 | [0017](0017-named-event-triggers-skip-monitor.md) | Triggers that name their event skip the Monitor | build; checkpoint 5.1 |
 | [0018](0018-selling-is-buying-the-other-side.md) | Selling is buying the other side | build; checkpoint 1.1 |

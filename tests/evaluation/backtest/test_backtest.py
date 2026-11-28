@@ -543,6 +543,55 @@ def test_the_report_of_a_run_that_never_finished_does_not_say_what_it_spent(
     assert "This run did not finish (status running)" in text
 
 
+def test_worst_case_charges_for_failed_calls_are_reported_apart_from_spending(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """Every call fails in the API client, so nothing reported a cost: what the meter holds
+    is worst-case charges against the cap, and the manifest and the report say so."""
+    from decimal import Decimal
+
+    from pmfa.evaluation.report import build_report
+    from pmfa.models import Gateway
+    from pmfa.models.roles.runner import DirectRunner
+
+    class AlwaysTimesOut:
+        def complete(self, **request: object) -> object:
+            raise TimeoutError("timed out after the client's retries")
+
+    budget = data_config.budget.model_copy(
+        update={"max_usd_per_run": Decimal("1.00"), "max_usd_per_episode": Decimal("1.00")}
+    )
+    config = data_config.model_copy(update={"budget": budget})
+    gateway = Gateway(config, runner=DirectRunner(AlwaysTimesOut()))
+    run_dir = tmp_path / "runs" / "failed"
+    manifest = run_backtest(config, run_dir=run_dir, systems=["market", "pipeline"], models=gateway)
+    usage = manifest.usage
+    assert usage.live_answers == 0 and usage.failed_calls == usage.calls > 0
+    assert usage.failed_cost_usd == usage.cost_usd <= config.budget.max_usd_per_run
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "Spent on new model calls" not in text
+    assert (
+        f"Charged against the cap for new model calls: ${float(usage.cost_usd):.4f} "
+        f"(0 new answers, 0 from the cache), of which ${float(usage.failed_cost_usd):.4f} is "
+        f"the worst-case price of {usage.failed_calls} call(s) that failed before reporting "
+        "their usage"
+    ) in text
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    in_episodes = sum(t["failed_calls"] for t in metrics["episodes"].values())
+    assert in_episodes, "a pipeline episode was charged for a failed call"
+    assert "These costs include $" in text and f"{in_episodes} call(s) that failed" in text
+
+
+def test_a_manifest_written_before_failed_calls_were_counted_still_loads() -> None:
+    from pmfa.evaluation.report import usage_sentence
+
+    old = Path(__file__).parents[3] / "evaluation" / "runs" / "2026-11-26-market-baseline"
+    usage = read_manifest(old).usage
+    assert "failed_calls" not in json.loads((old / "manifest.json").read_text())["usage"]
+    assert usage.failed_calls == 0 and usage.failed_cost_usd == 0
+    assert usage_sentence(usage).startswith("Spent on new model calls: $0.0000")
+
+
 def test_a_run_with_no_scoring_pass_does_not_call_itself_a_pilot_of_zero_events(
     data_config: Config, tmp_path: Path
 ) -> None:

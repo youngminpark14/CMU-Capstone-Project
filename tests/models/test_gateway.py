@@ -571,9 +571,54 @@ def test_a_call_that_fails_in_the_client_is_charged_its_worst_case_and_reaches_t
             gw.call(RoleTask.SCORE, SCORE_IN, episode_id=f"e{n}")
         assert gw.usage(f"e{n}").cost_usd == one
         assert gw.run_usage().cost_usd == one * n
-    with pytest.raises(RunBudgetExhausted):  # the fourth is refused before it is sent
+        # The charge is a worst case, not known spending, and is counted apart.
+        assert gw.run_usage().failed_calls == n and gw.run_usage().failed_cost_usd == one * n
+    with pytest.raises(RunBudgetExhausted, match="charged of"):  # the fourth is never sent
         gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e4")
     assert len(backend.requests) == 3
+
+
+def test_the_reservation_covers_every_send_the_client_may_make():
+    """A backend whose client retries may send one attempt three times, each billable: the cap
+    check reserves all three sends and a failed attempt is charged all three, so the meter
+    never ends above the cap. An attempt that returns is charged what it reports."""
+
+    def times_out(request):  # type: ignore[no-untyped-def]
+        raise TimeoutError("request timed out after the SDK's retries")
+
+    one = score_worst_case(make_config())
+    cap = one * 7  # two failed attempts (six sends) fit; a third would pass the cap
+    config = make_config(budget={"max_usd_per_run": str(cap), "max_usd_per_episode": str(cap)})
+    answer = ok(OUTPUTS[RoleTask.SCORE], tokens=(40_000, 2_000))  # Sonnet: $0.10
+    backend = FakeBackend([times_out, times_out, answer, answer])
+    backend.sends_per_attempt = 3  # as AnthropicBackend says with two retries
+    gw = Gateway(config, runner=DirectRunner(backend))
+    assert gw.sends_per_attempt == 3
+    for n in (1, 2):
+        with pytest.raises(ModelOutputError):
+            gw.call(RoleTask.SCORE, SCORE_IN, episode_id=f"e{n}")
+        assert gw.usage(f"e{n}").cost_usd == gw.usage(f"e{n}").failed_cost_usd == one * 3
+    assert gw.run_usage().failed_calls == 2
+    with pytest.raises(RunBudgetExhausted):  # one * 6 charged; one * 3 more would pass one * 7
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e3")
+    assert len(backend.requests) == 2 and gw.run_usage().cost_usd <= cap
+
+    roomy = make_config(budget={"max_usd_per_run": "25", "max_usd_per_episode": "2"})
+    gw = Gateway(roomy, runner=DirectRunner(backend))
+    gw.call(RoleTask.SCORE, SCORE_IN, episode_id="ok")
+    assert gw.usage("ok").cost_usd == Decimal("0.10")  # what the answer reported, not 3 sends
+    assert gw.usage("ok").failed_calls == 0 and gw.usage("ok").failed_cost_usd == 0
+
+
+def test_the_anthropic_backend_says_how_many_sends_an_attempt_may_make():
+    from pmfa.models.backend import AnthropicBackend
+
+    config = make_config()
+    assert AnthropicBackend.from_config(config).sends_per_attempt == 3  # the client's default
+    assert Gateway(config, backend=AnthropicBackend.from_config(config)).sends_per_attempt == 3
+    once = AnthropicBackend.from_config(config, max_retries=0)
+    assert Gateway(config, backend=once).sends_per_attempt == 1
+    assert gateway([])[0].sends_per_attempt == 1  # a backend that does not say sends once
 
 
 def test_a_transport_error_is_a_model_output_error_and_is_charged():

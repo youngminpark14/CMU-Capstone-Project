@@ -129,6 +129,14 @@ class AnthropicBackend:
             )
         return key
 
+    @property
+    def sends_per_attempt(self) -> int:
+        """How many requests one ``complete`` may send: the first and the client's own retries.
+
+        Each may be billed, so the gateway reserves the worst case of all of them.
+        """
+        return 1 + self.max_retries
+
     def uses_fallback(self, model: str) -> bool:
         return self.refusal_fallback == "default" and model in SERVER_FALLBACK_MODELS
 

@@ -143,3 +143,29 @@ def test_the_report_gives_each_passs_halt_in_that_passs_own_part(halted: HaltedR
     trading = _section(text, "Simulated trading after fees")
     assert blocks["trading"]["first_started_at"] in trading
     assert blocks["scoring"]["first_started_at"] not in trading
+
+
+def test_a_scores_only_publication_states_no_dollars_of_a_loss_stop(
+    halted: HaltedRun, tmp_path: Path
+) -> None:
+    """A daily-loss or drawdown reason states the day's starting or peak equity: cut to its name."""
+    from pmfa.evaluation.report import build_report, publish_run
+
+    local = halted.metrics["self_halts"]
+    assert any(
+        block and ("daily loss stop: " in block["reason"] or "drawdown: " in block["reason"])
+        for block in local.values()
+    )
+    build_report(halted.run_dir)
+    target = publish_run(
+        halted.run_dir, "halted", root=tmp_path, allow_supplied=True, scores_only=True
+    )
+    published = json.loads((target / "metrics.json").read_text())["self_halts"]
+    texts = [(target / name).read_text() for name in ("metrics.json", "report.md", "manifest.json")]
+    for name, block in published.items():
+        assert block["first_trigger_id"] == local[name]["first_trigger_id"]
+        assert "daily loss stop: " not in block["reason"] and "drawdown: " not in block["reason"]
+    for text in texts:
+        for words in ("starting equity", "below the peak", "day P&L now"):
+            assert words not in text, words
+    assert "its dollar figures are left out of a scores-only publication" in texts[1]

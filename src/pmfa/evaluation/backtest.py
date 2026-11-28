@@ -216,7 +216,7 @@ def _statuses(
 
 
 def _run_usage(tap: ModelTap | None, models: Models | None) -> RunUsage:
-    """What the run spent on new model calls so far, and how many answers were new or cached."""
+    """What new model calls charged so far, and how many answers were new or cached."""
     if tap is None:
         return RunUsage()
     run_usage = getattr(models, "run_usage", None)
@@ -228,6 +228,8 @@ def _run_usage(tap: ModelTap | None, models: Models | None) -> RunUsage:
         cost_usd=spent.cost_usd,
         cache_answers=tap.sources.get("cache", 0),
         live_answers=tap.sources.get("live", 0),
+        failed_calls=spent.failed_calls,
+        failed_cost_usd=spent.failed_cost_usd,
     )
 
 

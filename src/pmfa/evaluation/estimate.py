@@ -19,7 +19,8 @@ the configuration allows:
 The maximum counts no repair retries. The gateway gives an unusable answer one
 metered retry, so an episode could make up to twice the counted calls (within
 its call cap); the plan says so next to the maximum, and the run's dollar cap,
-which the gateway checks at each call's worst case, is the real ceiling.
+which the gateway checks at each call's worst case, is the ceiling on what the
+meter charges.
 
 The floor is what a run costs if every episode stops after its first call.
 A call's price is the mean recorded cost of answers to the same task on the
@@ -203,7 +204,7 @@ def plan_systems(
             f"{config.forecast.max_depth} tree after one Monitor call",
             "the maximum assumes no repair retries: an unusable answer gets one retry, which "
             "could add up to as many calls again within each episode's call cap; the run's "
-            f"dollar cap (${config.budget.max_usd_per_run}) is the real ceiling",
+            f"dollar cap (${config.budget.max_usd_per_run}) is the ceiling on what the meter charges",
             "the floor assumes every episode stops after its first call (no candidate event, "
             "or no evidence)",
         ]
