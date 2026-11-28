@@ -240,13 +240,41 @@ class ChromaIndex:
         category: str | None = None,
         exclude_category: str | None = None,
     ) -> list[Hit]:
-        """Ledger entries with ``resolved_at < as_of``, optionally in or outside one category."""
+        """The ``n`` ledger entries most like ``vector`` with ``resolved_at < as_of``.
+
+        Optionally in or outside one category. The search is exact and its order
+        is fixed: by similarity, then the later resolution, then the id. One
+        market forecast at several horizons gives several rows with the same
+        text, so ties are the rule here, and the nearest-neighbour index returns
+        tied rows in an order that changes from run to run. The ledger holds one
+        row per resolved forecast, few enough to read every eligible one and
+        rank them. The time filter is still inside the read.
+        """
+        if n <= 0:
+            return []
         clauses: list[dict[str, Any]] = [{"resolved_ts": {"$lt": ceil_ts(as_of)}}]
         if category is not None:
             clauses.append({"category": {"$eq": category}})
         if exclude_category is not None:
             clauses.append({"category": {"$ne": exclude_category}})
-        return self._query(LEDGER, vector, n, _all_of(clauses))
+        rows = _rows(
+            self._collections[LEDGER].get(
+                where=_all_of(clauses), include=["metadatas", "documents", "embeddings"]
+            )
+        )
+        query = np.asarray(vector, dtype=np.float64)
+        scored = [(_cosine(query, row.vector), row) for row in rows]
+        scored.sort(
+            key=lambda pair: (
+                -round(pair[0], _TIE_DECIMALS),
+                -int(pair[1].metadata["resolved_ts"]),
+                pair[1].id,
+            )
+        )
+        return [
+            Hit(id=row.id, similarity=similarity, document=row.document, metadata=row.metadata)
+            for similarity, row in scored[:n]
+        ]
 
     def _query(
         self,
@@ -283,6 +311,19 @@ class ChromaIndex:
             )
             for i in range(len(ids))
         ]
+
+
+_TIE_DECIMALS = 6
+"""Similarities equal to this many decimals are a tie: stored vectors are 32-bit floats."""
+
+
+def _cosine(query: np.ndarray, stored: np.ndarray | None) -> float:
+    """Cosine similarity of the query and one stored vector, 0.0 when either has no length."""
+    if stored is None:
+        return 0.0
+    other = np.asarray(stored, dtype=np.float64)
+    norm = float(np.linalg.norm(query)) * float(np.linalg.norm(other))
+    return float(np.dot(query, other)) / norm if norm > 0 else 0.0
 
 
 def _all_of(clauses: list[dict[str, Any]]) -> dict[str, Any]:

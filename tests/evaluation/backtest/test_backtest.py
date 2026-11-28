@@ -187,6 +187,27 @@ def test_every_saved_trace_replays_offline_to_its_expected_record(full_run: Full
         assert result.episode.exit == expected.exit, relative
 
 
+def test_a_second_run_asks_every_model_the_same_questions(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """A rerun is answered from the response cache only if every question repeats.
+
+    This checks the property on the tiny world, calibration examples included.
+    The defect the first paid runs showed (tied ledger rows coming back in a
+    different order) needs more tied rows than this world has; its own test is
+    in tests/knowledge/test_retriever.py.
+    """
+    from pmfa.records.roles import RoleTask
+
+    again = scripted(full_run.config)
+    run_backtest(full_run.config, run_dir=tmp_path / "again", systems=ALL_SYSTEMS, models=again)
+    first = [(c.task, c.payload) for c in full_run.models.calls]
+    second = [(c.task, c.payload) for c in again.calls]
+    assert second == first
+    examples = [p.ledger_examples for task, p in first if task is RoleTask.SCORE]
+    assert any(len(given) > 1 for given in examples)  # the critic was given several to order
+
+
 def test_manifest_records_what_produced_the_numbers(full_run: FullRun) -> None:
     m = full_run.manifest
     assert m.models["baseline"].model == "claude-fable-5-2"

@@ -484,3 +484,39 @@ def test_ledger_returns_resolved_before_as_of_same_category_first(
     assert hits[0].probability == 0.7 and hits[0].market_price == 0.62 and hits[0].outcome
     [top] = knowledge.search_ledger("Fed", as_of=AS_OF, category="fed_decision", k=1)
     assert top.category == "fed_decision"
+
+
+def test_tied_ledger_entries_come_back_in_one_fixed_order() -> None:
+    """One market forecast at three horizons gives three rows with the same text.
+
+    Such rows tie on similarity, and a nearest-neighbour index returns ties in an
+    order that depends on how the index was built. The search ranks every
+    eligible row itself: by similarity, then the later resolution, then the id.
+    """
+    import itertools
+
+    held = "Will the Fed hold rates in September?"
+    earlier = datetime(2026, 9, 17, tzinfo=UTC)
+    later = datetime(2026, 9, 20, tzinfo=UTC)
+    entries = [
+        entry("held-3d", held, "fed_decision", earlier),
+        entry("held-7d", held, "fed_decision", earlier),
+        entry("held-1d", held, "fed_decision", earlier),
+        entry("held-late", held, "fed_decision", later),
+        entry("cut", "Will the Fed cut rates in September?", "fed_decision", later),
+        entry("cpi", "Will CPI inflation be above 3.0% in September?", "fed_decision", later),
+        entry("too-late", held, "fed_decision", AS_OF + timedelta(days=1)),
+    ]
+    seen = set()
+    for order in itertools.islice(itertools.permutations(entries), 0, 5040, 420):
+        knowledge = ChromaKnowledge(config(), embedder=HashingEmbedder())
+        try:
+            assert knowledge.index_ledger(list(order)) == len(entries)
+            vector = knowledge.index.embed([held])[0]
+            hits = knowledge.index.query_ledger(vector, as_of=AS_OF, n=5, category="fed_decision")
+        finally:
+            knowledge.close()
+        seen.add(tuple(h.id for h in hits))
+        assert hits[0].similarity == pytest.approx(1.0)
+    # The four exact matches first (the later resolution, then by id), then the nearest other.
+    assert seen == {("held-late", "held-1d", "held-3d", "held-7d", "cut")}
