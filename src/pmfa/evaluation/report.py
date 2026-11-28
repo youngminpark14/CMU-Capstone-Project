@@ -296,17 +296,32 @@ def _status_of(manifest: Any, system: str) -> str:
     return manifest.systems.get(system, "not requested")
 
 
+def _read_metrics(run_dir: Path) -> dict[str, Any]:
+    """The run's metrics, or empty blocks for a run that wrote none (aborted, dry run, unfinished)."""
+    path = run_dir / "metrics.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return {"systems": {}, "reliability": {}, "news": {}, "abstentions": {}}
+
+
 def build_report(run_dir: str | Path) -> Path:
     """Write ``report.md`` and ``figures/`` for the run in ``run_dir``. Returns the report's path."""
     run_dir = Path(run_dir)
     manifest = read_manifest(run_dir)
-    metrics_path = run_dir / "metrics.json"
-    metrics: dict[str, Any] = (
-        json.loads(metrics_path.read_text(encoding="utf-8"))
-        if metrics_path.exists()
-        else {"systems": {}, "reliability": {}, "news": {}, "abstentions": {}}
-    )
+    metrics = _read_metrics(run_dir)
     _figures(run_dir / FIGURES_DIR, manifest, metrics)
+    path = run_dir / REPORT_FILE
+    path.write_text(_report_text(manifest, metrics), encoding="utf-8")
+    return path
+
+
+def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
+    """The report's Markdown, from the manifest and the metrics alone.
+
+    A manifest that carries ``SCORES_ONLY_NOTE`` (a scores-only publication) gets a
+    report that says which files were left out and does not point at them.
+    """
+    scores_only = SCORES_ONLY_NOTE in manifest.notes
     cfg = manifest.config
     ev = cfg["evaluation"]
     horizons = [str(h) for h in sorted(ev["horizons_days"], reverse=True)]
@@ -323,9 +338,11 @@ def build_report(run_dir: str | Path) -> Path:
     w(
         f"Run status: **{manifest.status}**. Created {manifest.created_at.isoformat()}"
         + (f", finished {manifest.finished_at.isoformat()}" if manifest.finished_at else "")
-        + ". Every number below comes from this run's `manifest.json` and `metrics.json`; "
-        "the per-forecast table is `forecasts.csv`.\n"
+        + ". Every number below comes from this run's `manifest.json` and `metrics.json`"
+        + (".\n" if scores_only else "; the per-forecast table is `forecasts.csv`.\n")
     )
+    if scores_only:
+        w(f"**{SCORES_ONLY_NOTE}**\n")
     if manifest.git_dirty:
         w(f"**{dirty_notice(manifest)}**\n")
     if manifest.status == "partial":
@@ -784,14 +801,23 @@ def build_report(run_dir: str | Path) -> Path:
     # -- fills
     w("## How each fill was priced\n")
     fp = metrics.get("fill_pricing", {})
-    if not fp or not fp.get("orders"):
+    stale = (
+        "Episodes of either pass that ended stale_price because the as-of book offered nothing "
+        f"at or below the limit: {fp.get('stale_price_exits', 0)}."
+    )
+    if trading_not_run:
         w(
-            "No order was placed"
-            + (" (the pipeline did not run)" if not _ran(pipe) else "")
-            + ". Episodes that ended stale_price because the as-of book offered nothing at or "
-            f"below the limit: {fp.get('stale_price_exits', 0)}.\n"
+            "This section counts the orders of the trading simulation, which did not run in "
+            f"this run ({trading_not_run}), so there is no fill to price. The scoring pass's "
+            f"orders are not trading results (see Routing tiers). {stale}\n"
         )
+    elif not fp.get("orders"):
+        w(f"The trading pass placed no order. {stale}\n")
     else:
+        w(
+            "The trading pass's orders, by what the book each one met was priced from (the "
+            "scoring pass's orders are not trading results):\n"
+        )
         labels = {
             "minute": "One-minute candle",
             "hour": "Hourly fallback (coarse)",
@@ -884,22 +910,30 @@ def build_report(run_dir: str | Path) -> Path:
 
     # -- files
     w("## Files\n")
+    replays = "".join(f"  - `{name}`: {result}\n" for name, result in manifest.traces.items())
+    rows = "one row per system, market and as-of time, with the abstention note"
+    saved = "saved episodes (recorded world, cassette, and the episode with its full trace)"
+    replayed = "Each was replayed offline right after it was saved; the result:\n"
+    if scores_only:
+        left_out = f"- Not published, kept in the local run directory: `forecasts.csv` ({rows})" + (
+            f" and `traces/`: {saved}. {replayed}{replays}" if manifest.traces else ".\n"
+        )
+    else:
+        left_out = ""
     w(
         "- `manifest.json`: configuration, models, window, data manifests, plan, progress.\n"
-        "- `forecasts.csv`: one row per system, market and as-of time, with the abstention note.\n"
-        "- `metrics.json`: every number above.\n"
+        + ("" if scores_only else f"- `forecasts.csv`: {rows}.\n")
+        + "- `metrics.json`: every number above.\n"
         f"- `{FIGURES_DIR}/`: the three figures.\n"
         + (
-            "- `traces/`: saved episodes (recorded world, cassette, and the episode with its "
-            "full trace). Each was replayed offline right after it was saved; the result:\n"
-            + "".join(f"  - `{name}`: {result}\n" for name, result in manifest.traces.items())
+            left_out
+            if scores_only
+            else f"- `traces/`: {saved}. {replayed}{replays}"
             if manifest.traces
             else "- No episode traces were saved (no pipeline episode ran).\n"
         )
     )
-    path = run_dir / REPORT_FILE
-    path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
-    return path
+    return "\n".join(out).rstrip() + "\n"
 
 
 RELEASE_LINE = re.compile(r", (\S+)\): no (\S+) event in the snapshot$")
@@ -1271,7 +1305,13 @@ def publish_run(
         logging.getLogger(__name__).warning("publishing %s: %s", name, notice)
         if notice not in notes:
             notes.append(notice)
-    write_manifest(manifest.model_copy(update={"outputs": outputs, "notes": notes}), target)
+    published = manifest.model_copy(update={"outputs": outputs, "notes": notes})
+    write_manifest(published, target)
+    if scores_only:
+        # The copied report points at the files left out; write it again from the published manifest.
+        (target / REPORT_FILE).write_text(
+            _report_text(published, _read_metrics(target)), encoding="utf-8"
+        )
     return target
 
 

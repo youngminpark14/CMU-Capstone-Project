@@ -290,3 +290,19 @@ def test_a_scores_only_publication_leaves_out_the_rows_and_the_traces_and_says_s
     assert set(manifest.outputs) == published
     assert SCORES_ONLY_NOTE in manifest.notes
     assert (full_run.run_dir / "forecasts.csv").exists()  # the rows stay in the run directory
+
+    # The published report says what was left out and points at no file that is not there.
+    report = (target / "report.md").read_text()
+    flat = " ".join(report.split())
+    assert SCORES_ONLY_NOTE in flat
+    assert "the per-forecast table is `forecasts.csv`" not in flat
+    files = " ".join(report.split("## Files", 1)[1].split())
+    assert "Not published, kept in the local run directory: `forecasts.csv`" in files
+    assert "- `forecasts.csv`:" not in report and "- `traces/`:" not in report
+    assert "replays and matches" in files  # the replay check of each saved trace is still told
+    # Everything else is the run's own report, which still describes the local files.
+    local = (full_run.run_dir / "report.md").read_text()
+    assert "the per-forecast table is `forecasts.csv`" in local and "- `traces/`:" in local
+    assert SCORES_ONLY_NOTE not in local
+    same = [line for line in local.splitlines() if line.startswith(("## ", "| "))]
+    assert all(line in report for line in same)
