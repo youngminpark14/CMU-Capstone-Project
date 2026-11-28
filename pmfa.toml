@@ -100,7 +100,7 @@ effort = "medium"
 max_tokens = 8000
 
 [models.slots.generator]
-model = "claude-haiku-5-5"
+model = "claude-sonnet-5-5"
 effort = "medium"
 max_tokens = 8000
 
@@ -110,17 +110,17 @@ effort = "high"
 max_tokens = 16000
 
 [models.slots.critic_depth1]
-model = "claude-fable-5-2"
+model = "claude-opus-5-5"
 effort = "high"
 max_tokens = 16000
 
 [models.slots.fast_path]
-model = "claude-haiku-5-5"
+model = "claude-sonnet-5-5"
 effort = "low"
 max_tokens = 4000
 
 [models.slots.baseline]
-model = "claude-fable-5-2"
+model = "claude-opus-5-5"
 effort = "high"
 max_tokens = 16000
 

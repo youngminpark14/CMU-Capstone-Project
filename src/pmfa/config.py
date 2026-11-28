@@ -149,20 +149,30 @@ class ModelInfo(Section):
 
 
 class ModelsConfig(Section):
+    """Which model answers for each role, what each costs, and how the API is reached.
+
+    The slots follow how much reasoning a role's answer needs. Opus 5.5 does the reasoning
+    that sets a forecast: the Critic's first-level scoring, which every deeper probability
+    is conditional on, and the one-call baselines it is compared with. Sonnet 5.5 does the
+    middle work: the Critic's deeper, narrower scoring, writing scenarios, and the fast
+    path's one short write-and-score call. Haiku 5.5 does the sorting: matching a document
+    to an event, planning queries and selecting passages. See decision 0046.
+    """
+
     slots: dict[ModelSlot, ModelAssignment] = {
         ModelSlot.MONITOR: ModelAssignment(model="claude-haiku-5-5", effort="low", max_tokens=4000),
         ModelSlot.RESEARCHER: ModelAssignment(
             model="claude-haiku-5-5", effort="medium", max_tokens=8000
         ),
         ModelSlot.GENERATOR: ModelAssignment(
-            model="claude-haiku-5-5", effort="medium", max_tokens=8000
+            model="claude-sonnet-5-5", effort="medium", max_tokens=8000
         ),
         ModelSlot.CRITIC_DEEP: ModelAssignment(model="claude-sonnet-5-5", effort="high"),
-        ModelSlot.CRITIC_DEPTH1: ModelAssignment(model="claude-fable-5-2", effort="high"),
+        ModelSlot.CRITIC_DEPTH1: ModelAssignment(model="claude-opus-5-5", effort="high"),
         ModelSlot.FAST_PATH: ModelAssignment(
-            model="claude-haiku-5-5", effort="low", max_tokens=4000
+            model="claude-sonnet-5-5", effort="low", max_tokens=4000
         ),
-        ModelSlot.BASELINE: ModelAssignment(model="claude-fable-5-2", effort="high"),
+        ModelSlot.BASELINE: ModelAssignment(model="claude-opus-5-5", effort="high"),
     }
     catalog: dict[str, ModelInfo] = {
         "claude-fable-5-2": ModelInfo(

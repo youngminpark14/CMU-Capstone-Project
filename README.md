@@ -154,7 +154,7 @@ it, with `ruff check` and `ruff format --check`, on every push and pull request.
 - [docs/guardrails.md](docs/guardrails.md): every guardrail, who enforces it, and its test.
 - [docs/evaluation.md](docs/evaluation.md): the full status, method, results, limitations.
 - [docs/checkpoints.md](docs/checkpoints.md): the six checkpoints and feedback, traced to code.
-- [docs/decisions/README.md](docs/decisions/README.md): 45 decision records, each with its reasons.
+- [docs/decisions/README.md](docs/decisions/README.md): 46 decision records, each with its reasons.
 - [docs/glossary.md](docs/glossary.md) and [docs/spec.md](docs/spec.md): the terms and the spec.
 - [examples/README.md](examples/README.md): the sample episodes and where their inputs came from.
 - [notebooks/README.md](notebooks/README.md): a notebook that rebuilds the report's tables.

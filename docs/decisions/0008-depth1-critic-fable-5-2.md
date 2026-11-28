@@ -1,5 +1,7 @@
 # 0008. The depth-1 Critic defaults to Fable 5.2
 
+**Superseded by [0046](0046-models-by-reasoning-needed.md):** the depth-1 Critic and the baselines now default to Opus 5.5.
+
 The current, cheaper listing replaces the Fable 5.1 named in checkpoint 4.1.
 
 ## Context

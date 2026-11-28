@@ -139,7 +139,7 @@ The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trad
 | System | What it is | What comparing it isolates |
 | --- | --- | --- |
 | `market` | The market's price at the as-of time, from the latest candle at or before it: the YES mid when both sides are quoted, else the last trade clamped into the standing quote (a trade from weeks ago above a no-bid ask scores at the ask). No model. | The baseline. Brier skill is measured against it. |
-| `prompt_only` | One call to the baseline slot (`claude-fable-5-2`, high effort, the strongest model in the pipeline) with the event's rules and markets and no passages. | Against `market`: what the model adds from the question alone. |
+| `prompt_only` | One call to the baseline slot (`claude-opus-5-5`, high effort, the strongest model in the pipeline) with the event's rules and markets and no passages. | Against `market`: what the model adds from the question alone. |
 | `single_pass` | The same call with the passages retrieved as of the as-of time, ranked by similarity, recency and origin. | Against `prompt_only`: what retrieval adds. |
 | `single_pass_similarity` | The same with similarity-only ranking. Not in the default `evaluation.systems`; request it with `--systems`. | Against `single_pass`: what recency- and origin-aware ranking adds. The two retrieve over the same queries, built in code, and differ only in ranking. |
 | `pipeline` | A full episode from a schedule trigger: research, the scenario tree with Generator and Critic, aggregation. | Against `single_pass`: what the tree search and separated roles add. It also uses different models per role (see [pmfa.toml](../pmfa.toml)), so the comparison is of the two designs as configured, not of one factor alone. |

@@ -231,10 +231,11 @@ An MCP server is its interface. It can write and read nodes and beams, record re
 | --- | --- | --- | --- |
 | Monitor | `claude-haiku-5-5` | low | Match decision |
 | Researcher | `claude-haiku-5-5` | medium | Query plan; passage selection |
-| Generator | `claude-haiku-5-5` | medium | Up to three scenario thoughts |
+| Generator | `claude-sonnet-5-5` | medium | Up to three scenario thoughts |
 | Critic, depths 2–3 | `claude-sonnet-5-5` | high | Sibling probabilities, outcome distributions, rejections, evidence requests |
-| Critic, depth 1 | `claude-fable-5-2` | high | Same |
-| Fast path (event closes within the hour) | `claude-haiku-5-5` | low | Depth-1 generation and scoring |
+| Critic, depth 1 | `claude-opus-5-5` | high | Same |
+| Fast path (event closes within the hour) | `claude-sonnet-5-5` | low | Depth-1 generation and scoring |
+| Baselines (evaluation only) | `claude-opus-5-5` | high | One forecast per call |
 
 - **CrewAI.** CrewAI defines the four roles and runs each as a single-agent kickoff bound to the gateway through a custom LLM adapter with tool calling off. CrewAI's documented Anthropic integration does not expose the effort setting, which is why effort and schema enforcement live in the gateway. If the adapter cannot carry them in the pinned version, the roles module calls the gateway directly with the same prompts, and nothing outside that module changes.
 
@@ -325,7 +326,7 @@ The final report can describe these as the design evolving during the build.
 5. **The 4.1 probability floor is gone.** The 5.1 decision-aware protected slot is the only tail rule, extended from one market to an event.
 6. **Scenarios outside the beam are frozen, not discarded.** They stop being expanded and still count in the forecast. The protected slot now decides which extra scenario gets a deeper look.
 7. **The critic scores sibling scenarios together.** This keeps their probabilities coherent and fits the 30-call budget.
-8. **The depth-1 critic defaults to Fable 5.2**, the current listing and cheaper than the Fable 5.1 named in checkpoint 4.1. One configuration value reverts it.
+8. **The depth-1 critic defaults to Opus 5.5**, not the Fable 5.1 named in checkpoint 4.1, and models follow the reasoning a role needs: Opus 5.5 for first-level scoring and the baselines, Sonnet 5.5 for deeper scoring, scenario writing and the fast path, Haiku 5.5 for matching and retrieval. One configuration value per slot reverts it.
 9. **Dashboards are generated reports**, not a live service.
 10. **Real-money trading is out of scope.** The autonomy ladder is kept as stored state and benchmarks.
 11. **Evidence is official sources only in v1.** News wires and open-web search are deferred, which also keeps committed text in the public domain.
