@@ -18,7 +18,7 @@ A path through the repository for a reviewer. Nothing to install. Terms are defi
 4. **The evaluation report.** [evaluation/runs/2026-11-26-market-baseline/report.md](../evaluation/runs/2026-11-26-market-baseline/report.md).
    Look for: the table of which systems ran and which did not, sample sizes by event as well as by
    market, and the section on how look-ahead was prevented.
-5. **The decision records.** [decisions/README.md](decisions/README.md): 45 short
+5. **The decision records.** [decisions/README.md](decisions/README.md): 46 short
    records, each with its reasons and where it came from: the capstone checkpoints it changes or
    answers, the item of the specification, or the build.
 6. **The checkpoints, traced.** [checkpoints.md](checkpoints.md) takes each of the six

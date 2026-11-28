@@ -51,3 +51,4 @@ Read 0001 to 0012 first (how the design changed from the checkpoints), then 0013
 | [0043](0043-trace-starting-state.md) | A saved trace's starting state is complete and as of the clock | build |
 | [0044](0044-match-next-event-of-a-series.md) | A document is matched to the next event of a series, and "bears on" means "is evidence for" | build; checkpoint 3.1 |
 | [0045](0045-exact-repeatable-search.md) | Every index search is exact and repeatable | build; checkpoint 3.1 |
+| [0046](0046-models-by-reasoning-needed.md) | Models are assigned by the reasoning a role needs; no slot uses Fable | build; checkpoint 4.1 |

@@ -117,14 +117,14 @@ names are functions in the test files linked in the same cell.
 | Ties go to more independent sources, then newer evidence | Within a band of 0.05. `test_ties_within_the_band_go_to_more_origins_then_fresher_evidence_then_score_then_id` in [test_beam_and_audit.py](../tests/forecast/test_beam_and_audit.py) | Kept |
 | Budget: 30 model calls and 90 seconds | 30 calls and $2 per episode in every mode; the 90-second cap only in live modes. `test_the_seconds_cap_applies_only_when_enforced` in [test_gateway.py](../tests/models/test_gateway.py) | Changed |
 | Budget out: combine what the beam holds and lower confidence | Aggregates what was scored and halves confidence. `test_11_call_budget_exhausted_forecasts_from_the_current_beam_with_reduced_confidence` in [test_scenarios.py](../tests/episodes/test_scenarios.py) | Kept |
-| A smaller model generates, a stronger one scores | Generator on Haiku 5.5; Critic on Sonnet 5.5, and Fable 5.2 at depth 1 ([pmfa.toml](../pmfa.toml), [0008](decisions/0008-depth1-critic-fable-5-2.md)) | Kept; see [Model assignments](#model-assignments) |
+| A smaller model generates, a stronger one scores | Generator on Sonnet 5.5; Critic on Opus 5.5 at depth 1 and Sonnet 5.5 deeper ([pmfa.toml](../pmfa.toml), [0046](decisions/0046-models-by-reasoning-needed.md)) | Kept; see [Model assignments](#model-assignments) |
 | Generator: a CrewAI agent returning structured output | A single-agent CrewAI kickoff with no tools ([crewai_runner.py](../src/pmfa/models/roles/crewai_runner.py), [0014](decisions/0014-crewai-single-agent-kickoffs.md)). `test_one_llm_call_per_kickoff_and_the_record_comes_back_unchanged` in [test_crewai.py](../tests/models/test_crewai.py) | Kept |
 | Critic: a CrewAI agent; the checks run as LangChain tools ahead of it, so hard fails cost no model call | The checks are plain functions run before the Critic. `test_each_check_deletes_a_scenario_and_records_why` in [test_engine.py](../tests/forecast/test_engine.py) | Changed: not LangChain tools |
 | Decision maker: the beam loop and budgets as LangGraph control flow | One graph step per tree level ([graph.py](../src/pmfa/episode/graph.py)); the search state is saved between levels. `test_search_state_survives_json_between_steps` in [test_engine.py](../tests/forecast/test_engine.py) | Kept |
 | Memory and state: an MCP tree-state server that all three roles read and write through tools | The MCP state server holds tree nodes and rejections ([server.py](../src/pmfa/state/server.py)); the controller writes through it, not the roles; backtests call the service directly ([0031](decisions/0031-state-transport.md)). `test_tree_tools` in [test_server.py](../tests/state/test_server.py) | Changed |
 | Note: every call gets a model and an effort level | Each role slot has a model and an effort; effort goes as `output_config.effort` ([backend.py](../src/pmfa/models/backend.py), [0015](decisions/0015-claude-api-usage.md)). `test_request_carries_effort_and_json_schema_and_no_sampling_or_thinking` in [test_backend.py](../tests/models/test_backend.py) | Kept |
 | Risk: delete a node only on a failed rules or calendar check; a low score shrinks it but keeps it | A scenario is removed only by a failed check (rules, calendar, evidence), a Critic rejection, or an outcome distribution that fails validation; low scorers are frozen with their mass, and the protected slot expands one that would change the trade. `test_06_a_trade_changing_tail_scenario_takes_the_protected_slot_and_one_that_changes_nothing_is_frozen` in [test_scenarios.py](../tests/episodes/test_scenarios.py); `test_invalid_distributions_and_critic_rejections_are_reported_and_not_repeated` in [test_engine.py](../tests/forecast/test_engine.py) | Changed: a failed evidence check, a Critic rejection or an invalid outcome distribution also removes a scenario; a low score alone does not |
-| Risk: a high-reasoning model to take all YES and NO paths into account | The Critic runs at high effort: on Fable 5.2 at depth 1 and Sonnet 5.5 deeper ([pmfa.toml](../pmfa.toml), [0008](decisions/0008-depth1-critic-fable-5-2.md)) | Kept as a model choice; whether it helps has not been measured |
+| Risk: a high-reasoning model to take all YES and NO paths into account | The Critic runs at high effort: on Opus 5.5 at depth 1 and Sonnet 5.5 deeper ([pmfa.toml](../pmfa.toml), [0046](decisions/0046-models-by-reasoning-needed.md)) | Kept as a model choice; whether it helps has not been measured |
 | Risk: if a pruned branch turns out to be the realized path, raise that category's floor | The pruning audit reports the share of the outcome that ran through frozen scenarios ([audit.py](../src/pmfa/forecast/audit.py), [0025](decisions/0025-pruning-audit.md)); nothing is raised. `test_pruning_audit_measures_posterior_mass_on_frozen_scenarios` in [test_beam_and_audit.py](../tests/forecast/test_beam_and_audit.py) | Changed: measured, not acted on |
 
 Checkpoint 4.1 treats low-scoring scenarios two ways: its pruning rule drops nodes below 0.03,
@@ -166,9 +166,10 @@ The checkpoints name different models for the same roles. Checkpoint 4.1's text 
 on Sonnet 5.5 and the Critic on Opus 5.5, with Fable 5.1 at depth 1. Its diagram puts the Generator
 on Haiku 5.5 and the Critic on Sonnet 5.5, with Fable 5.1 at depth 1. Checkpoint 5.1 puts the
 Monitor and the Researcher on Claude Sonnet, the Generator on Claude Opus, and the Critic on Claude
-Fable. The spec and [pmfa.toml](../pmfa.toml) follow 4.1's diagram, with Fable 5.2 in place of 5.1
-([0008](decisions/0008-depth1-critic-fable-5-2.md)), and put the Monitor and the Researcher on Haiku
-5.5. Every assignment is one configuration value.
+Fable. The spec and [pmfa.toml](../pmfa.toml) assign by the reasoning a role needs
+([0046](decisions/0046-models-by-reasoning-needed.md)): Opus 5.5 for the depth-1 Critic and the
+baselines, Sonnet 5.5 for the deeper Critic, the Generator and the fast path, and Haiku 5.5 for the
+Monitor and the Researcher. No slot uses Fable. Every assignment is one configuration value.
 
 ## Checkpoint 6.1: guardrails and the human
 

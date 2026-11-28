@@ -57,8 +57,8 @@ def test_a_named_slot_overrides_the_tasks_default():
     result = gw.call(
         RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e", slot=ModelSlot.CRITIC_DEPTH1
     )
-    assert result.meta.model == "claude-fable-5-2"
-    assert backend.requests[0]["model"] == "claude-fable-5-2"
+    assert result.meta.model == "claude-opus-5-5"
+    assert backend.requests[0]["model"] == "claude-opus-5-5"
     assert backend.requests[0]["effort"] == "high"
 
 

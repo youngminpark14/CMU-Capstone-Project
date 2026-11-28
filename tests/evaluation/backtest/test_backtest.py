@@ -210,7 +210,7 @@ def test_a_second_run_asks_every_model_the_same_questions(
 
 def test_manifest_records_what_produced_the_numbers(full_run: FullRun) -> None:
     m = full_run.manifest
-    assert m.models["baseline"].model == "claude-fable-5-2"
+    assert m.models["baseline"].model == "claude-opus-5-5"
     assert str(m.models["baseline"].knowledge_cutoff) == "2026-06-30"
     assert m.plan.scoring_points == 6 and m.plan.triggers == 3
     assert m.seed == full_run.config.evaluation.seed
