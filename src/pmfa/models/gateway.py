@@ -397,7 +397,7 @@ class Gateway:
                 cost_usd=hit.cost_usd,
                 seconds=hit.latency_ms / 1000,
             ),
-            run_delta=usage_of(),
+            run_delta=usage_of(calls=calls),
         )
         meta = CallMeta(
             task=entry["task"],

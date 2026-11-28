@@ -292,6 +292,7 @@ def test_a_repaired_answer_from_the_cache_counts_the_two_calls_it_took(tmp_path)
     assert again.usage("e").calls == first.usage("e").calls == 2
     assert again.usage("e").cost_usd == first.usage("e").cost_usd
     assert again.run_usage().cost_usd == 0  # nothing new was paid
+    assert again.run_usage().calls == first.run_usage().calls == 2  # the run's count repeats too
     player = CassettePlayer.from_paths(tmp_path / "c")
     player.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
     assert player.usage("e").calls == 2
