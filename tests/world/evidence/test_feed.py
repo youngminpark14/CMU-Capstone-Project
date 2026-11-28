@@ -59,6 +59,28 @@ def test_rss_items_become_secondary_documents_credited_to_the_feed_host():
     assert again.documents == report.documents
 
 
+def test_a_media_rss_element_is_not_read_as_the_items_text():
+    # Constructed by hand in the shape of a news feed that attaches a picture to each item:
+    # media:content (with a credit inside) comes before the description.
+    markup = """<?xml version="1.0"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel><title>News</title>
+<item>
+  <title>Bitcoin slips at the open</title>
+  <link>https://news.example/btc-slips</link>
+  <pubDate>Sat, 28 Nov 2026 04:10:00 +0000</pubDate>
+  <media:title>Picture title</media:title>
+  <media:content url="https://news.example/pic.jpg" medium="image">
+    <media:credit>News</media:credit><media:description>News</media:description>
+  </media:content>
+  <description>Bitcoin fell to a local low before recovering.</description>
+</item>
+</channel></rss>"""
+    [item] = feed.parse_feed(markup)
+    assert item.title == "Bitcoin slips at the open"
+    assert item.body == "Bitcoin fell to a local low before recovering."
+
+
 def test_atom_entries_use_the_alternate_link_and_skip_a_time_without_a_zone():
     report = FeedSource(FakeFetcher(feeds())).fetch_documents(ATOM_URL, utc(2026, 11, 1), NOW)
     [entry] = report.documents

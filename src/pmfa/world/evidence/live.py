@@ -2,8 +2,8 @@
 
 :class:`LiveEvidence` implements the Evidence port by polling the listing
 sources (the Federal Reserve's press-release and speech JSON, BLS releases, and
-any RSS or Atom feeds in ``config.sources.feeds``, see
-``pmfa.world.evidence.feed``) and adding what is new to a
+any RSS or Atom feeds in ``config.sources.feeds`` or in an enabled series'
+``feeds``, see ``pmfa.world.evidence.feed``) and adding what is new to a
 :class:`~pmfa.world.evidence.corpus.CorpusStore`. Reads then come from the store
 with the same as-of rule as the frozen corpus, so shadow mode and a backtest
 filter documents the same way. A feed whose host is a primary source of a
@@ -118,7 +118,7 @@ class LiveEvidence:
             )
             found += bls.documents
             failures += bls.failures
-        for url in sources.feeds:
+        for url in self.feeds():
             if self._is_primary_host(feed_host(url)):
                 failures.append(
                     f"feed {url}: {feed_host(url)} is a primary source; feeds are secondary only"
@@ -134,6 +134,17 @@ class LiveEvidence:
         self._last_poll = now
         self.last_failures = failures
         return self._store.add(found, now=now)
+
+    def feeds(self) -> list[str]:
+        """The feeds polled: ``sources.feeds``, then each enabled series' own, each once."""
+        listed = [*self._config.sources.feeds]
+        for series in self._config.follow.enabled_series():
+            listed += series.feeds
+        return list(dict.fromkeys(listed))
+
+    def add(self, documents: list[Document]) -> list[Document]:
+        """Store documents read outside a poll (``pmfa ask``'s price snapshot); return those new."""
+        return self._store.add(documents, now=to_utc(self._clock.now()))
 
     def _primary_sources(self) -> frozenset[str]:
         return frozenset(
@@ -206,7 +217,7 @@ class LiveEvidence:
         feed asked answered 404 or 410 is the item withdrawn. A source this class does
         not know how to ask again also gets the stored copy.
         """
-        on_host = [url for url in self._config.sources.feeds if feed_host(url) == stored.source]
+        on_host = [url for url in self.feeds() if feed_host(url) == stored.source]
         origin = self._feed_of.get(stored.doc_id) or (stored.url if stored.url in on_host else None)
         asked = [origin] if origin is not None and origin in on_host else on_host
         dropped_by: list[str] = []

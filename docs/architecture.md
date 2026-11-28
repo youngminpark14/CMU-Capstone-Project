@@ -161,7 +161,7 @@ The pipeline code is identical in every mode. Only what sits behind the ports ch
 | Port | Replay | Backtest | Shadow | Demo |
 | --- | --- | --- | --- | --- |
 | Exchange | One recorded JSON file ([recorded.py](../src/pmfa/world/recorded.py)) | Frozen snapshot read as of the clock ([snapshot/reader.py](../src/pmfa/world/snapshot/reader.py)) | Kalshi production, public data only, no credentials ([kalshi/production.py](../src/pmfa/world/kalshi/production.py)) | Kalshi demo exchange ([kalshi/demo.py](../src/pmfa/world/kalshi/demo.py)) |
-| Evidence | Documents in the recorded file | Frozen corpus read as of the clock ([evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)) | Live Federal Reserve and BLS sources, plus any RSS or Atom feeds listed in `sources.feeds` (none by default) ([evidence/live.py](../src/pmfa/world/evidence/live.py)) | The same as shadow |
+| Evidence | Documents in the recorded file | Frozen corpus read as of the clock ([evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)) | Live Federal Reserve and BLS sources, plus any RSS or Atom feeds listed in `sources.feeds` (none by default) or by a followed series, stored in `data/live-corpus/` apart from the frozen corpus ([evidence/live.py](../src/pmfa/world/evidence/live.py)); `pmfa ask` adds a Coinbase price snapshot ([evidence/spot.py](../src/pmfa/world/evidence/spot.py)) | The same as shadow |
 | Models | Cassettes ([cassette.py](../src/pmfa/models/cassette.py)) | Claude API through the gateway, with the response cache | Claude API | Claude API |
 | Executor | Paper. Decisions read the recorded execution-time books; orders fill against the recorded fill books where the recording has them | Paper. Decisions read the as-of book; orders fill against a book built from the one-minute candle, else the hourly candle, that holds the order's arrival time (the as-of time plus the latency), which no decision sees, and the fill counts only from that candle's end | Paper, against the live order book | Demo exchange: real orders, mock funds |
 | Who approves | The recorded review, if any | Nobody: approve-tier trades are filled and tagged | Nobody by default (filled and tagged), or a human when review is turned on | A human, for every order: demo mode always runs at the approval stage |
@@ -547,6 +547,7 @@ time.
 | `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). `--scores-only` leaves the per-forecast table, the traces and the price-revealing parts of the metrics (every dollar result of the trading simulation among them) out of the published copy, and refuses a run in which a system lacks one to four of the market's forecasts in a block. |
 | `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
 | `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
+| `pmfa ask` | One shadow episode now on one market of a series (`KXBTCD` for a live demo): saves the sources it read under `runs/ask/`, answers YES or NO, and waits for your decision (`--market`, `--decide`, `--min-minutes`). See [demo.md](demo.md). |
 | `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
 | `pmfa reconcile` | Ask the exchange now about every order whose outcome is unknown, by client order id; it sends nothing (`--mode`). `--episode ID` settles one episode that died while its order was being sent. |
 | `pmfa halt` | Set the persisted halt flag and cancel all open orders. With no `--mode` it halts every live mode (shadow and demo); `--mode` narrows it to one; `--status`, `--resume`. |
@@ -588,13 +589,19 @@ when caps contradict each other, for example a per-order cap at or above the exc
 `sources.feeds` lists RSS or Atom feed URLs that shadow and demo mode poll as secondary evidence. It
 is empty by default, so nothing is fetched from a feed unless you list one. A feed on the host of a
 primary source (`federalreserve.gov`, `bls.gov`) is refused, so a feed item never counts as a
-primary origin. Backtests do not read feeds.
+primary origin. Backtests do not read feeds. A series can list its own `feeds`, read while it is
+followed, and a `spot_product` (a Coinbase product id such as `BTC-USD`, read from
+`sources.coinbase_url`) whose live price `pmfa ask` reads as a primary document for it. The
+Bitcoin series `KXBTCD` has both and is switched off: `pmfa ask KXBTCD` switches it on for its
+one run, and nothing else follows it ([decision 0047](decisions/0047-ask-one-market.md)). A
+series' own feeds and spot price are retrieved only for episodes of its category, inside the
+retrieval call, so the crypto news never reaches a Fed or CPI episode.
 
 The most important defaults:
 
 | Setting | Default |
 | --- | --- |
-| Followed series | `KXFEDDECISION` (Fed decision), `KXCPIYOY` (CPI year over year) |
+| Followed series | `KXFEDDECISION` (Fed decision), `KXCPIYOY` (CPI year over year); `KXFED`, `KXPAYROLLS` and `KXBTCD` (Bitcoin, for `pmfa ask`) are listed but off |
 | Kelly fraction | 0.25 (quarter-Kelly), multiplied by forecast confidence |
 | Shrinkage toward the market price | 0.5 |
 | Minimum edge after fees | $0.02 per contract |

@@ -31,7 +31,7 @@ trigger and need a second independent origin under the origin rule. Item text
 is untrusted like all evidence text.
 
 Both RSS (0.9x, 1.0 and 2.0) and Atom are read by element name, whatever the
-namespace. A feed that declares entities (``<!ENTITY``) is refused rather than
+namespace, except Media RSS elements, which describe an attachment. A feed that declares entities (``<!ENTITY``) is refused rather than
 parsed. Feeds are not part of the frozen corpus: backtests do not read them.
 """
 
@@ -87,10 +87,15 @@ def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+_MEDIA = "{http://search.yahoo.com/mrss/}"
+"""Media RSS (``media:content``, ``media:title``, ``media:description``): it describes an
+attached picture or video, never the item's own text, so it is not read as one."""
+
+
 def _child(element: ET.Element, names: tuple[str, ...]) -> ET.Element | None:
     for name in names:
         for child in element:
-            if _local(child.tag) == name:
+            if _local(child.tag) == name and not child.tag.startswith(_MEDIA):
                 return child
     return None
 

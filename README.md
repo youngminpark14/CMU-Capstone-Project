@@ -103,6 +103,10 @@ uv run pmfa shadow                           # one pass on live prices; trades o
 uv run pmfa demo                             # demo exchange: each order waits for approval
 ```
 
+For a live demonstration, `uv run pmfa ask KXBTCD` runs one episode now on one hourly Bitcoin
+market, saves the sources it read, answers YES or NO, and waits for you to approve or reject its
+paper trade ([docs/demo.md](docs/demo.md)).
+
 Every demo order waits in `pmfa review list --mode demo`. Demo P&L is never evidence: Kalshi warns
 that demo prices may not reflect real markets. `uv run pmfa --help` lists every command.
 
@@ -154,7 +158,7 @@ it, with `ruff check` and `ruff format --check`, on every push and pull request.
 - [docs/guardrails.md](docs/guardrails.md): every guardrail, who enforces it, and its test.
 - [docs/evaluation.md](docs/evaluation.md): the full status, method, results, limitations.
 - [docs/checkpoints.md](docs/checkpoints.md): the six checkpoints and feedback, traced to code.
-- [docs/decisions/README.md](docs/decisions/README.md): 46 decision records, each with its reasons.
+- [docs/decisions/README.md](docs/decisions/README.md): 47 decision records, each with its reasons.
 - [docs/glossary.md](docs/glossary.md) and [docs/spec.md](docs/spec.md): the terms and the spec.
 - [examples/README.md](examples/README.md): the sample episodes and where their inputs came from.
 - [notebooks/README.md](notebooks/README.md): a notebook that rebuilds the report's tables.

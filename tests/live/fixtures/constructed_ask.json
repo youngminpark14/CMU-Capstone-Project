@@ -1,0 +1,377 @@
+{
+ "_source": "CONSTRUCTED, not recorded: built by hand on 2026-11-28 from the shapes of Kalshi's public GET /series/KXBTCD and GET /events?series_ticker=KXBTCD&status=open&with_nested_markets=true, Coinbase's GET /products/BTC-USD/ticker and /candles, and an RSS 2.0 feed. Every price, size, headline and text here is made up.",
+ "kalshi_series": {
+  "ticker": "KXBTCD",
+  "title": "Bitcoin price Above/below",
+  "category": "Crypto",
+  "frequency": "hourly",
+  "fee_type": "quadratic",
+  "fee_multiplier": 1,
+  "settlement_sources": [
+   {
+    "name": "CF Benchmarks",
+    "url": "https://www.cfbenchmarks.com/data/indices/BRTI"
+   }
+  ]
+ },
+ "kalshi_events": [
+  {
+   "event_ticker": "KXBTCD-26NOV2801",
+   "series_ticker": "KXBTCD",
+   "title": "BTC price on Nov 28, 2026 at 1am EST?",
+   "sub_title": "On Nov 28, 2026 at 1am EST",
+   "category": "Crypto",
+   "mutually_exclusive": false,
+   "markets": [
+    {
+     "ticker": "KXBTCD-26NOV2801-T59599.99",
+     "event_ticker": "KXBTCD-26NOV2801",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$59,600 or above",
+     "status": "active",
+     "open_time": "2026-11-28T05:00:00Z",
+     "close_time": "2026-11-28T06:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59599.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 1 AM EST is above 59599.99 at 1 AM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.9300",
+     "yes_ask_dollars": "0.9500",
+     "last_price_dollars": "0.9300",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    },
+    {
+     "ticker": "KXBTCD-26NOV2801-T59699.99",
+     "event_ticker": "KXBTCD-26NOV2801",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$59,700 or above",
+     "status": "active",
+     "open_time": "2026-11-28T05:00:00Z",
+     "close_time": "2026-11-28T06:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59699.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 1 AM EST is above 59699.99 at 1 AM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.7400",
+     "yes_ask_dollars": "0.7600",
+     "last_price_dollars": "0.7400",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    },
+    {
+     "ticker": "KXBTCD-26NOV2801-T59799.99",
+     "event_ticker": "KXBTCD-26NOV2801",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$59,800 or above",
+     "status": "active",
+     "open_time": "2026-11-28T05:00:00Z",
+     "close_time": "2026-11-28T06:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59799.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 1 AM EST is above 59799.99 at 1 AM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.4700",
+     "yes_ask_dollars": "0.4900",
+     "last_price_dollars": "0.4700",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    },
+    {
+     "ticker": "KXBTCD-26NOV2801-T59899.99",
+     "event_ticker": "KXBTCD-26NOV2801",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$59,900 or above",
+     "status": "active",
+     "open_time": "2026-11-28T05:00:00Z",
+     "close_time": "2026-11-28T06:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59899.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 1 AM EST is above 59899.99 at 1 AM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.2200",
+     "yes_ask_dollars": "0.2400",
+     "last_price_dollars": "0.2200",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    },
+    {
+     "ticker": "KXBTCD-26NOV2801-T59999.99",
+     "event_ticker": "KXBTCD-26NOV2801",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$60,000 or above",
+     "status": "active",
+     "open_time": "2026-11-28T05:00:00Z",
+     "close_time": "2026-11-28T06:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59999.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 1 AM EST is above 59999.99 at 1 AM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.0000",
+     "yes_ask_dollars": "0.0300",
+     "last_price_dollars": "0.0000",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    }
+   ]
+  },
+  {
+   "event_ticker": "KXBTCD-26NOV2817",
+   "series_ticker": "KXBTCD",
+   "title": "BTC price on Nov 28, 2026 at 5pm EST?",
+   "sub_title": "On Nov 28, 2026 at 5pm EST",
+   "category": "Crypto",
+   "mutually_exclusive": false,
+   "markets": [
+    {
+     "ticker": "KXBTCD-26NOV2817-T59499.99",
+     "event_ticker": "KXBTCD-26NOV2817",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$59,500 or above",
+     "status": "active",
+     "open_time": "2026-11-27T22:00:00Z",
+     "close_time": "2026-11-28T22:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59499.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 5 PM EST is above 59499.99 at 5 PM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.6100",
+     "yes_ask_dollars": "0.6400",
+     "last_price_dollars": "0.6100",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    },
+    {
+     "ticker": "KXBTCD-26NOV2817-T59999.99",
+     "event_ticker": "KXBTCD-26NOV2817",
+     "title": "Bitcoin price on Nov 28, 2026?",
+     "yes_sub_title": "$60,000 or above",
+     "status": "active",
+     "open_time": "2026-11-27T22:00:00Z",
+     "close_time": "2026-11-28T22:00:00Z",
+     "strike_type": "greater",
+     "floor_strike": 59999.99,
+     "custom_strike": {
+      "round_digits": "2"
+     },
+     "rules_primary": "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin Real-Time Index (BRTI) before 5 PM EST is above 59999.99 at 5 PM EST on Nov 28, 2026, then the market resolves to Yes.",
+     "rules_secondary": "The price used to determine this market is based on CF Benchmarks' corresponding Real Time Index (RTI).",
+     "price_level_structure": "linear_cent",
+     "price_ranges": [
+      {
+       "start": "0.0000",
+       "end": "1.0000",
+       "step": "0.0100"
+      }
+     ],
+     "yes_bid_dollars": "0.3500",
+     "yes_ask_dollars": "0.3800",
+     "last_price_dollars": "0.3500",
+     "yes_bid_size_fp": "2500.00",
+     "yes_ask_size_fp": "2500.00",
+     "volume_fp": "12000.00",
+     "volume_24h_fp": "12000.00",
+     "open_interest_fp": "8000.00",
+     "result": ""
+    }
+   ]
+  }
+ ],
+ "coinbase_ticker": {
+  "ask": "59812.35",
+  "bid": "59812.34",
+  "price": "59812.34",
+  "size": "0.0102",
+  "time": "2026-11-28T05:21:58.104Z",
+  "trade_id": 1,
+  "volume": "14000.5"
+ },
+ "coinbase_minute_closes_oldest_first": [
+  "59745.00",
+  "59749.15",
+  "59744.70",
+  "59749.35",
+  "59753.20",
+  "59748.75",
+  "59753.50",
+  "59749.35",
+  "59755.20",
+  "59755.05",
+  "59755.50",
+  "59759.65",
+  "59755.20",
+  "59759.85",
+  "59763.70",
+  "59759.25",
+  "59764.00",
+  "59759.85",
+  "59765.70",
+  "59765.55",
+  "59766.00",
+  "59770.15",
+  "59765.70",
+  "59770.35",
+  "59774.20",
+  "59769.75",
+  "59774.50",
+  "59770.35",
+  "59776.20",
+  "59776.05",
+  "59776.50",
+  "59780.65",
+  "59776.20",
+  "59780.85",
+  "59784.70",
+  "59780.25",
+  "59785.00",
+  "59780.85",
+  "59786.70",
+  "59786.55",
+  "59787.00",
+  "59791.15",
+  "59786.70",
+  "59791.35",
+  "59795.20",
+  "59790.75",
+  "59795.50",
+  "59791.35",
+  "59797.20",
+  "59797.05",
+  "59797.50",
+  "59801.65",
+  "59797.20",
+  "59801.85",
+  "59805.70",
+  "59801.25",
+  "59806.00",
+  "59801.85",
+  "59807.70",
+  "59807.55",
+  "59808.00",
+  "59812.15",
+  "59807.70",
+  "59812.35",
+  "59816.20"
+ ],
+ "coinbase_hour_closes_oldest_first": [
+  "59204.00",
+  "59240.90",
+  "59251.80",
+  "59288.70",
+  "59299.60",
+  "59336.50",
+  "59347.40",
+  "59384.30",
+  "59395.20",
+  "59432.10",
+  "59443.00",
+  "59479.90",
+  "59490.80",
+  "59527.70",
+  "59538.60",
+  "59575.50",
+  "59586.40",
+  "59623.30",
+  "59634.20",
+  "59671.10",
+  "59682.00",
+  "59718.90",
+  "59729.80",
+  "59766.70",
+  "59777.60",
+  "59814.50"
+ ],
+ "feeds": {
+  "https://cointelegraph.com/rss": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\"><channel><title>Constructed crypto news</title>\n<item><title>Bitcoin holds near $59,800 as traders watch the hourly close</title><link>https://cointelegraph.com/news/constructed-bitcoin-holds</link><guid>constructed-1</guid><pubDate>Sat, 28 Nov 2026 04:40:00 +0000</pubDate><description>The Bitcoin price traded between $59,700 and $59,850 overnight, with BTC buyers defending $59,800 in U.S. dollars.</description></item>\n<item><title>Bitcoin jumps after the hour</title><link>https://cointelegraph.com/news/constructed-after</link><guid>constructed-2</guid><pubDate>Sat, 28 Nov 2026 06:30:00 +0000</pubDate><description>Published after the as-of time: an asked episode must never read it.</description></item>\n</channel></rss>\n"
+ }
+}

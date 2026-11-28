@@ -31,6 +31,7 @@ vectors). A collection much larger than that needs another design.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -210,16 +211,20 @@ class ChromaIndex:
         as_of: datetime,
         n: int,
         published_after: datetime | None = None,
+        exclude_sources: Collection[str] = (),
     ) -> list[Hit]:
         """Passages with ``published_after < published_at <= as_of``, most similar first.
 
-        Passages equally similar (to six decimals) come in id order.
+        Passages equally similar (to six decimals) come in id order. Passages of a
+        source in ``exclude_sources`` are left out inside the read.
         """
         if n <= 0:
             return []
         clauses: list[dict[str, Any]] = [{"published_ts": {"$lte": floor_ts(as_of)}}]
         if published_after is not None:
             clauses.append({"published_ts": {"$gt": ceil_ts(published_after)}})
+        if exclude_sources:
+            clauses.append({"source": {"$nin": sorted(exclude_sources)}})
         scored = self._scored(EVIDENCE, vector, _all_of(clauses))
         scored.sort(key=lambda pair: (-pair[0], pair[1].id))
         return [

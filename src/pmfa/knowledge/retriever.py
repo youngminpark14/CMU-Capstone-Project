@@ -34,6 +34,7 @@ from pmfa.knowledge.origins import (
     DocumentSignature,
     Shingles,
     half_life_days,
+    other_category_sources,
     primary_sources,
     resolve_origins,
     shingles,
@@ -257,6 +258,19 @@ class ChromaKnowledge:
                 self.index.update_metadata(EVIDENCE, ids, [{"origin_id": resolved}] * count)
         return written
 
+    def remove_documents(self, doc_ids: list[str]) -> int:
+        """Take documents and their passages out of the index; return how many were stored.
+
+        ``pmfa ask`` uses it for a price snapshot that a newer one replaces, so earlier
+        snapshots do not fill the retrieval slots. The evidence store keeps them.
+        """
+        rows = self.index.documents_by_id(doc_ids)
+        for row in rows.values():
+            count = int(row.metadata.get("passages", 0))
+            self.index.delete(EVIDENCE, [passage_id(row.id, n) for n in range(count)])
+        self.index.delete(DOCUMENTS, list(rows))
+        return len(rows)
+
     def _signature(self, row: Row) -> DocumentSignature:
         """What origin resolution compares: the stored body's shingles and its text hash.
 
@@ -355,10 +369,16 @@ class ChromaKnowledge:
             return []
         per_query = max(4 * k, 32)
         vectors = self.index.embed(queries)
+        # Another category's own feeds and spot price are not evidence for this one.
+        foreign = other_category_sources(self.config, category)
         candidates: list[Candidate] = []
         for query, vector in zip(queries, vectors, strict=True):
             for hit in self.index.query_evidence(
-                vector, as_of=as_of, n=per_query, published_after=published_after
+                vector,
+                as_of=as_of,
+                n=per_query,
+                published_after=published_after,
+                exclude_sources=foreign,
             ):
                 candidates.append(
                     Candidate(

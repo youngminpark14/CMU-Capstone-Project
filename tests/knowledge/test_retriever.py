@@ -147,6 +147,29 @@ def test_published_after_keeps_only_newer_passages(knowledge: ChromaKnowledge) -
     assert all(h.passage.published_at > datetime(2026, 11, 11, tzinfo=UTC) for h in hits)
 
 
+def test_another_categorys_own_feeds_and_spot_price_stay_out_of_retrieval() -> None:
+    """The Bitcoin series' crypto news and Coinbase snapshot never reach a Fed episode."""
+    cfg = Config.model_validate({"sources": {"feeds": ["https://www.listed.example/rss"]}})
+    knowledge = make(cfg)
+    text = "The Federal Reserve cuts the federal funds rate in December, traders say."
+    knowledge.index_documents(
+        [
+            doc("crypto-news", text, source="cointelegraph.com"),
+            doc("spot", text, source="coinbase.com"),
+            doc("listed-feed", text, source="listed.example"),
+            doc("official", text, source="federalreserve.gov"),
+        ]
+    )
+
+    def sources(category: str) -> set[str]:
+        hits = knowledge.search_evidence(FED_QUERIES, as_of=AS_OF, category=category, k=50)
+        return {h.passage.source for h in hits}
+
+    assert sources("fed_decision") == {"listed.example", "federalreserve.gov"}
+    assert {"cointelegraph.com", "coinbase.com"} <= sources("crypto")
+    knowledge.close()
+
+
 def test_naive_as_of_is_refused(knowledge: ChromaKnowledge) -> None:
     knowledge.index_documents(corpus())
     with pytest.raises(ValueError, match="naive"):

@@ -153,6 +153,10 @@ def _audits(world: World, resolved: list[LedgerEntry], at: datetime) -> list[Epi
         # The tree was built on the markets listed at the episode's as-of time;
         # a ladder strike added later would change the bins, so it is left out.
         listed = [m for m in event.markets if m.open_time <= episode.as_of]
+        forecast = episode.forecast
+        if forecast is not None and forecast.market_probabilities:
+            # An episode focused on one market (``pmfa ask``) forecast only that one.
+            listed = [m for m in listed if m.ticker in forecast.market_probabilities]
         if not listed or not all(_settled(m) for m in listed):
             continue
         try:

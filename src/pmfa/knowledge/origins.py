@@ -29,11 +29,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 import numpy as np
 
 if TYPE_CHECKING:
-    from pmfa.config import Config
+    from pmfa.config import Config, SeriesConfig
 
 _NON_WORD = re.compile(r"[^0-9a-z]+")
 
@@ -180,6 +181,33 @@ def primary_sources(config: Config, category: str) -> frozenset[str]:
     )
 
 
+def _host(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower().removeprefix("www.")
+
+
+def _own_sources(series: SeriesConfig) -> set[str]:
+    """The sources a series brings for itself: its feeds' hosts, and its spot price's publisher."""
+    own = {_host(url) for url in series.feeds}
+    if series.spot_product:
+        own |= set(series.primary_sources)
+    return own
+
+
+def other_category_sources(config: Config, category: str) -> frozenset[str]:
+    """Sources that only another category's series read, kept out of ``category``'s retrieval.
+
+    A series' own ``feeds`` and spot price (the Bitcoin series' crypto news and
+    Coinbase snapshot) are evidence for that series, not for the official-sources
+    Fed and CPI episodes that share the live index. A source this category also
+    reads, or a feed listed in ``sources.feeds`` for every category, stays visible.
+    """
+    other: set[str] = set()
+    mine = set(primary_sources(config, category)) | {_host(u) for u in config.sources.feeds}
+    for series in config.follow.series:
+        (mine if series.category == category else other).update(_own_sources(series))
+    return frozenset(other - mine)
+
+
 def half_life_days(config: Config, category: str, default: float = 30.0) -> float:
     """The recency half-life of ``category``: the first followed series of that category sets it."""
     for series in config.follow.series:
@@ -196,6 +224,7 @@ __all__ = [
     "copy_overlap",
     "half_life_days",
     "normalised_text",
+    "other_category_sources",
     "primary_sources",
     "resolve_origins",
     "shingles",

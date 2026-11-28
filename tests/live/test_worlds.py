@@ -91,6 +91,38 @@ def test_the_shadow_world_reads_no_kalshi_credential_and_its_exchange_cannot_tra
         world.close()
 
 
+def test_a_live_document_never_enters_the_frozen_backtest_corpus(config):
+    from datetime import UTC, datetime
+
+    from pmfa.records.evidence import Document
+    from pmfa.world.evidence.corpus import CorpusStore
+    from pmfa.world.live import live_corpus_dir
+
+    at = datetime(2026, 11, 28, 5, 22, tzinfo=UTC)
+
+    def doc(doc_id: str) -> Document:
+        return Document(
+            doc_id=doc_id,
+            source="example.org",
+            kind="feed_item",
+            url=f"https://example.org/{doc_id}",
+            title=doc_id,
+            published_at=at,
+            text="Bitcoin price news.",
+        )
+
+    CorpusStore(config.paths.corpus_dir()).add([doc("frozen")], now=at)
+    frozen = (config.paths.corpus_dir() / "documents.jsonl").read_bytes()
+    world = build_shadow_world(config, models=ScriptedModels({}, config=config))
+    try:
+        world.evidence.add([doc("live")])  # what pmfa ask does with its price snapshot
+    finally:
+        world.close()
+    assert (config.paths.corpus_dir() / "documents.jsonl").read_bytes() == frozen
+    assert [d.doc_id for d in CorpusStore(live_corpus_dir(config)).documents()] == ["live"]
+    assert live_corpus_dir(config) != config.paths.corpus_dir()
+
+
 def test_shadow_with_review_pauses_and_the_default_models_are_the_live_gateway(config):
     world = build_shadow_world(config, review=True)
     try:

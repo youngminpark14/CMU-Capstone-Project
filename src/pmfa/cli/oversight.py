@@ -133,54 +133,24 @@ def _decide(
     reason_code: ReasonCode | None = None,
     note: str = "",
 ) -> None:
-    from pmfa.episode import NotPaused
-    from pmfa.errors import ConfigError, NotFound
-    from pmfa.execution.review import ReviewRefused
+    from pmfa.errors import ConfigError
     from pmfa.live import session as live_session
-    from pmfa.live.text import decision_lines, unknown_outcome_sentence
-    from pmfa.records.decision import ProposalStatus, Review
-    from pmfa.records.episode import EpisodeStatus
+    from pmfa.live.text import decision_lines
 
     config = _config()
     try:
         with live_session.open_session(mode.run_mode, config, review=True) as s:
-            found = s.world.store.get_proposal(proposal_id)
-            if found is None:
-                raise _fail(f"no proposal {proposal_id!r} ({mode.value})")
-            proposal = found[0]
-            if found[1] is ProposalStatus.OUTCOME_UNKNOWN:
-                raise _fail(
-                    f"not decided: the order for {proposal_id} was sent and its outcome is "
-                    "unknown, so a review cannot change it. "
-                    + unknown_outcome_sentence(mode.run_mode)
-                )
-            episode = s.world.store.get_episode(proposal.episode_id)
-            if episode is not None and episode.status is EpisodeStatus.DONE:
-                raise _fail(
-                    f"not decided: {proposal_id} is {found[1].value}, not pending: "
-                    "its episode has ended"
-                )
-            if episode is not None and s.controller.in_doubt(proposal.episode_id):
-                # Only an approved or resized proposal can have had an order sent.
-                sent = found[1] in (ProposalStatus.APPROVED, ProposalStatus.RESIZED)
-                raise _fail(
-                    f"not decided: {proposal_id} is already {found[1].value}, and "
-                    + ("its order may have been sent" if sent else "its episode stopped unfinished")
-                    + f". If no process is still running it, pmfa reconcile --mode {mode.value} "
-                    f"--episode {proposal.episode_id} {'settles' if sent else 'finishes'} it."
-                )
-            review = Review(
-                proposal_id=proposal_id,
-                decision=decision,
-                contracts=contracts,
-                reason_code=reason_code,
-                note=note,
-                decided_at=s.world.clock.now(),
-            )
             try:
-                record = s.controller.resume(proposal.episode_id, review)
-            except (ReviewRefused, NotPaused, NotFound, ValueError) as exc:
-                raise _fail(f"not decided: {exc}") from None
+                record = live_session.decide(
+                    s,
+                    proposal_id,
+                    decision,
+                    contracts=contracts,
+                    reason_code=reason_code,
+                    note=note,
+                )
+            except live_session.NotDecided as exc:
+                raise _fail(str(exc)) from None
     except ConfigError as exc:
         raise _fail(f"cannot open {mode.value} mode: {exc}", 2) from None
     typer.echo(f"{decision.value} {proposal_id} -> episode {record.episode_id}")

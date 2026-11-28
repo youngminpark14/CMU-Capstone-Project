@@ -18,6 +18,7 @@ COMMAND_MODULES = (
     "pmfa.cli.data",  # snapshot and corpus
     "pmfa.cli.backtest",  # backtest, report
     "pmfa.cli.live",  # shadow, demo
+    "pmfa.cli.ask",  # ask
     "pmfa.cli.oversight",  # review, halt, stage
     "pmfa.cli.state",  # state-server, resolve, config
 )

@@ -5,7 +5,7 @@ What sits behind each port, per the spec's modes table:
     port        shadow                                   demo
     exchange    production market data, read-only        Kalshi demo exchange
     executor    paper fills against the live book        DemoExecutor: real orders, mock funds
-    evidence    live official feeds over the corpus      the same
+    evidence    live feeds, stored in the live corpus    the same
     knowledge   persistent Chroma under the index dir    the same
     models      gateway: live, seconds cap, cassettes    the same
     review      fill_tagged (pause with ``review``)      pause, always
@@ -27,6 +27,10 @@ The two modes keep separate state files (``live_paths``): paper fills and the
 demo subaccount's real fills never share one portfolio, and a halt flag or a
 review in one mode's database applies to that mode only. ``pmfa halt`` without
 ``--mode`` therefore sets the flag in both databases.
+
+The documents the live modes poll go to their own corpus (``live_corpus_dir``),
+never to the frozen corpus a backtest reads: a live poll must not change the
+next backtest.
 """
 
 from __future__ import annotations
@@ -82,6 +86,16 @@ def live_paths(config: Config, mode: RunMode) -> tuple[Path, Path]:
     raise ValueError(f"{mode.value} is not a live mode")
 
 
+def live_corpus_dir(config: Config) -> Path:
+    """Where the live modes store the documents they poll: ``live-corpus`` under the data directory.
+
+    Not ``paths.corpus_dir()``: that is the frozen backtest corpus, and a live
+    document written there would become a news trigger in the next backtest and
+    change its digest. Shadow and demo share this store, as they share the index.
+    """
+    return Path(config.paths.data_dir) / "live-corpus"
+
+
 def cassette_dir(config: Config, mode: RunMode) -> Path:
     """Where the gateway records a live mode's model calls."""
     return Path(config.paths.data_dir) / "cassettes" / RunMode(mode).value
@@ -132,7 +146,7 @@ def _common(
     stack.callback(store.close)
     fetcher = PoliteFetcher.from_config(config)
     stack.callback(fetcher.close)
-    evidence = LiveEvidence(config, fetcher, CorpusStore(config.paths.corpus_dir()), clock=clock)
+    evidence = LiveEvidence(config, fetcher, CorpusStore(live_corpus_dir(config)), clock=clock)
     knowledge = ChromaKnowledge(config, path=config.paths.index_dir())
     stack.callback(knowledge.close)
     return store, evidence, knowledge
@@ -265,6 +279,7 @@ __all__ = [
     "build_shadow_world",
     "cassette_dir",
     "disable_tracing",
+    "live_corpus_dir",
     "live_models",
     "live_paths",
 ]

@@ -16,6 +16,8 @@ unit = ""
 primary_sources = ["federalreserve.gov"]
 recency_half_life_days = 30.0
 shrinkage = 0.5
+spot_product = ""
+feeds = []
 
 [[follow.series]]
 ticker = "KXCPIYOY"
@@ -28,6 +30,8 @@ increment = 0.1
 primary_sources = ["bls.gov"]
 recency_half_life_days = 30.0
 shrinkage = 0.5
+spot_product = ""
+feeds = []
 
 [[follow.series]]
 ticker = "KXFED"
@@ -40,6 +44,8 @@ increment = 0.25
 primary_sources = ["federalreserve.gov"]
 recency_half_life_days = 30.0
 shrinkage = 0.5
+spot_product = ""
+feeds = []
 
 [[follow.series]]
 ticker = "KXPAYROLLS"
@@ -52,6 +58,22 @@ increment = 1000.0
 primary_sources = ["bls.gov"]
 recency_half_life_days = 30.0
 shrinkage = 0.5
+spot_product = ""
+feeds = []
+
+[[follow.series]]
+ticker = "KXBTCD"
+category = "crypto"
+enabled = false
+outcome_kind = "ladder"
+variable = "CF Benchmarks Bitcoin Real-Time Index (BRTI), averaged over the 60 seconds before the close, in U.S. dollars"
+unit = "dollars"
+increment = 0.01
+primary_sources = ["coinbase.com"]
+recency_half_life_days = 0.25
+shrinkage = 0.5
+spot_product = "BTC-USD"
+feeds = ["https://cointelegraph.com/rss", "https://decrypt.co/feed", "https://bitcoinmagazine.com/feed"]
 
 # The official evidence sources and how politely they are fetched.
 [sources]
@@ -61,6 +83,7 @@ user_agent = "pmfa-research-client/0.1"
 min_seconds_between_requests = 2.0
 manual_dir = "data/manual"
 feeds = []
+coinbase_url = "https://api.exchange.coinbase.com"
 
 # Trigger settings: what counts as a price move; the daily re-check of holdings.
 [triggers]

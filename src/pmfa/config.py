@@ -43,6 +43,12 @@ class SeriesConfig(Section):
     recency_half_life_days: float = 30.0
     shrinkage: float = 0.5
     """How far the forecast is pulled toward the market price: 0 keeps it, 1 replaces it."""
+    spot_product: str = ""
+    """A Coinbase product id such as ``BTC-USD``. When set, ``pmfa ask`` reads its live price as
+    primary evidence for the series (``world/evidence/spot.py``)."""
+    feeds: list[str] = []
+    """RSS or Atom feeds read as secondary evidence while the series is followed, as
+    ``sources.feeds`` are (``pmfa ask`` switches the asked series on)."""
 
 
 class FollowConfig(Section):
@@ -82,6 +88,26 @@ class FollowConfig(Section):
             increment=1000.0,
             primary_sources=["bls.gov"],
         ),
+        SeriesConfig(
+            ticker="KXBTCD",
+            category="crypto",
+            enabled=False,
+            outcome_kind="ladder",
+            variable=(
+                "CF Benchmarks Bitcoin Real-Time Index (BRTI), averaged over the 60 seconds "
+                "before the close, in U.S. dollars"
+            ),
+            unit="dollars",
+            increment=0.01,
+            primary_sources=["coinbase.com"],
+            recency_half_life_days=0.25,
+            spot_product="BTC-USD",
+            feeds=[
+                "https://cointelegraph.com/rss",
+                "https://decrypt.co/feed",
+                "https://bitcoinmagazine.com/feed",
+            ],
+        ),
     ]
     blocklist: list[str] = []
     """Series or market tickers the agent must never trade."""
@@ -108,6 +134,8 @@ class SourcesConfig(Section):
     """RSS or Atom feed URLs the live modes poll as secondary evidence (``world/evidence/feed.py``).
     Empty by default: nothing is fetched unless a feed is listed. A feed whose host is a primary
     source of a series is refused, so a feed never becomes a primary origin."""
+    coinbase_url: str = "https://api.exchange.coinbase.com"
+    """Coinbase's public market-data API, read for a series' ``spot_product`` (no key)."""
 
 
 class TriggerConfig(Section):

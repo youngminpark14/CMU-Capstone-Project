@@ -15,6 +15,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pmfa.errors import PmfaError
 from pmfa.records.base import RunMode
 from pmfa.world.live import build_live_world, live_paths
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from pmfa.config import Config
     from pmfa.episode import EpisodeController
     from pmfa.ports import Models, World
+    from pmfa.records.decision import ReasonCode, ReviewDecision
+    from pmfa.records.episode import EpisodeRecord
     from pmfa.state.store import SqliteStore
 
 
@@ -102,4 +105,79 @@ def open_store(mode: RunMode, config: Config) -> Iterator[SqliteStore]:
         store.close()
 
 
-__all__ = ["LiveMode", "Session", "build_world", "close_world", "open_session", "open_store"]
+class NotDecided(PmfaError):
+    """A review that cannot be applied; the message says why in plain words."""
+
+
+def decide(
+    s: Session,
+    proposal_id: str,
+    decision: ReviewDecision,
+    *,
+    contracts: int | None = None,
+    reason_code: ReasonCode | None = None,
+    note: str = "",
+) -> EpisodeRecord:
+    """Apply a person's decision on a pending proposal and resume its episode to its exit.
+
+    ``pmfa review approve|resize|reject`` and ``pmfa ask`` both decide through
+    this. It refuses (``NotDecided``) a proposal that does not exist, whose order
+    outcome is unknown, whose episode has ended, or whose episode stopped
+    unfinished; anything else goes to ``EpisodeController.resume``, which records
+    the review and re-runs the gate at the current price before any order.
+    """
+    from pmfa.episode import NotPaused
+    from pmfa.errors import NotFound
+    from pmfa.execution.review import ReviewRefused
+    from pmfa.live.text import unknown_outcome_sentence
+    from pmfa.records.decision import ProposalStatus, Review
+    from pmfa.records.episode import EpisodeStatus
+
+    mode = s.world.mode
+    found = s.world.store.get_proposal(proposal_id)
+    if found is None:
+        raise NotDecided(f"no proposal {proposal_id!r} ({mode.value})")
+    proposal = found[0]
+    if found[1] is ProposalStatus.OUTCOME_UNKNOWN:
+        raise NotDecided(
+            f"not decided: the order for {proposal_id} was sent and its outcome is "
+            "unknown, so a review cannot change it. " + unknown_outcome_sentence(mode)
+        )
+    episode = s.world.store.get_episode(proposal.episode_id)
+    if episode is not None and episode.status is EpisodeStatus.DONE:
+        raise NotDecided(
+            f"not decided: {proposal_id} is {found[1].value}, not pending: its episode has ended"
+        )
+    if episode is not None and s.controller.in_doubt(proposal.episode_id):
+        # Only an approved or resized proposal can have had an order sent.
+        sent = found[1] in (ProposalStatus.APPROVED, ProposalStatus.RESIZED)
+        raise NotDecided(
+            f"not decided: {proposal_id} is already {found[1].value}, and "
+            + ("its order may have been sent" if sent else "its episode stopped unfinished")
+            + f". If no process is still running it, pmfa reconcile --mode {mode.value} "
+            f"--episode {proposal.episode_id} {'settles' if sent else 'finishes'} it."
+        )
+    review = Review(
+        proposal_id=proposal_id,
+        decision=decision,
+        contracts=contracts,
+        reason_code=reason_code,
+        note=note,
+        decided_at=s.world.clock.now(),
+    )
+    try:
+        return s.controller.resume(proposal.episode_id, review)
+    except (ReviewRefused, NotPaused, NotFound, ValueError) as exc:
+        raise NotDecided(f"not decided: {exc}") from None
+
+
+__all__ = [
+    "LiveMode",
+    "NotDecided",
+    "Session",
+    "build_world",
+    "close_world",
+    "decide",
+    "open_session",
+    "open_store",
+]
