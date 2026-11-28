@@ -509,6 +509,33 @@ def test_a_tapped_call_that_failed_after_being_charged_replays_its_charge():
     assert player.usage("b") == gw.usage("b") and gw.usage("b").calls == 1
 
 
+def test_a_call_the_api_client_failed_is_on_the_cassette_and_replays_the_same(tmp_path):
+    """The live modes record through the gateway: a failed call must not be missing."""
+
+    def times_out(request):  # type: ignore[no-untyped-def]
+        raise TimeoutError("request timed out after the SDK's retries")
+
+    gw, _ = gateway(
+        [ok(MATCH_OUT), times_out, raw("bad"), times_out],
+        recorder=CassetteRecorder(tmp_path),
+        timer=Ticker(1.5),
+    )
+    assert gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e").output == MATCH_OUT
+    with pytest.raises(ModelOutputError):  # the first attempt fails in the client
+        gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    with pytest.raises(ModelOutputError):  # the repair retry fails in the client
+        gw.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+
+    player = CassettePlayer.from_paths(tmp_path)
+    assert player.call(RoleTask.MATCH, MATCH_IN, episode_id="e").output == MATCH_OUT
+    for _ in range(2):
+        with pytest.raises(ModelOutputError):
+            player.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert player.remaining("e") == 0
+    assert player.usage("e") == gw.usage("e")
+    assert gw.usage("e").calls == 4 and gw.usage("e").seconds == 6.0
+
+
 def test_a_transport_error_is_a_model_output_error_and_is_charged():
     """An error from the API client (after its own retries) ends the episode, not the run."""
     from pmfa.errors import ModelCallFailed

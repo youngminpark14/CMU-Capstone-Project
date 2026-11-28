@@ -161,10 +161,13 @@ def _decide(
                     "its episode has ended"
                 )
             if episode is not None and s.controller.in_doubt(proposal.episode_id):
+                # Only an approved or resized proposal can have had an order sent.
+                sent = found[1] in (ProposalStatus.APPROVED, ProposalStatus.RESIZED)
                 raise _fail(
-                    f"not decided: {proposal_id} is already {found[1].value}, and its order may "
-                    f"have been sent. If no process is still running it, pmfa reconcile --mode "
-                    f"{mode.value} --episode {proposal.episode_id} settles it."
+                    f"not decided: {proposal_id} is already {found[1].value}, and "
+                    + ("its order may have been sent" if sent else "its episode stopped unfinished")
+                    + f". If no process is still running it, pmfa reconcile --mode {mode.value} "
+                    f"--episode {proposal.episode_id} {'settles' if sent else 'finishes'} it."
                 )
             review = Review(
                 proposal_id=proposal_id,

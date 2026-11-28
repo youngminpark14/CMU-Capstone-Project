@@ -190,7 +190,13 @@ class Gateway:
             return self._from_cache(hit, episode_id, entry)
 
         self._check(episode_id, entry, worst=self._worst_case(spec.output_type, assignment, prompt))
-        attempts = [self._attempt(task, payload, assignment, episode_id, None)]
+        before = self.meter.episode(episode_id)
+        attempts: list[tuple[Completion, float]] = []
+        try:
+            attempts.append(self._attempt(task, payload, assignment, episode_id, None))
+        except ModelCallFailed as exc:
+            self._record_failed(episode_id, entry, before, exc)
+            raise
         output, problem = _problem(attempts[0][0], task, payload)
         if output is None:
             first_problem = problem
@@ -202,7 +208,11 @@ class Gateway:
                 attempts,
                 worst=self._worst_case(spec.output_type, assignment, retry),
             )
-            attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
+            try:
+                attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
+            except ModelCallFailed as exc:
+                self._record_failed(episode_id, entry, before, exc)
+                raise
             output, problem = _problem(attempts[1][0], task, payload)
             if output is None:
                 message = (
@@ -420,6 +430,35 @@ class Gateway:
             latency_ms=meta.latency_ms if meta else 0,
             repaired=len(attempts) > 1,
             calls=len(attempts),
+        )
+
+    def _record_failed(
+        self, episode_id: str, entry: dict[str, Any], before: Usage, error: ModelCallFailed
+    ) -> None:
+        """Put a call the API client failed on the cassette, with what it was charged.
+
+        A replay then raises the same error at the same place and charges the same
+        usage: the attempts made, the tokens of an earlier attempt, and the seconds.
+        """
+        if self.recorder is None:
+            return
+        after = self.meter.episode(episode_id)
+        self.recorder.record(
+            episode_id,
+            **entry,
+            served_model="",
+            source="live",
+            output=None,
+            outcome="model_output_error",
+            error=str(error),
+            usage=EntryUsage(
+                input_tokens=after.input_tokens - before.input_tokens,
+                output_tokens=after.output_tokens - before.output_tokens,
+                cost_usd=after.cost_usd - before.cost_usd,
+            ),
+            latency_ms=round((after.seconds - before.seconds) * 1000),
+            repaired=False,
+            calls=after.calls - before.calls,
         )
 
 

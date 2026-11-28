@@ -270,7 +270,12 @@ def test_canary_in_a_retrieval_result_aborts_the_run(
     from pmfa.evaluation.report import build_report
 
     assert not (run_dir / "metrics.json").exists()
-    assert "The run was aborted" in build_report(run_dir).read_text()
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "The run was aborted" in text
+    # It scored nothing, and no part of the report says otherwise.
+    assert "This run did not finish (status aborted)" in text and "nothing was scored" in text
+    assert "**No forecast was scored in this run**" in text
+    assert "This is a pilot" not in text and "Not run in this run" not in text
 
 
 def _plant_the_canary(data_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:

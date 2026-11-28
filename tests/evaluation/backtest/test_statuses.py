@@ -54,6 +54,28 @@ def test_a_cap_in_the_trading_pass_leaves_the_scoring_systems_run(
     assert manifest.systems["pipeline"].startswith("partial: 6 of 6 points, 1 of 3 triggers")
 
 
+def test_a_cap_in_the_last_trading_trigger_still_leaves_the_pipeline_partial(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """The capped trigger counts as done (its episode ran and ended error), so a count of
+    every trigger does not mean the pass was whole."""
+    probe = CappedModels(scripted(data_config), 10**6)
+    run_backtest(
+        data_config, run_dir=tmp_path / "probe", systems=["pipeline"], models=probe, score=False
+    )
+    manifest = run_backtest(
+        data_config,
+        run_dir=tmp_path / "run",
+        systems=["pipeline"],
+        models=CappedModels(scripted(data_config), probe.made - 1),
+        score=False,
+    )
+    assert manifest.status == "partial"
+    assert manifest.progress.triggers_not_run == []
+    assert manifest.systems["pipeline"].startswith("partial: 0 of 0 points, 3 of 3 triggers")
+    assert "dollar cap" in manifest.systems["pipeline"]
+
+
 def test_unrequested_systems_are_not_requested_even_without_a_key(
     data_config: Config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

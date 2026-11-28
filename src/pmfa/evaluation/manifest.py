@@ -280,8 +280,9 @@ LEAKAGE_CONTROLS = [
     "compares whole seconds, so a result settled in the last second before an as-of time, or "
     "at it, reaches the paper account then and the critic only at a later as-of time. The "
     "market and the one-call baselines read no outcome.",
-    "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, "
-    "and no port in the backtest world holds an HTTP client.",
+    "No web access for data: the exchange is the frozen snapshot, the evidence is the stored "
+    "corpus, and neither holds an HTTP client; the only network calls are the model calls "
+    "through the gateway.",
     "The response cache key includes the as-of time, which is part of every role input.",
     "The run refuses to start if any assigned model's listed knowledge cutoff falls on or "
     "after the window start. The server-side refusal fallback is off in a backtest, so no "

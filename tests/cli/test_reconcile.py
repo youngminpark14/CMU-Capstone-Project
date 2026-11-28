@@ -337,6 +337,42 @@ def test_a_reconcile_that_died_in_record_is_finished_by_the_next_one(
     assert len(exchange.placed) == 1
 
 
+def test_a_review_of_a_rejected_proposal_stopped_in_record_does_not_say_an_order_was_sent(
+    live, exchange, monkeypatch: pytest.MonkeyPatch
+):
+    """A rejected proposal never had an order; only its episode's record is unfinished."""
+    live.last_look()
+    exchange.failures = 0
+    paused = invoke("shadow", "--once", "--review")
+    pid = re.search(r"proposal (\S+): buy", paused.output).group(1)
+    real = SqliteStore.save_episode
+    died = {"n": 0}
+
+    def dies_on_the_final_record(self, episode, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if episode.status is EpisodeStatus.DONE and not died["n"]:
+            died["n"] = 1
+            raise RuntimeError("died in record")
+        return real(self, episode, *args, **kwargs)
+
+    monkeypatch.setattr(SqliteStore, "save_episode", dies_on_the_final_record)
+    with pytest.raises(RuntimeError, match="died in record"):
+        invoke("review", "reject", pid, "--reason", "other")
+
+    again = invoke("review", "reject", pid, "--reason", "other")
+    assert again.exit_code == 1, again.output
+    flat = " ".join(again.output.split())
+    assert "is already rejected" in flat and "may have been sent" not in flat
+    assert "its episode stopped unfinished" in flat and "finishes it" in flat
+    assert exchange.placed == []
+    with shadow_store() as store:
+        [episode] = store.list_episodes()
+    finished = invoke("reconcile", "--episode", episode.episode_id)
+    assert finished.exit_code == 0, finished.output
+    with shadow_store() as store:
+        assert store.get_episode(episode.episode_id).status is EpisodeStatus.DONE
+    assert exchange.placed == []
+
+
 def test_an_approval_whose_process_died_in_the_gate_is_ended_by_reconcile(
     live, exchange, monkeypatch: pytest.MonkeyPatch
 ):

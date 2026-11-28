@@ -379,6 +379,11 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         )
     )
     w("")
+    if manifest.status in ("aborted", "running"):
+        w(
+            f"This run did not finish (status {manifest.status}). The table shows what it set "
+            "out to run; nothing was scored.\n"
+        )
     if not no_metrics and any(
         _status_of(manifest, s).startswith("not run: no API key") for s in SYSTEMS
     ):
@@ -903,7 +908,9 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
             "event in the snapshot (see Left out of scoring)"
         )
     pilot = (
-        "- **No forecast was scored in this run** (the scoring pass did not run or scored "
+        "- **No forecast was scored in this run** (it is a dry run, or it did not finish).\n"
+        if no_metrics
+        else "- **No forecast was scored in this run** (the scoring pass did not run or scored "
         "nothing).\n"
         if scored == []
         else f"- **This is a pilot.** {held}. That is a handful "
@@ -924,7 +931,7 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         "each other either; the bootstrap keeps an event's rows together across horizons only "
         "in the pooled row.\n"
     )
-    if not_ran:
+    if not_ran and not no_metrics:
         w(
             "- Not run in this run: "
             + "; ".join(f"{SYSTEM_LABELS[s]} ({_status_of(manifest, s)})" for s in not_ran)

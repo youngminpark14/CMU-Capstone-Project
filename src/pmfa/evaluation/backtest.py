@@ -239,11 +239,15 @@ def _final_statuses(
         done = sum(1 for p in progress.points_done if p.rsplit("/", 1)[-1] == system)
         planned, finished = points, done
         counts = f"{done} of {points} points"
+        capped_in_trading = False
         if system == PIPELINE and triggers:
             planned += triggers
             finished += len(progress.triggers_done)
             counts += f", {len(progress.triggers_done)} of {triggers} triggers"
-        if finished >= planned:
+            # The trigger the cap was reached at is counted as done (its episode ran and
+            # ended error), so a count of all triggers does not mean the pass was whole.
+            capped_in_trading = bool(progress.triggers_done)
+        if finished >= planned and not capped_in_trading:
             out[system] = "run"
         elif finished == 0:
             out[system] = f"not run: stopped before it started, {stopped}"
