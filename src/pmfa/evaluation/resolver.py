@@ -16,9 +16,9 @@ shows (as of the world's clock), it
    tree, once the event's outcome is determined, and appends it to that
    episode's trace as a ``resolution`` observation.
 
-Backtests call it before each news trigger and at the end; the live modes call
-the same function. It is idempotent: a second call with nothing new settled
-changes nothing.
+Backtests call it before each scoring point (when the pipeline runs), before
+each news trigger, and at the end; the live modes call the same function. It is
+idempotent: a second call with nothing new settled changes nothing.
 """
 
 from __future__ import annotations

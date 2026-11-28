@@ -12,10 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-import pytest
-
 from pmfa.decision.risk import risk_state
-from pmfa.errors import ConfigError
 from pmfa.execution.halt import stop_reasons
 from pmfa.records.decision import Fill, OrderResult, OrderStatus, ReviewPolicy
 from pmfa.records.forecast import Forecast
@@ -26,14 +23,13 @@ from pmfa.world.recorded import (
     RecordedWorld,
     RecordedWorldFile,
     build_recorded_world,
-    first_equity,
 )
 from pmfa.world.recording import Recording
 
-from .factories import AS_OF, CUT, EVENT, HOLD, NoModels, prior_fill, world_file
+from .factories import AS_OF, CUT, EVENT, HOLD, NoModels, prior_fill, prior_order, world_file
 
 EXPECTED_FIRST_EQUITY = Decimal("1000.01")
-"""The factory's account with ``prior_fill`` marked at the trigger: 1000 less 5 x 0.60 and the
+"""The factory's account with ``prior_order`` marked at the trigger: 1000 less 5 x 0.60 and the
 0.09 fee is 996.91 in cash, and the five NO contracts of the cut market are worth its NO bid,
 1 - 0.38 = 0.62, each (the market has no book, so its quote makes one): 3.10."""
 
@@ -253,21 +249,12 @@ def test_the_rejections_and_last_forecast_an_episode_reads_are_in_the_rebuilt_wo
     assert _answers(rebuilt) == _answers(world)
 
 
-def test_a_file_with_bare_fills_and_no_starting_state_fields_builds_as_before():
-    file = world_file(fills=[prior_fill()])
-    world = _world(file)
+def test_a_file_with_a_prior_order_and_no_equity_point_gets_one_at_the_trigger_time():
+    world = _world(world_file(orders=[prior_order()]))
     [order] = world.store.list_orders()
     assert order.fills == [prior_fill()]
     assert [(p.market_ticker, p.contracts) for p in world.executor.positions()] == [(CUT, 5)]
     # One equity point at the trigger time, the starting account marked then: the bankroll
     # less the fill's cost and fee, plus the five NO contracts at the cut market's NO bid.
     assert world.store.equity_series() == [(AS_OF, EXPECTED_FIRST_EQUITY)]
-    assert first_equity(file) == EXPECTED_FIRST_EQUITY
     assert world.store.list_settlements() == []
-
-
-def test_a_file_giving_one_order_both_as_an_order_and_as_fills_is_refused():
-    fill = prior_fill()
-    order = _order(fill.order_id, fill.filled_at, filled=5, market=CUT, side=Side.NO)
-    with pytest.raises(ConfigError, match=fill.order_id):
-        _world(world_file(fills=[fill], orders=[order]))

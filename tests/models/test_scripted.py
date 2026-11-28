@@ -32,7 +32,7 @@ def test_a_callable_answers_from_the_payload():
         RoleTask.SCORE, INPUTS[RoleTask.SCORE], episode_id="e", slot=ModelSlot.CRITIC_DEPTH1
     )
     assert result.meta.slot == ModelSlot.CRITIC_DEPTH1
-    assert result.meta.model == "claude-fable-5-2"
+    assert result.meta.model == "claude-opus-5-5"
     assert models.calls_for(RoleTask.SCORE)[0].payload == INPUTS[RoleTask.SCORE]
 
 

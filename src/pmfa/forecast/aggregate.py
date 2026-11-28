@@ -31,7 +31,7 @@ def confidence(
     coverage: float, n_origins: int, *, full_origins: int, budget_exhausted: bool
 ) -> float:
     """Forecast confidence: coverage x min(1, independent origins / full_origins), halved when
-    the budget ran out. It can only reduce size. ``pmfa.decision`` exposes the same formula."""
+    the budget ran out. It can only reduce size."""
     origin_factor = min(1.0, n_origins / full_origins) if full_origins > 0 else 1.0
     value = max(0.0, min(1.0, coverage)) * origin_factor
     return value / 2.0 if budget_exhausted else value

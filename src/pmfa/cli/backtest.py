@@ -146,6 +146,12 @@ def register(app: typer.Typer) -> None:
         publish: str | None = typer.Option(
             None, "--publish", help="Copy the committed artifact set to evaluation/runs/NAME."
         ),
+        scores_only: bool = typer.Option(
+            False,
+            "--scores-only",
+            help="With --publish: leave out the per-forecast table, the traces and the parts "
+            "of the metrics that give exchange prices.",
+        ),
     ) -> None:
         """Build report.md and figures/ for a run, and optionally publish it."""
         from pmfa.evaluation.report import build_report, publish_run
@@ -160,7 +166,7 @@ def register(app: typer.Typer) -> None:
             from pmfa.evaluation.report import dirty_notice
 
             try:
-                target = publish_run(run_dir, publish)
+                target = publish_run(run_dir, publish, scores_only=scores_only)
             except ValueError as exc:
                 typer.echo(f"not published: {exc}", err=True)
                 raise typer.Exit(1) from exc

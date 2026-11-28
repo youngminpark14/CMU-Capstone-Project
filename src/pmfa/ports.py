@@ -137,8 +137,10 @@ class Executor(Protocol):
     def find_order(self, intent: OrderIntent) -> OrderResult | None:
         """The order already placed for this intent's client order id, if there is one.
 
-        A continued episode uses it to reconcile after a crash or an exchange error.
-        It never places anything.
+        An episode uses it to reconcile after a crash or an exchange error, including
+        one whose order outcome is unknown, which asks again until it can be answered.
+        ``None`` means the exchange answered and lists no such order; raising
+        ``ExchangeError`` means it could not be asked. It never places anything.
         """
         ...
 
@@ -171,7 +173,7 @@ class Knowledge(Protocol):
     """The three retrieval indexes. ``as_of`` is enforced inside every call."""
 
     def search_events(self, query: str, *, as_of: datetime, k: int = 5) -> list[EventHit]:
-        """Events open at ``as_of``, by cosine similarity to ``query``."""
+        """Events open at ``as_of``: each series' next event to close first, then by similarity."""
         ...
 
     def search_evidence(

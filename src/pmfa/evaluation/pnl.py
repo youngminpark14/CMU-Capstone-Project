@@ -121,11 +121,6 @@ def pnl_summary(trades: Sequence[TradeRow]) -> PnlSummary:
     )
 
 
-def total_pnl(trades: Sequence[TradeRow]) -> Decimal:
-    """Total realized P&L after fees: also the P&L against not trading, which earns zero."""
-    return pnl_summary(trades).total
-
-
 def equity_curve(trades: Sequence[TradeRow], bankroll: Decimal) -> list[EquityPoint]:
     """The account at every distinct fill or settlement time, in time order, from ``bankroll``.
 

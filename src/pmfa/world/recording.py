@@ -34,8 +34,7 @@ What a recorded file can and cannot say:
   left out, as the recorded world's account leaves it out, and so is every
   ledger entry not yet resolved (no decision reads one, and its ``traded`` flag
   can tell of such an order). The event and series of every market a prior
-  fill is in are recorded too (the executor looks them up). An equity series
-  that is just the one point a replay would write anyway is left out.
+  fill is in are recorded too (the executor looks them up).
 - The store has no list of every event's rejections, so an event's prior
   critic rejections and latest forecast time are taken the first time the
   episode reads or writes them, before the write goes through. A forecast time
@@ -93,7 +92,6 @@ from pmfa.world.recorded import (
     RecordedRejection,
     RecordedSettlement,
     RecordedWorldFile,
-    first_equity,
     knowledge_arguments,
     save_recorded_world,
 )
@@ -464,11 +462,7 @@ class Recording:
         description: str,
         provenance: Literal["hand-made fixture", "recorded"] = "recorded",
     ) -> RecordedWorldFile:
-        """Exactly what the episode read, as a recorded world whose as-of time is ``trigger.at``.
-
-        The equity points are left out when they are just the one point a world built from
-        the file writes at the trigger time anyway (``first_equity``).
-        """
+        """Exactly what the episode read, as a recorded world whose as-of time is ``trigger.at``."""
         with self._lock:
             series = dict(self._series)
             for event in self._events.values():
@@ -476,7 +470,7 @@ class Recording:
                     series[event.series_ticker] = self.inner.exchange.get_series(
                         event.series_ticker
                     )
-            file = RecordedWorldFile(
+            return RecordedWorldFile(
                 description=description,
                 provenance=provenance,
                 trigger=trigger,
@@ -520,11 +514,8 @@ class Recording:
                 config_overrides=config_overrides(self.inner.config),
                 mode=self.inner.mode,
                 knowledge_calls=list(self._knowledge),
+                equity=list(self._equity),
             )
-        equity = list(self._equity)
-        if equity == [RecordedEquityPoint(at=file.as_of, equity=first_equity(file))]:
-            equity = []
-        return file.model_copy(update={"equity": equity})
 
 
 # --------------------------------------------------------------------------- example directories

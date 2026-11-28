@@ -468,9 +468,7 @@ def test_an_event_closing_within_the_hour_uses_one_level_on_the_fast_path_slot()
     as_of = FED.close_time - timedelta(minutes=30)
     tree_levels = levels(FED, [], as_of, Config())
     models = one_level_world({"X": Spec(0.9, {"hold": 1.0})})
-    result = engine(models).run(
-        request(FED, SPACE, [L1, *tree_levels], fast_path=True, as_of=as_of)
-    )
+    result = engine(models).run(request(FED, SPACE, tree_levels, fast_path=True, as_of=as_of))
     assert result.forecast is not None and result.forecast.fast_path
     assert result.forecast.depth_reached == 1
     assert {s for _, _, s in models.calls} == {ModelSlot.FAST_PATH}

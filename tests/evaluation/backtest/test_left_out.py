@@ -85,8 +85,6 @@ def test_a_release_without_an_event_is_named_and_qualified(
     text = build_report(run_dir).read_text()
     left_out = _section(text, "Left out of scoring")
     assert "no KXCPIYOY event in the snapshot" in left_out
-    # The support snapshot predates the record of dropped events.
-    assert "built before its builder recorded the events it dropped" in left_out
     assert "1 release(s) in the window had no event" in _section(text, "Limitations")
 
     _set_dropped(data_config, {})

@@ -34,8 +34,8 @@ Access: what BLS allows (checked 2026-11-25)
   the supported path for BLS text is the manual import below. Release dates come
   from the committed schedule (``calendar.py``), not from the site.
 
-Manual import (the steps the README quotes)
--------------------------------------------
+Manual import (the steps docs/evaluation.md quotes)
+---------------------------------------------------
 1. Open the release in a browser. CPI: https://www.bls.gov/news.release/cpi.nr0.htm
    (the newest) or ``https://www.bls.gov/news.release/archives/cpi_MMDDYYYY.htm``
    for an older one. Employment Situation:

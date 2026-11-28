@@ -12,7 +12,7 @@ A backtest applies the same stops as the live modes, and each pass starts with a
 
 ## Consequences
 
-The scoring pass settles nothing until the run ends, so its calibration stop cannot trip, and its daily loss stop and drawdown halt never see a settled result. A halt there leaves scores unchanged, because the forecast comes before the gate; `pmfa backtest --no-trade` scores without a trading pass. With model forecasts the trading pass will likely halt early, on fill failures or, near the end of July, on calibration if its June CPI forecasts are no better calibrated than the market's. These are expectations: no backtest with model forecasts has run. Whether these stops should apply in a backtest is the project owner's call; the default applies them, and `oversight.fill_failure_window = 0` turns the fill-failure stop off for a run.
+When the pipeline runs, the scoring pass settles outcomes before each scoring point, as the trading pass does before each episode, so its stops read settled results too and its calibration stop can trip. A halt there stops only orders: every scoring point is still forecast and scored, because the forecast comes before the gate; `pmfa backtest --no-trade` scores without a trading pass. With model forecasts the trading pass will likely halt early, on fill failures or, near the end of July, on calibration if its June CPI forecasts are no better calibrated than the market's. These are expectations: no backtest with model forecasts has run. Whether these stops should apply in a backtest is the project owner's call; the default applies them, and `oversight.fill_failure_window = 0` turns the fill-failure stop off for a run.
 
 ## Origin
 

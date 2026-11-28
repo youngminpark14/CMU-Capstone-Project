@@ -35,6 +35,8 @@ class EpisodeStatus(StrEnum):
     RUNNING = "running"
     PENDING_REVIEW = "pending_review"
     DONE = "done"
+    OUTCOME_UNKNOWN = "outcome_unknown"
+    """Its order may stand on the exchange, unconfirmed: no exit yet; looked up again, never resent."""
 
 
 class CallMeta(Record):
@@ -79,7 +81,7 @@ class TraceStep(Record):
 
     seq: int
     node: str
-    """The pipeline step: ``match``, ``research``, ``forecast``, ``size``, ``gate``, ``route``, ``review``, ``execute``, ``record``."""
+    """The pipeline step: ``match``, ``research``, ``forecast``, ``size``, ``gate``, ``route``, ``review``, ``execute``, ``reconcile``, ``record``."""
     kind: Literal["thought", "action", "observation"]
     summary: str
     role: str | None = None

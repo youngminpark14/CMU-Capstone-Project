@@ -2,6 +2,8 @@
 
 Each record says what was decided, why, what follows from it, and where it came from. Records 0001 to 0012 are the [specification](../spec.md)'s "Changes from the checkpoint documents"; each names the checkpoints it changes, says what they proposed, and names the instructors' feedback where the change answers it. Records 0013 onward were made while building and checked against the code; where one implements, changes or answers an item of a checkpoint or its feedback, its Origin says which in one sentence. The checkpoint documents (1.1 to 6.1, each with the instructors' feedback) are the project owner's coursework: they were read on 2026-11-27 and are not committed here. In the Origin column, "checkpoints 3.1 and 4.1; spec item 1" names the checkpoints a specification change revises, "build; checkpoint 5.1" names the checkpoints a build decision's Origin refers to, and "build" means no checkpoint is behind it.
 
+Read 0001 to 0012 first (how the design changed from the checkpoints), then 0013, 0016, 0020, 0028, 0030, 0031, 0032, 0034, 0044 and 0045; the rest record build details and review fixes.
+
 | # | Decision | Origin |
 | --- | --- | --- |
 | [0001](0001-forecast-per-event.md) | Forecast per event, not per market | checkpoints 3.1 and 4.1; spec item 1 |
@@ -47,3 +49,6 @@ Each record says what was decided, why, what follows from it, and where it came 
 | [0041](0041-backtest-stops.md) | A backtest applies the same stops as the live modes, and the report says when one tripped | build |
 | [0042](0042-config-fields-have-readers.md) | Every configuration field has a reader | build |
 | [0043](0043-trace-starting-state.md) | A saved trace's starting state is complete and as of the clock | build |
+| [0044](0044-match-next-event-of-a-series.md) | A document is matched to the next event of a series, and "bears on" means "is evidence for" | build; checkpoint 3.1 |
+| [0045](0045-exact-repeatable-search.md) | Every index search is exact and repeatable | build; checkpoint 3.1 |
+| [0046](0046-models-by-reasoning-needed.md) | Models are assigned by the reasoning a role needs; no slot uses Fable | build; checkpoint 4.1 |

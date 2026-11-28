@@ -16,6 +16,15 @@ a publish time is rounded up and an as-of time down, so a document published a
 fraction of a second after the as-of time can never pass the filter. Embeddings
 are always passed explicitly, so Chroma never loads its own model, and
 telemetry is off.
+
+Every search is exact and repeatable. Chroma stores the rows and applies the
+time filter inside the read; the rows that pass it are ranked here, by cosine
+similarity and then by a fixed tie-break. Chroma's own nearest-neighbour search
+is approximate: on the frozen data it returned different passages for the same
+query in different runs, and tied rows in a different order, so two identical
+backtests asked the models different questions. The collections are small
+(hundreds to a few thousand rows), so reading every eligible row is cheap. A
+collection of many tens of thousands of rows would need another design.
 """
 
 from __future__ import annotations
@@ -201,11 +210,27 @@ class ChromaIndex:
         n: int,
         published_after: datetime | None = None,
     ) -> list[Hit]:
-        """Passages with ``published_after < published_at <= as_of``, nearest first."""
+        """Passages with ``published_after < published_at <= as_of``, most similar first.
+
+        Passages equally similar (to six decimals) come in id order.
+        """
+        if n <= 0:
+            return []
         clauses: list[dict[str, Any]] = [{"published_ts": {"$lte": floor_ts(as_of)}}]
         if published_after is not None:
             clauses.append({"published_ts": {"$gt": ceil_ts(published_after)}})
-        return self._query(EVIDENCE, vector, n, _all_of(clauses), with_vectors=True)
+        scored = self._scored(EVIDENCE, vector, _all_of(clauses))
+        scored.sort(key=lambda pair: (-pair[0], pair[1].id))
+        return [
+            Hit(
+                id=row.id,
+                similarity=similarity,
+                document=row.document,
+                metadata=row.metadata,
+                vector=row.vector,
+            )
+            for similarity, row in scored[:n]
+        ]
 
     def get_evidence(self, passage_ids: list[str], *, as_of: datetime) -> list[Row]:
         """Passages by id, published at or before ``as_of``. Missing ids are left out."""
@@ -219,7 +244,17 @@ class ChromaIndex:
         return _rows(result)
 
     def query_events(self, vector: np.ndarray, *, as_of: datetime, n: int) -> list[Hit]:
-        """Event listings with ``open_ts <= as_of < close_ts``, nearest first.
+        """Events open at ``as_of``, each series' next event to close before its later ones.
+
+        The listings with ``open_ts <= as_of < close_ts`` are ordered by their
+        place in their series (the event that closes first, then the one after
+        it, and so on), then by similarity to ``vector``, then by row id. So
+        the first hit of each series is its next event. An exchange lists
+        several months or meetings of one series at once, and a document is
+        evidence for the nearest of them first; ranked by similarity alone, the
+        later months of one series crowd the nearest event of another series
+        out of a short list. The events are few, so every current listing is
+        read and ranked here; the time filter is inside the read.
 
         Both bounds compare with the as-of time rounded down. That is still safe
         at the close, because ``close_ts`` is stored rounded down too, and
@@ -227,9 +262,29 @@ class ChromaIndex:
         rounding for both makes back-to-back listings of an event meet without
         a gap or an overlap.
         """
+        if n <= 0:
+            return []
         at = floor_ts(as_of)
         where = _all_of([{"open_ts": {"$lte": at}}, {"close_ts": {"$gt": at}}])
-        return self._query(EVENTS, vector, n, where)
+        by_series: dict[str, list[tuple[int, float, Row]]] = {}
+        for similarity, row in self._scored(EVENTS, vector, where):
+            series = str(row.metadata.get("series_ticker") or row.id)
+            # A row written before the event's own close was stored cannot be placed (its
+            # listing's close is not the event's), so it comes after the rows that can.
+            closes = int(row.metadata.get("event_close_ts", _CLOSE_UNKNOWN))
+            by_series.setdefault(series, []).append((closes, similarity, row))
+        ordered: list[tuple[int, float, str, float, Row]] = []
+        for listed in by_series.values():
+            listed.sort(key=lambda item: (item[0], -item[1], item[2].id))
+            ordered.extend(
+                (place, -similarity, row.id, similarity, row)
+                for place, (_, similarity, row) in enumerate(listed)
+            )
+        ordered.sort(key=lambda item: item[:3])
+        return [
+            Hit(id=row.id, similarity=similarity, document=row.document, metadata=row.metadata)
+            for _, _, _, similarity, row in ordered[:n]
+        ]
 
     def query_ledger(
         self,
@@ -240,49 +295,69 @@ class ChromaIndex:
         category: str | None = None,
         exclude_category: str | None = None,
     ) -> list[Hit]:
-        """Ledger entries with ``resolved_at < as_of``, optionally in or outside one category."""
+        """The ``n`` ledger entries most like ``vector`` with ``resolved_at < as_of``.
+
+        Optionally in or outside one category. The search is exact and its order
+        is fixed: by similarity, then the later resolution, then the id. One
+        market forecast at several horizons gives several rows with the same
+        text, so ties are the rule here, and the nearest-neighbour index returns
+        tied rows in an order that changes from run to run. The ledger holds one
+        row per resolved forecast, few enough to read every eligible one and
+        rank them. The time filter is still inside the read.
+        """
+        if n <= 0:
+            return []
         clauses: list[dict[str, Any]] = [{"resolved_ts": {"$lt": ceil_ts(as_of)}}]
         if category is not None:
             clauses.append({"category": {"$eq": category}})
         if exclude_category is not None:
             clauses.append({"category": {"$ne": exclude_category}})
-        return self._query(LEDGER, vector, n, _all_of(clauses))
-
-    def _query(
-        self,
-        name: str,
-        vector: np.ndarray,
-        n: int,
-        where: dict[str, Any],
-        *,
-        with_vectors: bool = False,
-    ) -> list[Hit]:
-        if n <= 0:
-            return []
-        include = ["metadatas", "documents", "distances"]
-        if with_vectors:
-            include.append("embeddings")
-        result = self._collections[name].query(
-            query_embeddings=[np.asarray(vector, dtype=np.float32)],
-            n_results=n,
-            where=where,
-            include=include,
-        )
-        ids = result["ids"][0]
-        distances = result["distances"][0]
-        documents = result["documents"][0]
-        metadatas = result["metadatas"][0]
-        vectors = result["embeddings"][0] if with_vectors else None
-        return [
-            Hit(
-                id=ids[i],
-                similarity=1.0 - float(distances[i]),
-                document=documents[i] or "",
-                metadata=dict(metadatas[i] or {}),
-                vector=np.asarray(vectors[i], dtype=np.float32) if vectors is not None else None,
+        scored = self._scored(LEDGER, vector, _all_of(clauses))
+        scored.sort(
+            key=lambda pair: (
+                -pair[0],
+                -int(pair[1].metadata["resolved_ts"]),
+                pair[1].id,
             )
-            for i in range(len(ids))
+        )
+        return [
+            Hit(id=row.id, similarity=similarity, document=row.document, metadata=row.metadata)
+            for similarity, row in scored[:n]
         ]
+
+    def _scored(
+        self, name: str, vector: np.ndarray, where: dict[str, Any]
+    ) -> list[tuple[float, Row]]:
+        """Every row of ``name`` that passes ``where``, with its cosine similarity to ``vector``.
+
+        The filter runs inside the read. See the module docstring for why the
+        rows are ranked here and not by Chroma's nearest-neighbour search. The
+        similarity is kept to ``_TIE_DECIMALS``: stored vectors are 32-bit
+        floats, so what lies beyond is noise that differs with the machine's
+        arithmetic, and a recorded trace must not depend on it.
+        """
+        rows = _rows(
+            self._collections[name].get(
+                where=where, include=["metadatas", "documents", "embeddings"]
+            )
+        )
+        if not rows:
+            return []
+        matrix = np.asarray([row.vector for row in rows], dtype=np.float64)
+        query = np.asarray(vector, dtype=np.float64)
+        norms = np.linalg.norm(matrix, axis=1) * float(np.linalg.norm(query))
+        dots = matrix @ query
+        return [
+            (round(float(dots[i] / norms[i]), _TIE_DECIMALS) if norms[i] > 0 else 0.0, row)
+            for i, row in enumerate(rows)
+        ]
+
+
+_TIE_DECIMALS = 6
+"""Similarities are kept to this many decimals, and equal ones are a tie."""
+
+_CLOSE_UNKNOWN = 2**62
+"""Sorts an event row that does not carry its event's close time after every row that does."""
 
 
 def _all_of(clauses: list[dict[str, Any]]) -> dict[str, Any]:

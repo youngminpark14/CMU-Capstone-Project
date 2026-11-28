@@ -23,7 +23,8 @@ What the executor does, per the spec's "Execution and oversight" section:
   exchange was asked and lists nothing. When the lookup itself fails,
   :meth:`DemoExecutor.place` raises :class:`~pmfa.errors.ExchangeError`
   instead, because an order may stand on the exchange and a rejection would
-  record that nothing was placed.
+  record that nothing was placed. The episode then waits ``OUTCOME_UNKNOWN``
+  and only looks the order up again, never sending it twice.
 - **Breaker.** Every order joins an order group whose contracts limit is
   ``config.caps.order_group_contracts_limit`` over the exchange's rolling
   15-second window; the group is found or created once per exchange shard.
@@ -39,8 +40,10 @@ What the executor does, per the spec's "Execution and oversight" section:
   immediately before the order is sent, and refuses (``REJECTED``, error
   ``halted: ...``) without sending when it is set. ``build_demo_world`` sets it.
 - **Lookup.** :meth:`DemoExecutor.find_order` finds the order already placed
-  for an intent by its client order id, so a continued episode can reconcile
-  after a crash or an exchange error without sending again.
+  for an intent by its client order id, so an episode can reconcile after a
+  crash or an exchange error without sending again: ``None`` (the exchange
+  lists no such order) cancels the proposal, and a raised ``ExchangeError``
+  (the exchange cannot be asked) keeps the outcome unknown, to be asked again.
 - **Marks.** :meth:`DemoExecutor.mark` values the subaccount as the paper
   executor's marks do: cash plus each position at its own side's best bid in
   the demo book, at cost when there is no bid. Given an ``equity_sink`` (the
@@ -50,7 +53,7 @@ What the executor does, per the spec's "Execution and oversight" section:
   ``stable_id("demo-rejected", client_order_id)``, so distinct rejections are
   stored as distinct orders and count toward the fill-failure halt.
 - **Scope.** Balance, positions, orders and cancels are for the configured
-  numbered subaccount only (``config.kalshi.demo_subaccount``).
+  subaccount only (``config.kalshi.demo_subaccount``: 1 to 63, or 0 for the main balance).
 
 The executor refuses to be built for any host but the demo one.
 """
@@ -217,8 +220,9 @@ class DemoExecutor:
         whose lookup by client order id answers with no such order. When the
         outcome is unknown (or the id is already taken) and that lookup cannot be
         made, this raises :class:`~pmfa.errors.ExchangeError`: the order may stand
-        on the exchange, so the caller must report the outcome as unknown rather
-        than store a rejection and cancel the proposal.
+        on the exchange, so the caller must hold the outcome as unknown and look
+        the order up later (never send it again) rather than store a rejection and
+        cancel the proposal.
         """
         placed_at = self.clock.now()
         halted = self._halted(intent, placed_at)
@@ -280,8 +284,8 @@ class DemoExecutor:
         ``None`` means the exchange answered and lists no such order. When the order
         list cannot be read this raises :class:`~pmfa.errors.ExchangeError` instead,
         because "not found" and "could not ask" call for different actions: a caller
-        continuing an episode cancels the proposal on the first and reports the
-        outcome as unknown on the second.
+        reconciling an episode cancels the proposal on the first, and on the second
+        keeps the outcome unknown and asks again later.
         """
         found = self._find_order(intent)
         if found is None:

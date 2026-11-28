@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -96,6 +97,26 @@ def test_resolver_writes_brier_scores_and_the_pruning_audit(full_run: FullRun) -
     store.close()
 
 
+def test_each_pruning_audit_is_counted_once_across_the_resolves(full_run: FullRun) -> None:
+    """Both passes resolve before their episodes and again at the end; an audit is made once."""
+    metrics = json.loads((full_run.run_dir / "metrics.json").read_text())
+    counted = [a["episode_id"] for a in metrics["pruning"]["episodes"]]
+    assert len(counted) == len(set(counted))
+    audited: dict[str, dict[str, list[datetime]]] = {}
+    for name in ("scoring.sqlite", "trading.sqlite"):
+        store = SqliteStore(full_run.run_dir / "work" / name)
+        audited[name] = {}
+        for e in store.list_episodes():
+            steps = [s.at for s in store.get_trace(e.episode_id) if s.node == RESOLUTION_NODE]
+            if steps:
+                audited[name][e.episode_id] = steps
+        store.close()
+    every = {**audited["scoring.sqlite"], **audited["trading.sqlite"]}
+    assert sorted(counted) == sorted(every)
+    assert all(len(times) == 1 for times in every.values())
+    assert metrics["pruning"]["summary"]["n_episodes"] == len(counted)
+
+
 @pytest.mark.parametrize("store_name", ["scoring.sqlite", "trading.sqlite"])
 def test_each_pass_starts_with_the_bankroll_at_the_windows_start(
     full_run: FullRun, store_name: str
@@ -166,13 +187,37 @@ def test_every_saved_trace_replays_offline_to_its_expected_record(full_run: Full
         assert result.episode.exit == expected.exit, relative
 
 
+def test_a_second_run_asks_every_model_the_same_questions(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """A rerun is answered from the response cache only if every question repeats.
+
+    This checks the property on the tiny world, calibration examples included.
+    The defect the first paid runs showed (tied ledger rows coming back in a
+    different order) needs more tied rows than this world has; its own test is
+    in tests/knowledge/test_retriever.py.
+    """
+    from pmfa.records.roles import RoleTask
+
+    again = scripted(full_run.config)
+    run_backtest(full_run.config, run_dir=tmp_path / "again", systems=ALL_SYSTEMS, models=again)
+    first = [(c.task, c.payload) for c in full_run.models.calls]
+    second = [(c.task, c.payload) for c in again.calls]
+    assert second == first
+    examples = [p.ledger_examples for task, p in first if task is RoleTask.SCORE]
+    assert any(len(given) > 1 for given in examples)  # the critic was given several to order
+
+
 def test_manifest_records_what_produced_the_numbers(full_run: FullRun) -> None:
     m = full_run.manifest
-    assert m.models["baseline"].model == "claude-fable-5-2"
+    assert m.models["baseline"].model == "claude-opus-5-5"
     assert str(m.models["baseline"].knowledge_cutoff) == "2026-06-30"
     assert m.plan.scoring_points == 6 and m.plan.triggers == 3
     assert m.seed == full_run.config.evaluation.seed
     assert m.config["state"]["transport"] == "direct"
+    # Forced off in a backtest, whatever the configuration says (it says "default" here).
+    assert full_run.config.models.refusal_fallback == "default"
+    assert m.config["models"]["refusal_fallback"] == "off"
     assert m.snapshot_manifest["counts"]["events"] == 2
     assert m.leakage_controls and m.cost_controls and m.fill_assumptions
     assert m.models_source == "supplied"
@@ -221,6 +266,16 @@ def test_canary_in_a_retrieval_result_aborts_the_run(
             models=scripted(data_config),
         )
     assert read_manifest(run_dir).status == "aborted"
+    # An aborted run writes no metrics.json; its report still renders and says why it stopped.
+    from pmfa.evaluation.report import build_report
+
+    assert not (run_dir / "metrics.json").exists()
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "The run was aborted" in text
+    # It scored nothing, and no part of the report says otherwise.
+    assert "This run did not finish (status aborted)" in text and "nothing was scored" in text
+    assert "**No forecast was scored in this run**" in text
+    assert "This is a pilot" not in text and "Not run in this run" not in text
 
 
 def _plant_the_canary(data_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -417,3 +472,90 @@ def test_window_start_skips_points_before_it(tmp_path: Path) -> None:
     manifest = run_backtest(config, run_dir=tmp_path / "r", systems=["market"], dry_run=True)
     assert f"{FED}@7d" in " ".join(manifest.plan.skipped_points)
     assert manifest.plan.scoring_points == 5
+
+
+@pytest.mark.parametrize("scores_only", [False, True])
+def test_a_dry_run_is_not_published_and_an_earlier_publication_is_left_alone(
+    data_config: Config, full_run: FullRun, tmp_path: Path, scores_only: bool
+) -> None:
+    from pmfa.evaluation.report import build_report, publish_run
+
+    root = tmp_path / "published"
+    build_report(full_run.run_dir)
+    earlier = publish_run(full_run.run_dir, "name", root=root, allow_supplied=True)
+    before = {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()}
+    run_dir = tmp_path / "runs" / "dry"
+    run_backtest(
+        data_config, run_dir=run_dir, systems=["market"], models=scripted(data_config), dry_run=True
+    )
+    with pytest.raises(ValueError, match="this run is dry_run"):
+        publish_run(run_dir, "name", root=root, allow_supplied=True, scores_only=scores_only)
+    assert {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()} == before
+
+    (full_run.run_dir / "metrics.json").rename(tmp_path / "metrics.json")
+    try:
+        with pytest.raises(ValueError, match=r"no metrics\.json"):
+            publish_run(full_run.run_dir, "name", root=root, allow_supplied=True)
+    finally:
+        (tmp_path / "metrics.json").rename(full_run.run_dir / "metrics.json")
+    assert {p: p.read_bytes() for p in earlier.rglob("*") if p.is_file()} == before
+
+
+def test_a_dry_run_report_points_at_no_missing_file_and_claims_no_score(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "dry"
+    run_backtest(
+        data_config,
+        run_dir=run_dir,
+        systems=ALL_SYSTEMS,
+        models=scripted(data_config),
+        dry_run=True,
+    )
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "This run wrote no metrics.json and no forecasts.csv; it has no scores" in text
+    assert "`forecasts.csv`" not in text and "- `metrics.json`" not in text
+    assert "with a result was scored" not in text and "Nothing was scored in this run." in text
+    assert "(this is a dry run)" in text and "was would run" not in text
+
+
+def test_a_run_with_no_scoring_pass_does_not_call_itself_a_pilot_of_zero_events(
+    data_config: Config, tmp_path: Path
+) -> None:
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "noscore"
+    run_backtest(
+        data_config,
+        run_dir=run_dir,
+        systems=["pipeline"],
+        models=scripted(data_config),
+        score=False,
+    )
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "covered only 0" not in text and "This is a pilot" not in text
+    assert "**No forecast was scored in this run**" in text
+
+
+def test_the_trigger_whose_episode_reached_the_cap_counts_as_run(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """Its episode ran and ended error, so the report's counts agree with its Exits table."""
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "capped-trading"
+    models = CappedModels(scripted(data_config), allowed=6)
+    manifest = run_backtest(
+        data_config, run_dir=run_dir, systems=["pipeline"], models=models, score=False
+    )
+    assert manifest.status == "partial"
+    assert manifest.progress.triggers_done == [
+        "doc:fed-statement-2026-08-10",
+        "doc:bls-cpi-2026-08-14",
+    ]
+    assert manifest.progress.triggers_not_run == ["doc:fed-speech-2026-08-21"]
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "it ran 2 trading triggers and left 1 unrun" in text
+    assert "Trading pass, 2 episode(s)" in text

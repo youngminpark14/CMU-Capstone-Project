@@ -87,9 +87,10 @@ tier, ledger, stage, world, run mode, cassette, risk unit: defined in `docs/spec
 - **CrewAI 1.15.** `Agent.kickoff(text, response_format=Model)` makes one call to a custom
   `BaseLLM.call(..., response_model=Model)` and returns the model instance unchanged when the
   adapter returns one. CrewAI requires `mcp<2`, hence the two dependency groups.
-- **Chroma 1.5.** A `where` range filter on an integer timestamp is applied before the
-  nearest-neighbour search (no leaks). Cosine distance is `1 - similarity`. Pass embeddings
-  explicitly so Chroma never loads its default model.
+- **Chroma 1.5.** A `where` range filter on an integer timestamp is applied inside `get` and
+  `query` (no leaks). Its nearest-neighbour `query` is approximate and returned different rows
+  for the same query in two identical runs, so the project reads the filtered rows with `get`
+  and ranks them itself. Pass embeddings explicitly so Chroma never loads its default model.
 - **Claude API.** Effort is `output_config.effort`; structured output is `output_config.format`
   with a JSON schema whose objects all set `additionalProperties: false` and use no numeric or
   string constraints. Sampling parameters (`temperature`, `top_p`, `top_k`) are rejected.

@@ -16,6 +16,7 @@ Each box is one node of the LangGraph graph in [graph.py](../src/pmfa/episode/gr
 node bodies are in [pipeline.py](../src/pmfa/episode/pipeline.py). Orange boxes call an LLM role
 through the model gateway. Grey boxes are code only. The blue box is the human. Every path ends in
 `record`, and every episode ends in exactly one named *exit*, shown on the arrows into `record`.
+Most episodes end without a trade.
 
 ```mermaid
 flowchart TD
@@ -40,13 +41,17 @@ flowchart TD
     route -->|halted| record
     review -->|"rejected_by_human, expired"| record
     execute -->|"executed, stale_price, halted, error"| record
+    execute -->|"the order's outcome is unknown"| hold
+    hold["hold: interrupt only"] --> reconcile
+    reconcile["reconcile: look the order up, never send"] -->|"the exchange cannot be asked"| hold
+    reconcile -->|"executed, error"| record
     record["record"]
 
     classDef llm fill:#fde2c8,stroke:#b5651d,color:#000
     classDef code fill:#eeeeee,stroke:#666666,color:#000
     classDef human fill:#d6e6ff,stroke:#2b5797,color:#000
     class match,research,forecast llm
-    class trigger,size,gate,route,pause,execute,record code
+    class trigger,size,gate,route,pause,execute,hold,reconcile,record code
     class review human
 ```
 
@@ -54,8 +59,9 @@ A thirteenth exit, `error`, can leave from any node: a model answer that fails v
 budget cap reached outside the tree search, the run's dollar cap (see
 [budgets](guardrails.md#budgets-per-episode-and-per-run)), or any other project error a node raises,
 such as an unknown fee type or an exchange failure. At `execute` it also covers an order the
-exchange rejected, a send whose outcome could not be established, and a continued episode that
-finds no order (see [sending an order](guardrails.md#sending-an-order)). Every episode ends in
+exchange rejected, and a continued episode whose lookup finds no order (see [sending an
+order](guardrails.md#sending-an-order)). A send whose outcome cannot be established is not an exit:
+the episode waits `outcome_unknown` in `hold`. Every episode ends in
 exactly one exit. A few errors are not turned into exits and stop the run instead: a read past the
 as-of time (the backtest's canary among them), a replay that no longer matches its recording, an
 error inside `record` itself, and an unexpected exception that is not one of the project's own
@@ -70,14 +76,15 @@ What each step does, in the code's terms:
 | Step | Who | What happens | Exits |
 | --- | --- | --- | --- |
 | trigger | code | Saves a new episode record. The trigger's time becomes the *as-of time* (in a backtest's trading pass, an episode that starts late runs on the trigger re-dated to its start). | |
-| match | Monitor, or code | A *new-document* trigger: code searches the events index for the top 5 open events, and the Monitor picks one or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
+| match | Monitor, or code | A *new-document* trigger: code searches the events index and offers the Monitor at most 5 open events, one per series: its next event to close ([decision 0044](decisions/0044-match-next-event-of-a-series.md)). The Monitor picks the one the document is evidence for, or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
 | research | Researcher, then code | The Researcher writes one query for and one against. Code retrieves the top 8 passages as of the as-of time; for a price-move trigger, only passages published after the event's last forecast count, so a price move with no new evidence since then ends in `no_evidence`. The Researcher drops passages that do not bear on the event. Code resolves *origins*, merging documents whose text is a copy of another's, and applies the origin rule. | `no_evidence`, `insufficient_origins` |
 | forecast | Generator, Critic, code | Reads every open market's book and keeps each market's YES mid as the forecast-time price: the midpoint of the YES bid and ask when both sides are quoted, else the last trade. Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
 | size | code | Picks the one market and side with the best fee-adjusted *edge* that meets the liquidity floor, sizes it at quarter-Kelly times confidence, and proposes the difference from the current holding. | `no_edge` |
 | gate | code | Runs the self-halt conditions, then re-verifies every limit with its own arithmetic. | `gate_rejected`, `halted` |
 | route | code | Scores the risk and assigns the *routing tier*: auto, approve or halt. The price move it scores is measured from the forecast-time price, so a recompute cannot re-base it. | `halted` |
 | pause, review | human | The graph stops and waits ([below](#the-human-approval-pause)). | `rejected_by_human`, `expired` |
-| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. When the exchange fails while the order is sent and the lookup by client order id finds nothing or fails itself, the outcome is unknown: the episode ends `error`, the proposal keeps its approval and no rejection is recorded. | `executed`, `stale_price`, `halted`, `error` |
+| execute | code | Reads the halt flag, then re-reads the *execution book*. If nothing is offered at or below the limit price, no order is sent: the episode re-sizes once on fresh books; after that, or after a review, it exits `stale_price`. Otherwise it reads the halt flag again and places one immediate-or-cancel limit order. An order the exchange rejects ends in `error`; one it accepts ends in `executed`, filled or not. When the exchange fails while the order is sent and the lookup by client order id finds nothing or fails itself, the outcome is unknown: the episode and the proposal are saved `outcome_unknown`, with no exit and no rejection recorded, and nothing more is sent. | `executed`, `stale_price`, `halted`, `error` |
+| hold, reconcile | code | Only for an order whose outcome is unknown. `hold` waits. `reconcile` looks the order up by its client order id and never sends: an order it finds is recorded and the episode ends by what the exchange did; when the exchange lists none, the proposal is cancelled and the episode ends `error`; when the exchange cannot be asked, the episode waits again. | `executed`, `error` |
 | record | code | Writes the forecast and one *ledger* entry per market, with the forecast-time price, and closes the episode record. | |
 
 ## The parts: roles, code, gateway, state, ports
@@ -141,7 +148,7 @@ flowchart LR
   call the same state service directly for throughput
   ([decision 0031](decisions/0031-state-transport.md)); everything else goes to the store directly.
   A reviewer can attach any MCP client to the same server to browse episodes and traces:
-  `python -m pmfa.state --db PATH` (or `pmfa state-server`) serves a database over stdio.
+  `pmfa state-server --db PATH` serves a database over stdio.
 - **Ports** ([ports.py](../src/pmfa/ports.py)) are the only way out: `Exchange` (market data),
   `Executor` (orders and holdings), `Evidence` (documents and the release calendar), `Knowledge`
   (the retrieval indexes), `Models` (the gateway or a stand-in), `Clock`, and `StateStore`. A
@@ -165,12 +172,23 @@ funds are mock. Demo mode exists to show the execution plumbing and the human ov
 real exchange API. Evidence about forecasting skill comes from backtests (scored against the market
 price at the same moment) and from shadow mode (simulated fills against live prices).
 
+`pmfa shadow` and `pmfa demo` run one pass by default; `--loop` repeats every `--interval` seconds
+(default 300) until Ctrl-C. In shadow mode approve-tier proposals are filled on paper and tagged;
+`pmfa shadow --review` pauses them for you instead.
+
+Demo mode always runs at the approval stage, whatever stage is stored, so every demo order waits for
+you: `pmfa review list --mode demo`, then approve, resize or reject. Approval runs the gate again at
+the current price before the order is sent.
+
 The worlds are assembled in [recorded.py](../src/pmfa/world/recorded.py),
 [backtest.py](../src/pmfa/world/backtest.py) and [live.py](../src/pmfa/world/live.py). In shadow and
 demo mode a foreground loop ([live/loop.py](../src/pmfa/live/loop.py)) repeats one pass: refresh the
-indexes, resolve settled outcomes, expire due proposals, apply the self-halt conditions and the
-stage demotion rule, detect triggers and run their episodes, and record a *marked equity* point.
-The commands for each mode are in the README.
+indexes, resolve settled outcomes, ask again about orders whose outcome is unknown, expire due
+proposals, apply the self-halt conditions and the stage demotion rule, detect triggers and run
+their episodes (a trigger whose episode exists and is not finished is left alone), and record a
+*marked equity* point.
+The command for each mode is `pmfa replay NAME`, `pmfa backtest`, `pmfa shadow` or `pmfa demo`
+(see [Commands](#commands)).
 
 ## The modules
 
@@ -179,7 +197,7 @@ The commands for each mode are in the README.
 | [records/](../src/pmfa/records/) | Immutable Pydantic records that cross module boundaries: the shared vocabulary. Prices and money are decimals; times are timezone-aware UTC. |
 | [ports.py](../src/pmfa/ports.py) | The protocols every world implements, and the `World` that bundles them. |
 | [config.py](../src/pmfa/config.py) | One typed configuration with every limit, threshold, source, model slot and followed series. It is validated at load, including that the caps agree with each other. |
-| [episode/](../src/pmfa/episode/) | The LangGraph controller: `run(trigger)`, `resume(episode_id, review)`, `expire(episode_id)`, and the trace writer. |
+| [episode/](../src/pmfa/episode/) | The LangGraph controller: `run(trigger)`, `resume(episode_id, review)`, `expire(episode_id)`, `reconcile(episode_id)`, and the trace writer. |
 | [world/](../src/pmfa/world/) | Adapters behind the ports: the Kalshi client (signing, fixed-point parsing, pagination, throttling), the snapshot builder and reader, the evidence sources, clocks, and the recorded, backtest and live worlds. |
 | [knowledge/](../src/pmfa/knowledge/) | Chunking, embedders, the Chroma indexes with the as-of filter inside every query, origin resolution, and ranking. |
 | [state/](../src/pmfa/state/) | The SQLite store, the state service, and its MCP server for either MCP SDK line. |
@@ -343,9 +361,10 @@ most 9 parents: 1, then the beam plus the protected slot at each of the next two
 parent takes one Generator and one Critic call, so 9 of each. Evidence follow-ups come on top: at
 most 3 per episode, each with at most one Researcher call to filter its results, and a parent whose
 follow-ups added passages has its children scored once more, so the Critic gives at most 12
-answers. Each count is of answers: an answer that fails validation gets one repair retry, which is
-one more call. `full_tree_calls` in [config.py](../src/pmfa/config.py) counts the 18 answers without
-the follow-ups or the retries.
+answers. Each count is of answers: an answer that fails validation (for the Critic, also one that
+does not score each scenario exactly once) gets one repair retry, which is one more call.
+`full_tree_calls` in [config.py](../src/pmfa/config.py) counts the 18 answers without the
+follow-ups or the retries.
 
 ## From forecast to order: one example
 
@@ -391,14 +410,23 @@ An approve-tier proposal is decided by a person, possibly in another process and
    the store, then on the executor), checks the halt flag, re-reads the book, checks the flag again,
    and places the order. An order already placed under that id is recorded, not sent again, so a
    second resume cannot double it. When the exchange fails while the order is sent, the order is
-   looked up again; when none is found or the lookup fails, the episode ends `error` with the
-   outcome unknown, and the proposal keeps its approval.
+   looked up again; when none is found or the lookup fails, the outcome is unknown: the episode and
+   the proposal are saved `outcome_unknown`, with no exit, and the graph waits in `hold`.
 
-If the process stops at `execute` (a crash, or an error that escaped after the approval),
-`run`, `resume` and `expire` all continue the episode at that node, and a continued episode only
-reconciles: it records the order it finds by its client order id and never places one. When none
-exists, the proposal is cancelled and the episode ends `error`, nothing placed. The approval it
-would have acted on is stale, so it is never acted on again.
+An order whose outcome is unknown is asked about again, never sent again. Each live pass, and
+`pmfa reconcile`, resumes the waiting episode into the `reconcile` node, which looks the order up by
+its client order id: found, it is recorded and the episode ends by what the exchange did; the
+exchange lists none, the proposal is cancelled and the episode ends `error`, nothing placed; the
+exchange cannot be asked, the episode stays `outcome_unknown`. `pmfa review` refuses to decide such
+a proposal.
+
+If the process stops at `execute` (a crash, or an error that escaped after the approval), the
+episode stays unfinished. `run`, `resume`, `expire` and `reconcile` all continue it at that node,
+and a continued episode only reconciles: it records the order it finds by its client order id and
+never places one. When none exists, the proposal is cancelled and the episode ends `error`, nothing
+placed. The approval it would have acted on is stale, so it is never acted on again. Nothing sweeps
+for such an episode automatically, because another process may still be in it: `pmfa report-status`
+lists it, and `pmfa reconcile --episode ID` settles it.
 
 `expire(episode_id)` ends a paused episode as `expired` without an order. The test
 `test_a_pause_in_one_controller_resumes_in_a_second_built_over_the_same_files` in
@@ -465,7 +493,7 @@ The trace of the example above:
 
 ```text
  1 trigger  observation  new_document trigger trig-fomc-minutes-2026-10 at 2026-11-20T15:00:00+00:00 (document fomc-minutes-2026-10)
- 2 match    action       search the events index for the top 5 events as of 2026-11-20T15:00:00+00:00
+ 2 match    action       search the events index for the next event of each series, at most 5, as of 2026-11-20T15:00:00+00:00
  3 match    observation  1 candidate event(s): KXFEDDECISION-26DEC
  4 match    thought      The trigger bears on KXFEDDECISION-26DEC.
  5 match    observation  matched event KXFEDDECISION-26DEC
@@ -504,3 +532,94 @@ would pause after step 25 and continue with a `review` step. To check a claim ag
 take the passage ids a scenario cites (in the forecast step's `data`, and on the tree nodes) and
 find them in step 8's `data`, which lists every retrieved passage with its source, URL and publish
 time.
+
+## Commands
+
+`uv run pmfa --help` and `uv run pmfa COMMAND --help` show every option.
+
+| Command | What it does |
+| --- | --- |
+| `pmfa replay` | Replay a recorded episode offline and print its trace (`--list`, `--check`, `--verbose`, `--json`). |
+| `pmfa trace` | Print a stored episode's trace from a state database. |
+| `pmfa data build` | Rebuild the evidence corpus and the exchange snapshot for the backtest window. |
+| `pmfa data status` | Print the corpus and snapshot manifests. |
+| `pmfa backtest` | Score the systems on the frozen snapshot and simulate news-triggered trading (`--dry-run`, `--limit`, `--systems`, `--cap`, `--no-trade`, `--no-score`, `--run-name`, `--config`). |
+| `pmfa report` | Build `report.md` and figures for a run directory; `--publish NAME` copies it to `evaluation/runs/NAME`, and refuses a run answered by supplied models (scripted answers or a rehearsal). `--scores-only` leaves the per-forecast table, the traces and the price-revealing parts of the metrics out of the published copy. |
+| `pmfa shadow` | Shadow mode: live data, simulated fills, no orders. |
+| `pmfa demo` | Demo mode: Kalshi's demo exchange, mock funds, every order needs approval. |
+| `pmfa review` | `list`, `show`, `approve`, `resize` and `reject` proposals that wait for you. |
+| `pmfa reconcile` | Ask the exchange now about every order whose outcome is unknown, by client order id; it sends nothing (`--mode`). `--episode ID` settles one episode that died while its order was being sent. |
+| `pmfa halt` | Set the persisted halt flag and cancel all open orders. With no `--mode` it halts every live mode (shadow and demo); `--mode` narrows it to one; `--status`, `--resume`. |
+| `pmfa stage` | `status`, `advance` and `demote` the autonomy stage; `advance` refuses unless the benchmark is met. `status` and `advance` take `--from-run RUN_DIR` (repeatable) to count a backtest run's scored forecasts. |
+| `pmfa state-server` | Serve a state database over MCP on stdio, for browsing episodes with any MCP client. |
+| `pmfa resolve` | Run the outcome resolver once and print what resolved. |
+| `pmfa config` | `show` the effective configuration, or `check` a file. |
+| `pmfa report-status` | Print the monitoring report: P&L, drawdown, exits, rejections, fills, overrides, calibration, orders whose outcome is unknown, and unfinished episodes with the command that settles each. |
+
+`pmfa replay` prints the hand-made-fixture notice first, then the trigger and as-of time, the
+numbered trace (thought, action, observation), the forecast for each market next to the market
+price no role saw (marked `*` where that price is the last trade because one side of the quote was
+empty), the proposal, all nineteen gate checks, the routing tier, the review card, the simulated
+order and its fill, and the exit. `--check` compares the replay with the committed `expected/`
+files and exits non-zero on any difference; `--verbose` prints each step's records; `--json` prints
+the episode record. The sample episodes also ship inside the package's wheel, so
+`pmfa replay --list` works after an install outside this checkout.
+
+## Configuration
+
+[pmfa.toml](../pmfa.toml) holds every limit, threshold, source, model assignment and followed
+series, with comments. It is the built-in defaults as `pmfa config show` writes them, and a test
+keeps the two equal, so leave it unchanged. To change a value, write a TOML file with only the keys
+you change (defaults fill in the rest), check it, and point `PMFA_CONFIG` at it. That file then
+replaces `pmfa.toml`; it is not layered on top of it. An empty `PMFA_CONFIG` counts as not set.
+
+```bash
+uv run pmfa config check my-config.toml
+```
+
+```bash
+export PMFA_CONFIG=my-config.toml
+```
+
+`pmfa backtest` also takes `--config FILE` and `--cap DOLLARS`. The configuration refuses to load
+when caps contradict each other, for example a per-order cap at or above the exchange order group's
+50-contract limit.
+
+`sources.feeds` lists RSS or Atom feed URLs that shadow and demo mode poll as secondary evidence. It
+is empty by default, so nothing is fetched from a feed unless you list one. A feed on the host of a
+primary source (`federalreserve.gov`, `bls.gov`) is refused, so a feed item never counts as a
+primary origin. Backtests do not read feeds.
+
+The most important defaults:
+
+| Setting | Default |
+| --- | --- |
+| Followed series | `KXFEDDECISION` (Fed decision), `KXCPIYOY` (CPI year over year) |
+| Kelly fraction | 0.25 (quarter-Kelly), multiplied by forecast confidence |
+| Shrinkage toward the market price | 0.5 |
+| Minimum edge after fees | $0.02 per contract |
+| Caps | 25 contracts per order; 5% of bankroll per market; 10% per event |
+| Stops | Daily loss stop 3% of the day's starting equity; drawdown halt 10% below peak equity; both count unrealized losses |
+| Liquidity floor | $500 resting within $0.02 of the touch |
+| Notional bankroll (backtest, shadow) | $1,000 |
+| Proposal expiry | 10 minutes |
+| Budget per episode | 30 model calls, $2.00, and in live modes 90 seconds spent waiting on model calls (other steps are not timed) |
+| Budget per run | $100.00 |
+| Backtest window start | 2026-07-01 |
+
+## Dependencies and the two environments
+
+The lockfile ([uv.lock](../uv.lock)) carries two dependency sets because CrewAI, which defines the
+four LLM roles, requires the MCP SDK below version 2, while the state server also supports the MCP
+SDK 2 line. The two cannot share one environment
+([decision 0013](decisions/0013-two-dependency-sets.md)).
+
+| Environment | Install | Roles run through |
+| --- | --- | --- |
+| Default: `dev` and `crewai` groups, MCP SDK 1.x | `uv sync` | CrewAI single-agent kickoffs bound to the model gateway |
+| Alternative: `dev` and `mcp2` groups, MCP SDK 2.x | `uv sync --no-group crewai --group mcp2` | The model gateway directly, with the same prompts and records |
+
+On every push and pull request CI runs `ruff check`, `ruff format --check` and the suite in the
+default environment, and the suite alone in the MCP SDK 2.x environment
+([ci.yml](../.github/workflows/ci.yml)). The optional `notebook` group
+(`uv sync --group notebook`) adds a Jupyter kernel for [notebooks/](../notebooks/README.md).

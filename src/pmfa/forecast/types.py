@@ -52,8 +52,6 @@ class SearchState(Record):
     """The beam search between steps: the request, the tree so far, and counters."""
 
     request: ForecastRequest
-    levels: list[ScheduledEventBrief]
-    """The levels this search walks (one level on the fast path)."""
     nodes: list[TreeNode] = []
     level_index: int = 0
     """The next level to generate, 0-based. ``TreeNode.depth`` is ``level_index + 1``."""

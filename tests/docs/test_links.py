@@ -1,4 +1,5 @@
-"""Every relative link in the README and the docs points at something that exists."""
+"""Every relative link in the README and the docs points at something that exists, and every
+anchor in the pages a reader starts from names a heading."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from .support import EVALUATION, README, ROOT, linked_documents, without_code
+from .support import ARCHITECTURE, EVALUATION, README, REVIEW, ROOT, linked_documents, without_code
 
 LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
 SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
@@ -40,7 +41,11 @@ def test_every_relative_link_resolves(doc: Path) -> None:
     assert not missing, f"{doc.relative_to(ROOT)} links to missing paths: {missing}"
 
 
-@pytest.mark.parametrize("doc", [README, EVALUATION], ids=["README.md", "docs/evaluation.md"])
+@pytest.mark.parametrize(
+    "doc",
+    [README, ARCHITECTURE, EVALUATION, REVIEW],
+    ids=["README.md", "docs/architecture.md", "docs/evaluation.md", "docs/review.md"],
+)
 def test_anchors_in_the_front_door_documents_exist(doc: Path) -> None:
     text = without_code(doc.read_text(encoding="utf-8"))
     broken = []

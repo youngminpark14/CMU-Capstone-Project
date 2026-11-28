@@ -54,7 +54,7 @@
       "seq": 2,
       "node": "match",
       "kind": "action",
-      "summary": "search the events index for the top 5 events as of 2026-10-20T14:25:00+00:00",
+      "summary": "search the events index for the next event of each series, at most 5, as of 2026-10-20T14:25:00+00:00",
       "role": null,
       "data": {
         "k": 5,
@@ -73,7 +73,7 @@
         "hits": [
           {
             "event_ticker": "KXFEDDECISION-26OCT",
-            "similarity": 0.18491005897521973
+            "similarity": 0.18491
           }
         ]
       },
@@ -177,7 +177,7 @@
             "source": "example-markets.example",
             "url": "https://example-markets.example/2026/10/20/fed-hold",
             "published_at": "2026-10-20T14:20:00+00:00",
-            "score": 0.5433823824297304
+            "score": 0.5433844050373875
           }
         ]
       },

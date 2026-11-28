@@ -10,8 +10,13 @@
    before close), every system forecasts every listed market of the event as
    of that time: the market's price, the one-call baselines, and a full pipeline
    episode from a schedule trigger. One simulated clock and one state store.
-   Nothing is settled until the run ends, so each scoring forecast is made
-   without the outcomes of earlier ones.
+   When the pipeline runs, the outcome resolver runs before each point's
+   forecasts, as before each trading episode: it writes back every result the
+   exchange shows as settled at the point's as-of time, so the paper account
+   and the stops read it, and the critic is given earlier forecasts resolved
+   before that time, counted in whole seconds, as calibration examples. At the
+   end of the run the resolver settles the rest. The market and the one-call
+   baselines read no outcome.
 5. **Trading pass** (pipeline only). Every corpus document in the window, in
    time order, triggers an episode on one continuous clock and a second store,
    so holdings, the ledger and the bankroll carry forward. An episode starts no
@@ -48,7 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from pmfa.config import Config
-from pmfa.errors import BudgetExhausted, ModelOutputError, RunBudgetExhausted
+from pmfa.errors import RunBudgetExhausted
 from pmfa.evaluation.baselines import (
     MARKET,
     MARKET_PRICE_RULE,
@@ -88,14 +93,12 @@ from pmfa.evaluation.schedule import (
     build_schedule,
     releases_without_event,
 )
-from pmfa.models.cassette import Cassette, CassetteEntry, EntryUsage
+from pmfa.models.cassette import ModelTap
 from pmfa.models.pricing import assert_window_after_cutoffs
 from pmfa.ports import Clock, Models, World
-from pmfa.records.base import Record
 from pmfa.records.episode import EpisodeRecord, Exit, ModelResult, Usage
 from pmfa.records.evidence import Trigger
 from pmfa.records.market import Side
-from pmfa.records.roles import TASKS, ModelSlot, RoleTask
 from pmfa.world.backtest import (
     BacktestData,
     LeakageDetected,
@@ -158,100 +161,6 @@ TRADE_COLUMNS = [
     "settled_at",
     "pricing",
 ]
-
-
-# --------------------------------------------------------------------------- the model tap
-
-
-class ModelTap:
-    """The ``Models`` port, passed through, with a cassette per episode and counts by source.
-
-    The cassettes are what makes a saved trace replayable offline; the counts
-    tell the manifest how many answers were new and how many came from the cache.
-    """
-
-    def __init__(self, inner: Models, config: Config) -> None:
-        self.inner = inner
-        self.config = config
-        self.cassettes: dict[str, Cassette] = {}
-        self.sources: dict[str, int] = {}
-        self.usage_total = Usage()
-
-    def call(
-        self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
-    ) -> ModelResult:
-        spec = TASKS[task]
-        chosen = slot or spec.default_slot
-        assignment = self.config.models.slots[chosen]
-        base: dict[str, Any] = {
-            "task": task,
-            "slot": chosen,
-            "role": spec.role,
-            "model": assignment.model,
-            "effort": assignment.effort,
-            "input": payload.model_dump(mode="json"),
-        }
-        before = self.inner.usage(episode_id)
-        try:
-            result = self.inner.call(task, payload, episode_id=episode_id, slot=slot)
-        except BudgetExhausted as exc:
-            self._add(episode_id, base, outcome="budget_exhausted", error=str(exc), calls=0)
-            raise
-        except RunBudgetExhausted as exc:
-            self._add(episode_id, base, outcome="run_budget_exhausted", error=str(exc), calls=0)
-            raise
-        except ModelOutputError as exc:
-            after = self.inner.usage(episode_id)
-            self._add(
-                episode_id,
-                base,
-                outcome="model_output_error",
-                error=str(exc),
-                calls=max(1, after.calls - before.calls),
-            )
-            raise
-        meta = result.meta
-        self.sources[meta.source] = self.sources.get(meta.source, 0) + 1
-        self.usage_total = Usage(
-            calls=self.usage_total.calls + 1,
-            input_tokens=self.usage_total.input_tokens + meta.input_tokens,
-            output_tokens=self.usage_total.output_tokens + meta.output_tokens,
-            cost_usd=self.usage_total.cost_usd
-            + (meta.cost_usd if meta.source in ("live", "scripted") else Decimal("0")),
-            seconds=self.usage_total.seconds + meta.latency_ms / 1000,
-        )
-        self._add(
-            episode_id,
-            {
-                **base,
-                "slot": meta.slot,
-                "role": meta.role,
-                "model": meta.model,
-                "effort": meta.effort,
-            },
-            served_model=meta.served_model,
-            source=meta.source,
-            output=result.output.model_dump(mode="json"),
-            usage=EntryUsage(
-                input_tokens=meta.input_tokens,
-                output_tokens=meta.output_tokens,
-                cost_usd=meta.cost_usd,
-            ),
-            latency_ms=meta.latency_ms,
-            repaired=meta.repaired,
-            calls=2 if meta.repaired else 1,
-        )
-        return result
-
-    def _add(self, episode_id: str, fields: dict[str, Any], **more: Any) -> None:
-        cassette = self.cassettes.setdefault(episode_id, Cassette(episode_id=episode_id))
-        cassette.entries.append(CassetteEntry(seq=len(cassette.entries) + 1, **fields, **more))
-
-    def usage(self, episode_id: str) -> Usage:
-        return self.inner.usage(episode_id)
-
-    def cassette(self, episode_id: str) -> Cassette:
-        return self.cassettes.get(episode_id, Cassette(episode_id=episode_id))
 
 
 # --------------------------------------------------------------------------- helpers
@@ -330,11 +239,15 @@ def _final_statuses(
         done = sum(1 for p in progress.points_done if p.rsplit("/", 1)[-1] == system)
         planned, finished = points, done
         counts = f"{done} of {points} points"
+        capped_in_trading = False
         if system == PIPELINE and triggers:
             planned += triggers
             finished += len(progress.triggers_done)
             counts += f", {len(progress.triggers_done)} of {triggers} triggers"
-        if finished >= planned:
+            # The trigger the cap was reached at is counted as done (its episode ran and
+            # ended error), so a count of all triggers does not mean the pass was whole.
+            capped_in_trading = bool(progress.triggers_done)
+        if finished >= planned and not capped_in_trading:
             out[system] = "run"
         elif finished == 0:
             out[system] = f"not run: stopped before it started, {stopped}"
@@ -472,14 +385,14 @@ def _scoring_pass(
 ) -> World | None:
     """Every running system at every scoring point. Returns the scoring world (for the final resolve).
 
-    The pass exists to score forecasts, and it settles nothing until the run
-    ends: no outcome is written back between points. So a pipeline forecast
-    here is made without the outcomes of earlier scoring forecasts (the critic
-    gets no calibration example from them). The pipeline's episodes still
-    size, gate and fill on one paper account, but that account never realizes
-    a result during the pass: a settled holding stays in it at cost, the
-    bankroll leaves out settled profit and loss, and the calibration stop has
-    nothing resolved to read. Its orders are not reported as trades; the
+    The pass exists to score forecasts. When the pipeline runs, the outcome
+    resolver runs at each point's as-of time before any system forecasts there,
+    the same call the trading pass makes before each episode. The critic's
+    calibration examples come from the ledger index, which compares whole
+    seconds, so a result settled in the last second before a point, or at it,
+    reaches the paper account at that point and the critic only at a point
+    with a later as-of time. A halt stops orders only: every point is still
+    forecast and scored. The pass's orders are not reported as trades; the
     trading pass is the trading simulation.
     """
     from pmfa.state.store import SqliteStore
@@ -512,6 +425,10 @@ def _scoring_pass(
     done = 0
     for point in points:
         clock.set(point.as_of)
+        if PIPELINE in running:
+            # Write back what has settled by now before any system forecasts here,
+            # as the trading pass does before each episode.
+            run.audits.extend(resolve_outcomes(world, now=clock.now()).audits)
         event = world.exchange.get_event(point.event_ticker)
         prices = market_prices(event)
         results = _results(data, point.event_ticker)
@@ -671,7 +588,9 @@ def _trading_pass(run: _Run, schedule: Schedule, models: Models, run_id: str) ->
             )
         except RunBudgetExhausted as exc:
             run.stopped = f"the run's dollar cap was reached at {trigger.trigger_id}: {exc}"
-            run.progress.triggers_not_run.extend(t.trigger_id for t in triggers[i:])
+            # Its episode ran and is recorded (exit error); the triggers after it did not run.
+            run.progress.triggers_done.append(trigger.trigger_id)
+            run.progress.triggers_not_run.extend(t.trigger_id for t in triggers[i + 1 :])
             return world
         run.progress.triggers_done.append(trigger.trigger_id)
         if episode.event_ticker is not None:
@@ -1210,7 +1129,6 @@ __all__ = [
     "FORECASTS_FILE",
     "TRACES_DIR",
     "TRADES_FILE",
-    "ModelTap",
     "read_forecasts",
     "run_backtest",
 ]

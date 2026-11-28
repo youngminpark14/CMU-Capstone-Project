@@ -19,7 +19,7 @@ import re
 import threading
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -28,6 +28,10 @@ from pmfa.models.meter import add_usage, usage_of
 from pmfa.records.base import Record
 from pmfa.records.episode import CallMeta, ModelResult, Usage
 from pmfa.records.roles import TASKS, ModelSlot, RoleTask
+
+if TYPE_CHECKING:
+    from pmfa.config import Config
+    from pmfa.ports import Models
 
 Outcome = Literal["ok", "model_output_error", "budget_exhausted", "run_budget_exhausted"]
 
@@ -246,12 +250,125 @@ class CassettePlayer:
             return total - self._positions.get(episode_id, 0)
 
 
+class ModelTap:
+    """The ``Models`` port, passed through, with a cassette per episode and counts by source.
+
+    The cassettes are what makes a saved trace replayable offline; the counts
+    tell the manifest how many answers were new and how many came from the cache.
+    The backtest records its traces through it, and the example build script its
+    hand-written answers.
+    """
+
+    def __init__(self, inner: Models, config: Config) -> None:
+        self.inner = inner
+        self.config = config
+        self.cassettes: dict[str, Cassette] = {}
+        self.sources: dict[str, int] = {}
+        self.usage_total = Usage()
+
+    def call(
+        self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
+    ) -> ModelResult:
+        spec = TASKS[task]
+        chosen = slot or spec.default_slot
+        assignment = self.config.models.slots[chosen]
+        base: dict[str, Any] = {
+            "task": task,
+            "slot": chosen,
+            "role": spec.role,
+            "model": assignment.model,
+            "effort": assignment.effort,
+            "input": payload.model_dump(mode="json"),
+        }
+        before = self.inner.usage(episode_id)
+        try:
+            result = self.inner.call(task, payload, episode_id=episode_id, slot=slot)
+        except BudgetExhausted as exc:
+            self._add_failed(episode_id, base, before, "budget_exhausted", exc)
+            raise
+        except RunBudgetExhausted as exc:
+            self._add_failed(episode_id, base, before, "run_budget_exhausted", exc)
+            raise
+        except ModelOutputError as exc:
+            self._add_failed(episode_id, base, before, "model_output_error", exc, at_least=1)
+            raise
+        meta = result.meta
+        self.sources[meta.source] = self.sources.get(meta.source, 0) + 1
+        self.usage_total = Usage(
+            calls=self.usage_total.calls + 1,
+            input_tokens=self.usage_total.input_tokens + meta.input_tokens,
+            output_tokens=self.usage_total.output_tokens + meta.output_tokens,
+            cost_usd=self.usage_total.cost_usd
+            + (meta.cost_usd if meta.source in ("live", "scripted") else Decimal("0")),
+            seconds=self.usage_total.seconds + meta.latency_ms / 1000,
+        )
+        self._add(
+            episode_id,
+            {
+                **base,
+                "slot": meta.slot,
+                "role": meta.role,
+                "model": meta.model,
+                "effort": meta.effort,
+            },
+            served_model=meta.served_model,
+            source=meta.source,
+            output=result.output.model_dump(mode="json"),
+            usage=EntryUsage(
+                input_tokens=meta.input_tokens,
+                output_tokens=meta.output_tokens,
+                cost_usd=meta.cost_usd,
+            ),
+            latency_ms=meta.latency_ms,
+            repaired=meta.repaired,
+            calls=2 if meta.repaired else 1,
+        )
+        return result
+
+    def _add_failed(
+        self,
+        episode_id: str,
+        fields: dict[str, Any],
+        before: Usage,
+        outcome: str,
+        exc: Exception,
+        *,
+        at_least: int = 0,
+    ) -> None:
+        """Record a failed call with what the inner port charged for it, so a replay charges it too."""
+        after = self.inner.usage(episode_id)
+        self._add(
+            episode_id,
+            fields,
+            outcome=outcome,
+            error=str(exc),
+            calls=max(at_least, after.calls - before.calls),
+            usage=EntryUsage(
+                input_tokens=after.input_tokens - before.input_tokens,
+                output_tokens=after.output_tokens - before.output_tokens,
+                cost_usd=after.cost_usd - before.cost_usd,
+            ),
+            latency_ms=round((after.seconds - before.seconds) * 1000),
+        )
+
+    def _add(self, episode_id: str, fields: dict[str, Any], **more: Any) -> None:
+        cassette = self.cassettes.setdefault(episode_id, Cassette(episode_id=episode_id))
+        cassette.entries.append(CassetteEntry(seq=len(cassette.entries) + 1, **fields, **more))
+
+    def usage(self, episode_id: str) -> Usage:
+        return self.inner.usage(episode_id)
+
+    def cassette(self, episode_id: str) -> Cassette:
+        return self.cassettes.get(episode_id, Cassette(episode_id=episode_id))
+
+
 __all__ = [
     "Cassette",
     "CassetteEntry",
     "CassettePlayer",
     "CassetteRecorder",
     "EntryUsage",
+    "ModelTap",
     "first_difference",
     "load_cassettes",
     "write_cassette",

@@ -163,6 +163,8 @@ class ProposalStatus(StrEnum):
     EXPIRED = "expired"
     EXECUTED = "executed"
     CANCELLED = "cancelled"
+    OUTCOME_UNKNOWN = "outcome_unknown"
+    """Its order may stand on the exchange, unconfirmed: never resent, reviewed or expired."""
 
 
 class OrderIntent(Record):

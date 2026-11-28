@@ -4,14 +4,15 @@ A proposal routed to the approve tier is saved ``PENDING`` with a review card.
 The human approves, resizes (smaller only), or rejects it with a reason code.
 A proposal expires when the clock passes its ``expires_at`` or when the best
 ask on its side has moved above its edge-preserving bound; an expired or
-already decided proposal cannot be decided. Approval does not place anything:
-the episode re-runs the gate at the current price and places the order in a
-separate step.
+already decided proposal cannot be decided, nor can one whose order outcome is
+unknown (``OUTCOME_UNKNOWN``): a review cannot unsend an order. Approval does
+not place anything: the episode re-runs the gate at the current price and
+places the order in a separate step.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 
 from pmfa.config import Config
 from pmfa.errors import NotFound, PmfaError
@@ -193,16 +194,6 @@ class ReviewQueue:
         if status is not ProposalStatus.PENDING:
             raise ReviewRefused(f"proposal {proposal_id} is {status.value}, not pending")
         self.store.set_proposal_status(proposal_id, ProposalStatus.EXPIRED)
-
-    def expire_due(self, book_for: Callable[[str], OrderBook] | None = None) -> list[Proposal]:
-        """Expire every pending proposal past due; ``book_for(market_ticker)`` adds the price check."""
-        expired = []
-        for proposal in self.pending():
-            book = book_for(proposal.market_ticker) if book_for is not None else None
-            if self.expired(proposal, book):
-                self.store.set_proposal_status(proposal.proposal_id, ProposalStatus.EXPIRED)
-                expired.append(proposal)
-        return expired
 
 
 __all__ = ["ReviewQueue", "ReviewRefused", "build_card", "excerpt"]

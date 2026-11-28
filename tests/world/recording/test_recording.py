@@ -7,7 +7,8 @@ from decimal import Decimal
 
 import pytest
 
-from pmfa.examples import TapeModels, replay, review_policy, run_on_world
+from pmfa.examples import replay, review_policy, run_on_world
+from pmfa.models.cassette import ModelTap
 from pmfa.records.base import RunMode
 from pmfa.records.decision import ReviewDecision
 from pmfa.records.episode import EpisodeRecord, Exit
@@ -23,6 +24,7 @@ from pmfa.world.recorded import (
     recorded_config,
 )
 from pmfa.world.recording import Recording, config_overrides, save_example
+from tests.world.recorded.factories import filled_order
 
 from .factories import AS_OF, CANARY, CUT, DEC, JAN, MINUTES, UNRELATED, UNUSED_ENTRY, scripted
 from .factories import world_file as make_file
@@ -31,7 +33,7 @@ from .factories import world_file as make_file
 def record(source, mode=RunMode.REPLAY):
     """Run the source world's trigger through a recording; return file, cassette, run."""
     config = recorded_config(source)
-    tape = TapeModels(scripted(config), config)
+    tape = ModelTap(scripted(config), config)
     world = build_recorded_world(
         source, models=tape, review_policy=review_policy(source), mode=mode
     )
@@ -235,10 +237,8 @@ def test_a_world_holding_a_position_in_another_event_records_and_replays_identic
     )
     # A schedule trigger names its event, so the episode itself never reads January.
     trigger = Trigger(trigger_id="sched-dec", kind=TriggerKind.SCHEDULE, at=AS_OF, event_ticker=DEC)
-    file, cassette, run = record(make_file(fills=[fill], trigger=trigger))
+    file, cassette, run = record(make_file(orders=[filled_order([fill])], trigger=trigger))
     assert JAN in {e.event_ticker for e in file.events}
-    # The rebuilt world holds the fixture's fill as an order, so the recording keeps it as one.
-    assert file.fills == []
     assert [f for o in file.orders for f in o.fills] == [fill]
     save_example(tmp_path / "held", file, cassette, run.episode, run.card)
     result = replay(tmp_path / "held")
@@ -246,17 +246,18 @@ def test_a_world_holding_a_position_in_another_event_records_and_replays_identic
     assert without_call_source(result.episode) == without_call_source(run.episode)
 
 
-def test_a_recording_of_a_world_built_without_starting_history_writes_none(tmp_path):
+def test_a_recording_of_a_world_built_without_starting_history_writes_no_orders(tmp_path):
     import json
 
     from pmfa.world.recorded import save_recorded_world
 
     file, _, run = record(make_file())
     assert run.episode.orders
-    # The only equity point is the one a rebuilt world writes at the trigger time anyway.
-    assert file.orders == [] and file.settlements == [] and file.equity == []
+    # The only equity point is the one the built world wrote at the trigger time.
+    assert file.orders == [] and file.settlements == []
+    assert [p.at for p in file.equity] == [AS_OF]
     data = json.loads(save_recorded_world(file, tmp_path / "world.json").read_text())
-    assert not {"orders", "fills", "settlements", "equity"} & set(data)
+    assert not {"orders", "settlements"} & set(data)
 
 
 def test_a_recording_started_at_a_time_holds_nothing_of_the_store_dated_after_it():
@@ -321,7 +322,7 @@ def test_a_recording_started_at_a_time_holds_nothing_of_the_store_dated_after_it
     source = make_file()
     config = recorded_config(source)
     world = build_recorded_world(
-        source, models=TapeModels(scripted(config), config), review_policy=review_policy(source)
+        source, models=ModelTap(scripted(config), config), review_policy=review_policy(source)
     )
     earlier = filled("earlier", AS_OF - timedelta(days=1), None)
     # Sent at the as-of time, but priced from a candle that ends two minutes later.
@@ -351,7 +352,7 @@ def test_a_recording_started_at_a_time_holds_nothing_of_the_store_dated_after_it
     assert file.as_of == AS_OF
     assert [o.order_id for o in file.orders] == ["earlier", "split"]
     assert all((o.outcome_at or o.placed_at) <= AS_OF for o in file.orders)
-    fills = [*file.fills, *(f for o in file.orders for f in o.fills)]
+    fills = [f for o in file.orders for f in o.fills]
     assert fills and all(f.filled_at <= AS_OF for f in fills)
     assert [f.fill_id for f in file.orders[1].fills] == ["split-fill-0"]
     assert file.settlements == []
@@ -360,7 +361,7 @@ def test_a_recording_started_at_a_time_holds_nothing_of_the_store_dated_after_it
 
     # The account as of the as-of time is the same in the rebuilt world.
     rebuilt = build_recorded_world(
-        file, models=TapeModels(scripted(config), config), review_policy=review_policy(file)
+        file, models=ModelTap(scripted(config), config), review_policy=review_policy(file)
     )
     assert rebuilt.executor.balance() == world.executor.balance()
     assert rebuilt.executor.positions() == world.executor.positions()

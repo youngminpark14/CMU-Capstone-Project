@@ -97,6 +97,50 @@ def ledger_forecast_rows(store: StateStore, run_id: str = "ledger") -> list[Fore
     return rows
 
 
+def trade_rows(store: StateStore, mode: RunMode) -> tuple[list[TradeRow], datetime | None]:
+    """Fills of ``mode``'s episodes as trade rows, and when the first of them with an order started.
+
+    The status report and the shadow benchmark both read trades this way. A fill is settled
+    from the stored settlements, unless the settlement is dated before the fill.
+    """
+    settlements = {t: (side, at) for t, side, at in store.list_settlements()}
+    trades: list[TradeRow] = []
+    start: datetime | None = None
+    episodes: dict[str, EpisodeRecord | None] = {}
+    for order in store.list_orders():
+        if order.episode_id not in episodes:
+            episodes[order.episode_id] = store.get_episode(order.episode_id)
+        episode = episodes[order.episode_id]
+        if episode is None or episode.mode is not mode:
+            continue
+        if start is None or episode.started_at < start:
+            start = episode.started_at
+        routing = episode.routing
+        for f in order.fills:
+            if f.contracts <= 0:
+                continue
+            result, settled_at = settlements.get(f.market_ticker, (None, None))
+            if settled_at is not None and settled_at < f.filled_at:
+                result, settled_at = None, None
+            trades.append(
+                TradeRow(
+                    episode_id=order.episode_id,
+                    event_ticker=episode.event_ticker or "",
+                    market_ticker=f.market_ticker,
+                    side=f.side,
+                    contracts=f.contracts,
+                    price=f.price,
+                    fee=f.fee,
+                    tier=routing.tier if routing is not None else RoutingTier.APPROVE,
+                    would_be_auto=routing.would_be_auto if routing is not None else False,
+                    filled_at=f.filled_at,
+                    result=result,
+                    settled_at=settled_at,
+                )
+            )
+    return trades, start
+
+
 SCORING_LEDGER = Path("work") / "scoring.sqlite"
 """Where ``pmfa backtest`` keeps the scoring pass's ledger inside a run directory."""
 
@@ -188,40 +232,7 @@ class StageManager:
 
     def shadow_trades(self) -> tuple[list[TradeRow], datetime | None]:
         """Fills of shadow-mode episodes as trade rows, and when the first shadow episode started."""
-        settlements = {t: (side, at) for t, side, at in self.store.list_settlements()}
-        trades: list[TradeRow] = []
-        start: datetime | None = None
-        episodes: dict[str, EpisodeRecord | None] = {}
-        for order in self.store.list_orders():
-            if order.episode_id not in episodes:
-                episodes[order.episode_id] = self.store.get_episode(order.episode_id)
-            episode = episodes[order.episode_id]
-            if episode is None or episode.mode is not RunMode.SHADOW:
-                continue
-            if start is None or episode.started_at < start:
-                start = episode.started_at
-            routing = episode.routing
-            for f in order.fills:
-                result, settled_at = settlements.get(f.market_ticker, (None, None))
-                if settled_at is not None and settled_at < f.filled_at:
-                    result, settled_at = None, None
-                trades.append(
-                    TradeRow(
-                        episode_id=order.episode_id,
-                        event_ticker=episode.event_ticker or "",
-                        market_ticker=f.market_ticker,
-                        side=f.side,
-                        contracts=f.contracts,
-                        price=f.price,
-                        fee=f.fee,
-                        tier=routing.tier if routing is not None else RoutingTier.APPROVE,
-                        would_be_auto=routing.would_be_auto if routing is not None else False,
-                        filled_at=f.filled_at,
-                        result=result,
-                        settled_at=settled_at,
-                    )
-                )
-        return trades, start
+        return trade_rows(self.store, RunMode.SHADOW)
 
     def approval_reviews(self, state: StageState) -> list[Review]:
         """Human reviews decided since the current stage was entered."""
@@ -295,4 +306,5 @@ __all__ = [
     "next_stage",
     "previous_stage",
     "run_forecast_rows",
+    "trade_rows",
 ]

@@ -2,12 +2,12 @@
 
 Retrieval (the port): ``search_events``, ``search_evidence``, ``search_ledger``,
 ``get_passages`` and ``origins``. Each search takes ``as_of`` and the filter is
-applied inside the Chroma query, before the nearest-neighbour search, so a
-caller cannot read the future even by asking for it word for word.
+applied inside the Chroma read, so a caller cannot read the future even by
+asking for it word for word. The rows that pass it are ranked exactly, in a
+fixed order (see ``pmfa.knowledge.index``).
 
-Ingestion: ``index_documents``, ``index_events``, ``index_ledger`` and
-``index_evidence`` (fill the evidence index from an ``Evidence`` port up to a
-time). Re-indexing the same records leaves the index unchanged.
+Ingestion: ``index_documents``, ``index_events`` and ``index_ledger``.
+Re-indexing the same records leaves the index unchanged.
 """
 
 from __future__ import annotations
@@ -46,7 +46,6 @@ from pmfa.records.market import Event
 
 if TYPE_CHECKING:
     from pmfa.config import Config
-    from pmfa.ports import Evidence
 
 
 def event_text(event: Event) -> str:
@@ -76,7 +75,7 @@ def listings(event: Event) -> list[tuple[str, int, int, Event]]:
     until the next one opens (or the event closes). Boundaries are whole epoch
     seconds rounded up from the open time, so a listing is only ever shown once
     every strike it names has opened, and the listings never overlap.
-    ``query_events`` then returns, inside the Chroma query, exactly the listing
+    ``query_events`` then reads, with the filter inside the read, exactly the listing
     current at the as-of time. The first listing keeps the event ticker as its
     id, so re-indexing over an index built before listings existed replaces
     that row rather than duplicating it.
@@ -275,14 +274,6 @@ class ChromaKnowledge:
             shingles=self._shingles[key],
         )
 
-    def index_evidence(
-        self, evidence: Evidence, *, as_of: datetime, published_after: datetime | None = None
-    ) -> int:
-        """Fill the evidence index from an ``Evidence`` port with what it published up to ``as_of``."""
-        return self.index_documents(
-            evidence.documents(as_of=as_of, published_after=published_after)
-        )
-
     def index_events(self, events: list[Event]) -> int:
         """Store each event's documents, one per listing change; returns the events indexed.
 
@@ -295,6 +286,7 @@ class ChromaKnowledge:
             if not event.markets:
                 raise ValueError(f"event {event.event_ticker} has no markets to index")
         latest = list({e.event_ticker: e for e in events}.values())
+        closes = {e.event_ticker: floor_ts(e.close_time) for e in latest}
         rows = [row for e in latest for row in listings(e)]
         texts = [event_text(listed) for _, _, _, listed in rows]
         self.index.upsert(
@@ -308,6 +300,7 @@ class ChromaKnowledge:
                     "category": listed.category,
                     "open_ts": start,
                     "close_ts": until,
+                    "event_close_ts": closes[listed.event_ticker],
                 }
                 for _, start, until, listed in rows
             ],

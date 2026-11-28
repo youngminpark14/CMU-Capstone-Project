@@ -30,6 +30,22 @@ def test_subsample_is_even_and_keeps_the_ends() -> None:
     assert subsample([1, 2, 3], 1) == ([1], [2, 3])
 
 
+def test_a_backtest_never_asks_for_the_server_side_refusal_fallback() -> None:
+    """Only the assigned models, whose knowledge cutoffs the run checked, may answer."""
+    from pmfa.config import default_config
+    from pmfa.models.backend import AnthropicBackend
+    from pmfa.world.backtest import backtest_config
+
+    config = default_config()
+    assert AnthropicBackend.from_config(config).uses_fallback("claude-fable-5-2")
+    forced = backtest_config(config)
+    assert forced.models.refusal_fallback == "off"
+    backend = AnthropicBackend.from_config(forced)
+    assert not any(backend.uses_fallback(slot.model) for slot in forced.models.slots.values())
+    # Nothing else about the models changes.
+    assert forced.models.model_copy(update={"refusal_fallback": "default"}) == config.models
+
+
 def test_schedule_is_deterministic(data_config: Config) -> None:
     from pmfa.evaluation.schedule import build_schedule
 
@@ -254,3 +270,70 @@ def test_published_outputs_list_exactly_what_was_copied(full_run: FullRun, tmp_p
     copied |= {f"traces/{p.name}" for p in (target / "traces").iterdir()}
     assert set(outputs) == copied - {"figures", "traces"}
     assert "trades.csv" not in outputs and "episodes.jsonl" not in outputs
+
+
+def test_a_scores_only_publication_leaves_out_the_rows_and_the_traces_and_says_so(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """The per-forecast table and the traces hold exchange prices; scores only leaves them home."""
+    from pmfa.evaluation.manifest import read_manifest
+    from pmfa.evaluation.report import SCORES_ONLY_NOTE, build_report, publish_run
+
+    build_report(full_run.run_dir)
+    target = publish_run(
+        full_run.run_dir, "scores", root=tmp_path / "runs", allow_supplied=True, scores_only=True
+    )
+    published = {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()}
+    assert {p for p in published if "/" not in p} == {"manifest.json", "metrics.json", "report.md"}
+    assert {p.split("/")[0] for p in published if "/" in p} == {"figures"}
+    manifest = read_manifest(target)
+    assert set(manifest.outputs) == published
+    assert SCORES_ONLY_NOTE in manifest.notes
+    assert (full_run.run_dir / "forecasts.csv").exists()  # the rows stay in the run directory
+
+    # The published report says what was left out and points at no file that is not there.
+    report = (target / "report.md").read_text()
+    flat = " ".join(report.split())
+    assert SCORES_ONLY_NOTE in flat
+    assert "the per-forecast table is `forecasts.csv`" not in flat
+    files = " ".join(report.split("## Files", 1)[1].split())
+    assert "Not published, kept in the local run directory: `forecasts.csv`" in files
+    assert "- `forecasts.csv`:" not in report and "- `traces/`:" not in report
+    assert "replays and matches" in files  # the replay check of each saved trace is still told
+    # Everything else is the run's own report, which still describes the local files.
+    local = (full_run.run_dir / "report.md").read_text()
+    assert "the per-forecast table is `forecasts.csv`" in local and "- `traces/`:" in local
+    assert SCORES_ONLY_NOTE not in local
+    same = [line for line in local.splitlines() if line.startswith(("## ", "| "))]
+    assert all(line in report for line in same)
+
+
+def test_a_scores_only_publication_leaves_out_what_gives_fill_or_market_prices(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """Cash at each fill, P&L by market, and one market's squared error each give its prices."""
+    import json
+
+    from pmfa.evaluation.report import build_report, publish_run
+
+    build_report(full_run.run_dir)
+    local = json.loads((full_run.run_dir / "metrics.json").read_text())
+    assert local["pnl"]["equity_curve"] and local["pnl"]["summary"]["by_market"]
+    assert any("error_concentration" in s for s in local["systems"].values())
+    target = publish_run(
+        full_run.run_dir, "scores", root=tmp_path / "runs", allow_supplied=True, scores_only=True
+    )
+    text = (target / "metrics.json").read_text()
+    for key in ("equity_curve", "by_market", "by_event", "top_markets", "top_event"):
+        assert f'"{key}"' not in text, key
+    published = json.loads(text)
+    assert published["systems"].keys() == local["systems"].keys()
+    assert published["pnl"]["summary"]["total"] == local["pnl"]["summary"]["total"]
+    report = (target / "report.md").read_text()
+    assert "The event with the largest share" not in report
+    error_section = " ".join(report.split("## Where the error comes from", 1)[1].split())
+    assert "split by the forecast probability." in error_section
+    assert "by event and by market is left out of a scores-only publication" in error_section
+    for ticker in local["pnl"]["summary"]["by_market"]:
+        assert ticker not in report
+    assert json.loads((full_run.run_dir / "metrics.json").read_text()) == local  # left as it was

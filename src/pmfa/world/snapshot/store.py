@@ -420,9 +420,6 @@ class SnapshotStore:
         self._markets[ticker] = market
         return market
 
-    def has_market(self, ticker: str) -> bool:
-        return bool(self._query("SELECT 1 FROM markets WHERE ticker = ?", (ticker,)))
-
     # -- reading candles -------------------------------------------------------------------
 
     def coverage(self, ticker: str, interval: int) -> tuple[datetime, datetime] | None:

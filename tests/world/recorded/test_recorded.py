@@ -40,7 +40,7 @@ from .factories import (
     book,
     event,
     market,
-    prior_fill,
+    prior_order,
     resolved_entry,
     world_file,
 )
@@ -57,7 +57,7 @@ def full_file():
             ]
         },
         ledger=[resolved_entry()],
-        fills=[prior_fill()],
+        orders=[prior_order()],
         bankroll="2000",
         halted=True,
         config_overrides={"caps": {"max_contracts_per_order": 10}},

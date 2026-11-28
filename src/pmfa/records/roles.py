@@ -105,10 +105,13 @@ class MatchInput(Record):
 
 class MatchDecision(Record):
     matched: bool = Field(
-        description="True if the trigger bears on exactly one of the candidate events."
+        description="True if the trigger bears on at least one of the candidate events."
     )
     event_ticker: str = Field(
-        description="Ticker of the matched candidate. Empty string when matched is false."
+        description=(
+            "Ticker of the candidate the trigger bears on most directly. "
+            "Empty string when matched is false."
+        )
     )
     rationale: str = Field(description="One or two sentences.")
 

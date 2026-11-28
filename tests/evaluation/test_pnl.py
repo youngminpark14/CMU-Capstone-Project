@@ -12,7 +12,6 @@ from pmfa.evaluation.pnl import (
     equity_curve,
     max_drawdown,
     pnl_summary,
-    total_pnl,
     trade_cost,
     trade_payout,
     trade_pnl,
@@ -86,11 +85,10 @@ def test_pnl_per_market_per_event_and_total():
     assert summary.fees == D("0.47")
     assert (summary.n_trades, summary.n_settled) == (3, 2)
     assert summary.open_cost == D("2.59")
-    assert total_pnl(TRADES) == D("-0.47")
 
 
 def test_not_trading_earns_zero():
-    assert total_pnl([]) == 0
+    assert pnl_summary([]).total == 0
     assert equity_curve([], BANKROLL) == []
 
 
@@ -218,7 +216,7 @@ def test_a_hedge_whose_prices_do_not_sum_to_one_nets_at_the_second_fill_as_the_a
     curve = equity_curve([yes, no], BANKROLL)
     assert [p.equity for p in curve] == [D("999.58"), D("1001.64"), D("1001.64")]
     assert [p.cash for p in curve] == [D("989.58"), D("1001.64"), D("1001.64")]
-    assert curve[-1].equity - BANKROLL == total_pnl([yes, no])
+    assert curve[-1].equity - BANKROLL == pnl_summary([yes, no]).total
     fills = [
         Fill(
             fill_id=f"f{i}",

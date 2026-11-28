@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
@@ -60,81 +59,6 @@ def test_unknown_configuration_keys_are_rejected():
         load_config(overrides={"caps": {"per_market_fracton": "0.05"}})
 
 
-EXAMPLE_WORLD = Path(__file__).resolve().parents[1] / "examples/episodes/cpi-ladder/world.json"
-
-REMOVED = [
-    # Removed: the scoring horizons are evaluation.horizons_days.
-    ("triggers", "schedule_horizons_days", [14, 7], r"evaluation\.horizons_days"),
-    # Removed: the Quantiles record fixes the five levels.
-    ("forecast", "quantile_levels", [0.1, 0.2, 0.5, 0.8, 0.9], r"Quantiles record"),
-]
-OLD_DEFAULTS = {
-    "schedule_horizons_days": [7, 3, 1],
-    "quantile_levels": [0.05, 0.25, 0.5, 0.75, 0.95],
-}
-
-
-@pytest.mark.parametrize(("section", "key", "value", "where"), REMOVED)
-def test_removed_configuration_keys_are_refused_not_ignored(section, key, value, where):
-    for given in (value, OLD_DEFAULTS[key]):
-        with pytest.raises(ConfigError, match=rf"{section}\.{key}\s+no longer a setting.*{where}"):
-            load_config(overrides={section: {key: given}})
-
-
-def test_a_config_file_that_still_sets_a_removed_key_is_refused(tmp_path):
-    file = tmp_path / "old.toml"
-    file.write_text("[triggers]\nschedule_horizons_days = [7, 3, 1]\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match=r"evaluation\.horizons_days"):
-        load_config(file)
-
-
-def test_a_removed_key_does_not_hide_the_other_problems():
-    overrides = {"forecast": {"quantile_levels": [0.5]}, "caps": {"per_market_fraction": "2"}}
-    with pytest.raises(ConfigError) as caught:
-        load_config(overrides=overrides)
-    assert "forecast.quantile_levels" in str(caught.value)
-    assert "caps.per_market_fraction must be a fraction" in str(caught.value)
-
-
-def test_a_recorded_configuration_with_a_removed_key_still_reads():
-    # A published run's manifest records the configuration of its day, removed keys included,
-    # at their old defaults: those meant nothing, so the record reads back as it was.
-    recorded = Config().model_dump(mode="json")
-    recorded["triggers"]["schedule_horizons_days"] = [7, 3, 1]
-    recorded["forecast"]["quantile_levels"] = [0.05, 0.25, 0.5, 0.75, 0.95]
-    assert Config.model_validate(recorded) == Config()
-
-
-@pytest.mark.parametrize(("section", "key", "value", "where"), REMOVED)
-def test_a_recorded_world_that_changes_a_removed_key_is_refused(section, key, value, where):
-    # Recorded worlds' config_overrides are partly hand-written; a changed value is an intent
-    # the code would ignore, so it is refused there too.
-    from pmfa.world.recorded import load_recorded_world, recorded_config
-
-    world = load_recorded_world(EXAMPLE_WORLD)
-    edited = world.model_copy(update={"config_overrides": {section: {key: value}}})
-    with pytest.raises(ConfigError, match=rf"{section}\.{key}\s+no longer a setting.*{where}"):
-        recorded_config(edited)
-
-
-def test_config_check_says_where_a_removed_setting_went(tmp_path):
-    from typer.testing import CliRunner
-
-    from pmfa.cli.app import app
-
-    file = tmp_path / "old.toml"
-    file.write_text(
-        "[triggers]\nschedule_horizons_days = [14]\n\n[forecast]\nquantile_levels = [0.5]\n",
-        encoding="utf-8",
-    )
-    result = CliRunner().invoke(app, ["config", "check", str(file)])
-    assert result.exit_code == 1
-    assert "2 problem(s)" in result.output
-    assert "triggers.schedule_horizons_days: no longer a setting" in result.output
-    assert "evaluation.horizons_days" in result.output
-    assert "forecast.quantile_levels: no longer a setting" in result.output
-
-
 def test_buying_one_side_matches_the_other_sides_bids():
     book = OrderBook(
         ticker="T",
@@ -167,3 +91,11 @@ def test_an_empty_config_variable_means_not_set(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PMFA_CONFIG", "")
     assert load_config() == Config()
+
+
+def test_an_unknown_order_outcome_is_a_status_of_its_own_and_not_an_exit():
+    from pmfa.records.decision import ProposalStatus
+    from pmfa.records.episode import EpisodeStatus, Exit
+
+    assert EpisodeStatus("outcome_unknown") and ProposalStatus("outcome_unknown")
+    assert "outcome_unknown" not in {e.value for e in Exit}

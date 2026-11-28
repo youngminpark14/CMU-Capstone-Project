@@ -316,6 +316,12 @@
       "period": "2026-09"
     }
   ],
+  "equity": [
+    {
+      "at": "2026-09-11T12:35:00Z",
+      "equity": "1000"
+    }
+  ],
   "bankroll": "1000",
   "stage": "approval",
   "config_overrides": {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import ModuleType
 
@@ -47,6 +48,10 @@ def test_a_rehearsal_runs_every_system_saves_traces_that_replay_and_says_it_is_n
     assert sum(tally["exits"].get("executed", 0) for tally in episodes.values()) > 0
     with (run_dir / "forecasts.csv").open(encoding="utf-8", newline="") as fh:
         assert any(r["system"] == "pipeline" and r["probability"] for r in csv.DictReader(fh))
+    # The scoring pass settled before its points: some critics were given calibration examples.
+    [given] = [line for line in lines if line.startswith("scoring pass: the critic was given")]
+    with_examples, reached = map(int, re.findall(r"in (\d+) of (\d+) ", given)[0])
+    assert 0 < with_examples < reached
     # Every saved trace was replayed offline and matched.
     assert manifest.traces and set(manifest.traces.values()) == {script.MATCHES}
     # The run records that no live model answered, says it is a rehearsal, and cannot be published.

@@ -5,7 +5,9 @@ state holds plain JSON only (ids, and records dumped with
 ``model_dump(mode="json")``), so a paused episode survives a checkpoint written
 in one process and read in another. Every node returns a state update whose
 ``goto`` names the next node; a node that ends the episode sets ``exit`` and
-goes to ``record``, which runs last on every path.
+goes to ``record``, which runs last on every path. An episode whose order's
+outcome is unknown has no exit yet: it waits in ``hold`` and ``reconcile``
+until a lookup by its client order id says what the exchange did.
 
 Shared state of the roles (tree nodes, beams, rejections) goes through the
 ``StateClient``. Everything else (episodes, traces, forecasts, proposals,
@@ -230,6 +232,19 @@ def client_order_id(episode_id: str, proposal: Proposal) -> str:
     )
 
 
+def order_intent(episode_id: str, proposal: Proposal) -> OrderIntent:
+    """The one order a proposal may send, under its deterministic client order id."""
+    return OrderIntent(
+        client_order_id=client_order_id(episode_id, proposal),
+        episode_id=episode_id,
+        proposal_id=proposal.proposal_id,
+        market_ticker=proposal.market_ticker,
+        side=proposal.side,
+        contracts=proposal.contracts,
+        limit_price=proposal.limit_price,
+    )
+
+
 class Pipeline:
     """The episode's steps over one world. Each public method is one graph node."""
 
@@ -257,6 +272,8 @@ class Pipeline:
             "pause": self.pause,
             "review": self.review,
             "execute": self.execute,
+            "hold": self.hold,
+            "reconcile": self.reconcile,
             "record": self.record,
         }
         return {name: self._guarded(name, fn) for name, fn in steps.items()}
@@ -410,13 +427,9 @@ class Pipeline:
         return mids
 
     def _forecast_mid(self, state: EpisodeState, ticker: str) -> Decimal | None:
-        """``ticker``'s YES mid when the forecast started, which no recompute changes.
-
-        A checkpoint written before ``forecast_mids`` existed falls back to the sizing books.
-        """
-        mids = state.get("forecast_mids")
-        if mids is None:
-            mids = self._mids(SizingInputs.model_validate(state["sizing"]))
+        """``ticker``'s YES mid when the forecast started, which no recompute changes."""
+        mids = state["forecast_mids"]
+        assert mids is not None, "forecast_start sets forecast_mids with the sizing inputs"
         value = mids.get(ticker)
         return Decimal(value) if value is not None else None
 
@@ -560,7 +573,8 @@ class Pipeline:
         self.tracer.action(
             eid,
             "match",
-            f"search the events index for the top {k} events as of {as_of.isoformat()}"
+            f"search the events index for the next event of each series, at most {k}, "
+            f"as of {as_of.isoformat()}"
             + (f", excluding {', '.join(excluded)}" if excluded else ""),
             k=k,
             excluded=excluded,
@@ -568,19 +582,23 @@ class Pipeline:
         hits = world.knowledge.search_events(
             f"{document.title}\n{document.text}", as_of=as_of, k=k + len(excluded)
         )
-        hits = [h for h in hits if h.event_ticker not in excluded][:k]
+        hits = [h for h in hits if h.event_ticker not in excluded]
+        # One candidate per series: its next event to close, which the index lists first.
         briefs: list[EventBrief] = []
+        offered: set[str] = set()
         for hit in hits:
             try:
                 event = world.exchange.get_event(hit.event_ticker)
             except NotFound:
                 continue
-            if self._followed(event) is None:
+            if self._followed(event) is None or event.series_ticker in offered:
                 continue
             try:
                 briefs.append(self._brief(event))
             except OutcomeSpaceError:
                 continue
+            offered.add(event.series_ticker)
+        briefs = briefs[:k]
         self.tracer.observation(
             eid,
             "match",
@@ -760,23 +778,23 @@ class Pipeline:
         self.tracer.action(
             eid,
             "forecast",
-            f"beam search over {len(search.levels)} level(s)"
+            f"beam search over {len(search.request.levels)} level(s)"
             + (" on the fast path (the event closes within the hour)" if request.fast_path else "")
             + f"; {len(rejections)} earlier rejection(s), {len(examples)} ledger example(s), "
             f"bankroll ${sizing.bankroll}",
-            levels=[dump(lv) for lv in search.levels],
+            levels=[dump(lv) for lv in search.request.levels],
         )
         return {**update, "search": dump(search), "goto": "forecast_step"}
 
     def forecast_step(self, state: EpisodeState) -> dict[str, Any]:
         eid = state["episode_id"]
         search = SearchState.model_validate(state["search"])
-        level = search.levels[search.level_index]
+        level = search.request.levels[search.level_index]
         depth = search.level_index + 1
         self.tracer.action(
             eid,
             "forecast",
-            f"level {depth} of {len(search.levels)}: generate, check, and score scenarios "
+            f"level {depth} of {len(search.request.levels)}: generate, check, and score scenarios "
             f"for {level.title}",
         )
         engine = self._engine(state)
@@ -1101,29 +1119,22 @@ class Pipeline:
         The order is looked up by its client order id first (in the store, then through
         ``Executor.find_order``). A thread the controller continued after it stopped here
         (``continued``) only reconciles and never sends: it records the order it finds,
-        else ends in ``error`` with nothing placed, or with the outcome unknown when the
-        exchange cannot be asked. The approval it ran on may be minutes
-        old, its gate ran at an older price, and the human may since have rejected or
-        expired the proposal, so sending then would act on a decision nobody stands
-        behind. On a first run, the halt flag is read before the book and again
-        immediately before sending. An exchange error while sending ends the episode:
-        with the order looked up when it can be found, else in ``error``, the outcome
-        unknown. An order the exchange rejected ends in ``error`` with the exchange's
+        else ends in ``error`` with nothing placed; when the exchange cannot be asked, the
+        outcome is unknown and the episode waits (see below). The approval it ran on may
+        be minutes old, its gate ran at an older price, and the human may since have
+        rejected or expired the proposal, so sending then would act on a decision nobody
+        stands behind. On a first run, the halt flag is read before the book and again
+        immediately before sending. When sending raises ``ExchangeError``, the order is
+        looked up once: found, it is recorded and the episode ends by what the exchange
+        did with it; otherwise the outcome is unknown and the episode waits in ``hold``
+        (``_outcome_unknown``). An order the exchange rejected ends in ``error`` with the exchange's
         reason; any order it accepted (filled, partly filled or unfilled) ends
         ``executed``.
         """
         world = self.world
         eid = state["episode_id"]
         p = Proposal.model_validate(state["proposal"])
-        intent = OrderIntent(
-            client_order_id=client_order_id(eid, p),
-            episode_id=eid,
-            proposal_id=p.proposal_id,
-            market_ticker=p.market_ticker,
-            side=p.side,
-            contracts=p.contracts,
-            limit_price=p.limit_price,
-        )
+        intent = order_intent(eid, p)
         if state.get("continued"):
             return self._reconcile(state, p, intent)
         found = self._lookup(eid, intent)
@@ -1191,15 +1202,18 @@ class Pipeline:
         try:
             order = world.executor.place(intent)
         except ExchangeError as exc:
-            found = self._lookup(eid, intent)
+            try:
+                found = self._find_order(eid, intent)
+                looked = f"no order with client order id {intent.client_order_id} was found"
+            except PmfaError as failed:
+                found = None
+                looked = f"the lookup of client order id {intent.client_order_id} failed ({failed})"
             if found is None:
-                return self._exit(
+                return self._outcome_unknown(
                     state,
                     "execute",
-                    Exit.ERROR,
-                    f"the exchange failed while the order was sent ({exc}); no order with "
-                    f"client order id {intent.client_order_id} was found, so its outcome "
-                    "is unknown: check the exchange",
+                    p,
+                    f"the exchange failed while the order was sent ({exc}); {looked}",
                 )
             order = found
             self.tracer.observation(
@@ -1226,12 +1240,10 @@ class Pipeline:
         """Finish a continued thread from what was already sent. Nothing is placed here.
 
         An order found by its client order id is recorded and ends the episode by what
-        the exchange did with it. When none is found, the process stopped before the
-        order was sent: the proposal is cancelled and the episode ends ``error``. When
-        the exchange cannot be asked (``Executor.find_order`` raises ``ExchangeError``),
-        the outcome is unknown: the episode ends ``error`` and says so, and the proposal
-        keeps its status, because an order may stand behind it and cancelling would
-        record that nothing was placed.
+        the exchange did with it. When the exchange lists none, nothing was placed (the
+        order may have been sent and lost): the proposal is cancelled and the episode
+        ends ``error``. When the exchange cannot be asked, the episode waits
+        ``OUTCOME_UNKNOWN``.
         """
         world = self.world
         eid = state["episode_id"]
@@ -1243,14 +1255,13 @@ class Pipeline:
         )
         try:
             found = self._find_order(eid, intent)
-        except ExchangeError as exc:
-            return self._exit(
+        except PmfaError as exc:
+            return self._outcome_unknown(
                 state,
                 "execute",
-                Exit.ERROR,
-                f"the process stopped at execute and the order lookup failed ({exc}); "
-                f"nothing was sent now, and whether client order id {intent.client_order_id} "
-                "was placed is unknown: check the exchange",
+                p,
+                f"the process stopped at execute and the lookup of client order id "
+                f"{intent.client_order_id} failed ({exc}); nothing was sent now",
             )
         if found is not None:
             world.store.save_order(found)
@@ -1261,9 +1272,105 @@ class Pipeline:
             state,
             "execute",
             Exit.ERROR,
-            "the process stopped before the order was sent: no order with client order id "
-            f"{intent.client_order_id} exists, and nothing was placed",
+            f"the exchange lists no order with client order id {intent.client_order_id}: "
+            "nothing was placed",
         )
+
+    def _outcome_unknown(
+        self, state: EpisodeState, node: str, p: Proposal, detail: str
+    ) -> dict[str, Any]:
+        """Save the proposal and the episode ``OUTCOME_UNKNOWN`` and go to ``hold`` to wait.
+
+        The order may stand on the exchange, so nothing may say it was refused,
+        filled or never placed: there is no exit, nothing more is sent for the
+        proposal, and the next look is a lookup by the same client order id. The
+        ledger entries are written by ``record`` once the outcome is known, as for a
+        paused episode.
+        """
+        world = self.world
+        eid = state["episode_id"]
+        world.store.save_proposal(p, ProposalStatus.OUTCOME_UNKNOWN)
+        if state.get("forecast"):  # kept while it waits, as at the review pause
+            world.store.save_forecast(Forecast.model_validate(state["forecast"]))
+        self.tracer.observation(
+            eid,
+            node,
+            "outcome unknown, the order may stand on the exchange: nothing more will be sent "
+            f"for this proposal, and the order will be looked up again. {detail}",
+            detail=detail,
+            client_order_id=client_order_id(eid, p),
+        )
+        update: dict[str, Any] = {
+            "status": EpisodeStatus.OUTCOME_UNKNOWN.value,
+            "exit": None,
+            "exit_detail": "",
+            "goto": "hold",
+        }
+        merged: EpisodeState = {**state, **update}  # type: ignore[typeddict-item]
+        world.store.save_episode(self.compose(merged, EpisodeStatus.OUTCOME_UNKNOWN))
+        return update
+
+    # ------------------------------------------------------------------ 9b. reconcile
+
+    def hold(self, state: EpisodeState) -> dict[str, Any]:
+        """Wait to ask the exchange again. This node does nothing but interrupt: it re-runs
+        on resume, so resuming never repeats a side effect."""
+        from langgraph.types import interrupt
+
+        p = Proposal.model_validate(state["proposal"])
+        interrupt(
+            {
+                "episode_id": state["episode_id"],
+                "client_order_id": client_order_id(state["episode_id"], p),
+            }
+        )
+        return {"goto": "reconcile"}
+
+    def reconcile(self, state: EpisodeState) -> dict[str, Any]:
+        """Ask again what became of an order whose outcome is unknown. Nothing is placed here.
+
+        The order is looked up by its client order id, in the store and then through
+        ``Executor.find_order``. Found, it is recorded and the episode ends by what the
+        exchange did with it: ``executed`` (proposal ``EXECUTED``), or ``error`` for a
+        rejected order (proposal ``CANCELLED``). When the exchange answers that it
+        lists no such order, nothing was placed: the proposal is cancelled and the
+        episode ends ``error``. When the exchange cannot be asked, the episode stays
+        ``OUTCOME_UNKNOWN`` and waits in ``hold`` again, as many times as it takes. The
+        halt flag does not stop a lookup: it sends nothing.
+        """
+        world = self.world
+        eid = state["episode_id"]
+        p = Proposal.model_validate(state["proposal"])
+        intent = order_intent(eid, p)
+        self.tracer.action(
+            eid,
+            "reconcile",
+            f"look up client order id {intent.client_order_id} again; send nothing",
+        )
+        try:
+            found = self._find_order(eid, intent)
+        except PmfaError as exc:
+            return self._outcome_unknown(
+                state, "reconcile", p, f"the order lookup failed again ({exc})"
+            )
+        update: dict[str, Any] = {"status": EpisodeStatus.RUNNING.value}
+        if found is not None:
+            world.store.save_order(found)
+            self.tracer.observation(
+                eid, "reconcile", f"order {found.order_id} was found by its client order id"
+            )
+            return {**update, **self._order_outcome(state, p, found, node="reconcile")}
+        world.store.save_proposal(p, ProposalStatus.CANCELLED)
+        return {
+            **update,
+            **self._exit(
+                state,
+                "reconcile",
+                Exit.ERROR,
+                f"the exchange lists no order with client order id {intent.client_order_id}: "
+                "nothing was placed",
+            ),
+        }
 
     def _lookup(self, eid: str, intent: OrderIntent) -> OrderResult | None:
         """``_find_order``, with a failed exchange lookup read as no order found."""
@@ -1288,7 +1395,7 @@ class Pipeline:
             return None
 
     def _order_outcome(
-        self, state: EpisodeState, p: Proposal, order: OrderResult
+        self, state: EpisodeState, p: Proposal, order: OrderResult, *, node: str = "execute"
     ) -> dict[str, Any]:
         """Trace the order and end the episode by what the exchange did with it."""
         world = self.world
@@ -1296,7 +1403,7 @@ class Pipeline:
         filled = order.filled_contracts
         self.tracer.observation(
             eid,
-            "execute",
+            node,
             f"{order.status.value}: {filled} of {order.requested_contracts} filled, "
             f"fees ${order.fees}" + (f", {order.error}" if order.error else ""),
             order=dump(order),
@@ -1304,10 +1411,10 @@ class Pipeline:
         if order.status is OrderStatus.REJECTED:
             world.store.save_proposal(p, ProposalStatus.CANCELLED)
             if order.error.startswith("halted"):
-                return self._exit(state, "execute", Exit.HALTED, order.error)
+                return self._exit(state, node, Exit.HALTED, order.error)
             return self._exit(
                 state,
-                "execute",
+                node,
                 Exit.ERROR,
                 f"the exchange rejected the order: {order.error or 'no reason given'}",
             )

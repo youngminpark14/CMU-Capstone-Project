@@ -55,12 +55,14 @@ if TYPE_CHECKING:
 INDEX_MARKER = "pmfa_backtest_index.json"
 """Written into a finished index directory; an index without it is rebuilt."""
 
-INDEX_FORMAT = 2
+INDEX_FORMAT = 3
 """The shape of the rows the index stores, part of the index key.
 
 Bump it whenever the stored rows change shape, so an index cached by older code
 is rebuilt rather than reused. 2: the events index holds one row per listing
-change of an event instead of one row with its full strike list.
+change of an event instead of one row with its full strike list. 3: each of
+those rows carries the event's own close time, which the events search uses to
+offer the next event of each series.
 """
 
 CANARY_SOURCE = "canary.invalid"
@@ -80,14 +82,21 @@ class LeakageDetected(AsOfViolation):
 
 
 def backtest_config(config: Config) -> Config:
-    """``config`` as a backtest runs it: the roles' shared state goes to the state service directly.
+    """``config`` as a backtest runs it. Two settings are forced; everything else is unchanged.
 
-    The in-process MCP transport exercises the same service methods at a
-    throughput cost that a backtest of many episodes does not need, so
-    ``state.transport`` is forced to ``direct``. Everything else is unchanged.
+    - ``state.transport`` is ``direct``. The in-process MCP transport exercises the
+      same service methods at a throughput cost that a backtest of many episodes
+      does not need.
+    - ``models.refusal_fallback`` is ``off``. With the server-side fallback, a request
+      that one model declines is answered by another, and a run checks the knowledge
+      cutoff of the assigned models only. In a backtest a declined request is an
+      unusable answer instead, so no unchecked model can answer a scored forecast.
     """
     return config.model_copy(
-        update={"state": config.state.model_copy(update={"transport": "direct"})}
+        update={
+            "state": config.state.model_copy(update={"transport": "direct"}),
+            "models": config.models.model_copy(update={"refusal_fallback": "off"}),
+        }
     )
 
 
@@ -390,7 +399,8 @@ def build_backtest_world(
       counts in the account only from then, not from the clock's time.
     - Review policy ``FILL_TAGGED``: with no human present, approve-tier
       proposals are filled and tagged, so reports can separate them.
-    - ``state.transport`` is forced to ``direct`` for throughput (see ``backtest_config``).
+    - ``state.transport`` is forced to ``direct`` for throughput, and the server-side
+      refusal fallback is forced off (see ``backtest_config``).
     """
     from pmfa.execution.paper import PaperExecutor
 

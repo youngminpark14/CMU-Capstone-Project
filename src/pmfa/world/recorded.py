@@ -21,8 +21,7 @@ the risk state, and the daily loss, drawdown, fill-failure and calibration
 stops as the recorded world did at that time. The source-change stops are not
 carried: the file holds neither the prior episodes nor the content hashes the
 store remembered for their documents, so those stops cannot hold in a built
-world. A hand-made fixture can give holdings as bare ``fills`` instead of
-orders.
+world.
 
 The ports built from it obey the as-of rule inside each call:
 
@@ -41,7 +40,6 @@ from __future__ import annotations
 
 import json
 import threading
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -55,9 +53,7 @@ from pmfa.errors import ConfigError, NotFound, PmfaError
 from pmfa.ports import Models, World
 from pmfa.records.base import ONE, Dollars, Record, RunMode, Stage, UtcTime, stable_id
 from pmfa.records.decision import (
-    Fill,
     OrderResult,
-    OrderStatus,
     ReasonCode,
     Review,
     ReviewDecision,
@@ -93,7 +89,7 @@ if TYPE_CHECKING:
     from pmfa.state.store import SqliteStore
 
 PRIOR_EPISODE = "recorded-prior"
-"""Episode id given to the orders that carry a recorded world's prior fills."""
+"""Episode id of the prior critic rejections and forecasts a recorded world's store starts with."""
 
 
 class ScriptedReview(Record):
@@ -201,9 +197,6 @@ class RecordedWorldFile(Record):
     """Prior orders whose outcome was known at the as-of time, in the order they were sent, each
     with its fills. They give the holdings the world starts with and the order outcomes the
     fill-failure stop counts. A recording writes these."""
-    fills: list[Fill] = []
-    """Prior fills not in ``orders``: more holdings the world starts with. A hand-made fixture
-    that only needs holdings gives them here; each order id becomes one filled order."""
     settlements: list[RecordedSettlement] = []
     """Prior settlements at or before the as-of time, so a settled holding is paid out and closed."""
     equity: list[RecordedEquityPoint] = []
@@ -560,41 +553,10 @@ class RecordedWorld(World):
     file: RecordedWorldFile
 
 
-def prior_orders(fills: list[Fill]) -> list[OrderResult]:
-    """Wrap prior fills in filled orders (one per ``order_id``) so the store can hold them."""
-    grouped: dict[str, list[Fill]] = defaultdict(list)
-    for f in fills:
-        grouped[f.order_id].append(f)
-    orders = []
-    for order_id, group in grouped.items():
-        first = group[0]
-        orders.append(
-            OrderResult(
-                order_id=order_id,
-                client_order_id=order_id,
-                episode_id=PRIOR_EPISODE,
-                market_ticker=first.market_ticker,
-                side=first.side,
-                requested_contracts=int(sum((f.contracts for f in group), Decimal(0))),
-                limit_price=max(f.price for f in group),
-                status=OrderStatus.FILLED,
-                fills=group,
-                placed_at=min(f.filled_at for f in group),
-            )
-        )
-    return orders
-
-
 def _seeded_store(file: RecordedWorldFile) -> SqliteStore:
     """A fresh in-memory store holding the file's starting state (see ``build_recorded_world``)."""
     from pmfa.state.store import MEMORY, SqliteStore
 
-    sent = {o.order_id for o in file.orders}
-    twice = sorted(sent & {f.order_id for f in file.fills})
-    if twice:
-        raise ConfigError(
-            f"recorded world gives order id(s) {', '.join(twice)} both in orders and in fills"
-        )
     at = file.as_of
     store = SqliteStore(MEMORY)
     store.set_stage(file.stage, "recorded world", at)
@@ -602,7 +564,7 @@ def _seeded_store(file: RecordedWorldFile) -> SqliteStore:
         store.set_halt("recorded world starts halted", at)
     if file.ledger:
         store.add_ledger_entries(list(file.ledger))
-    for order in [*file.orders, *prior_orders(list(file.fills))]:
+    for order in file.orders:
         store.save_order(order)
     for s in file.settlements:
         store.record_settlement(s.market_ticker, s.result, s.settled_at)
@@ -647,26 +609,6 @@ def _paper_executor(
     )
 
 
-def first_equity(file: RecordedWorldFile) -> Decimal:
-    """The equity point a world built from ``file`` writes at the trigger time when the file gives
-    none: its starting account (orders, fills, settlements) marked at the recorded books' bids.
-
-    A recording leaves out an equity series that is just this one point, so a file rebuilt
-    from a file without equity points is written the same way again.
-    """
-    bare = file.model_copy(update={"equity": []})
-    config = recorded_config(bare)
-    clock = SimClock(bare.as_of)
-    store = _seeded_store(bare)
-    try:
-        executor = _paper_executor(
-            bare, store, clock, config, RecordedExchange(bare, clock, config)
-        )
-        return executor.mark(bare.as_of)
-    finally:
-        store.close()
-
-
 def build_recorded_world(
     file: RecordedWorldFile,
     *,
@@ -677,12 +619,10 @@ def build_recorded_world(
     """Every port from one recorded file, with a fresh in-memory store and index.
 
     The store is seeded with the stage, the halt flag, the prior ledger entries,
-    the prior orders (in the file's order, then one filled order per order id of
-    ``fills``), the settlements, the equity points, the critic rejections and a
-    stand-in forecast per entry of ``forecast_times``. Only when the file gives
-    no equity point does it get one at the trigger time, the account marked then
-    (``first_equity``). A file that gives one order id both as an order and in
-    ``fills`` is refused with ``ConfigError``.
+    the prior orders (in the file's order), the settlements, the equity points,
+    the critic rejections and a stand-in forecast per entry of ``forecast_times``.
+    Only when the file gives no equity point does it get one at the trigger time,
+    the account marked then.
 
     The knowledge index holds every document (future ones included: retrieval's
     as-of filter must keep them out), every event, and the resolved ledger
@@ -742,10 +682,8 @@ __all__ = [
     "RecordedWorldFile",
     "ScriptedReview",
     "build_recorded_world",
-    "first_equity",
     "knowledge_arguments",
     "load_recorded_world",
-    "prior_orders",
     "recorded_config",
     "save_recorded_world",
 ]

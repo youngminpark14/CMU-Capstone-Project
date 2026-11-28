@@ -6,8 +6,16 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from pmfa.decision import confidence, origin_rule_met
+from pmfa.config import Config
+from pmfa.decision import origin_rule_met
+from pmfa.forecast.aggregate import confidence as forecast_confidence
 from tests.decision.factories import CONFIG, PRIMARY, PROPERTY, secondary
+
+
+def confidence(coverage: float, origins: int, exhausted: bool, config: Config) -> float:
+    """The confidence the forecast reports, with the full-origin count from ``config``."""
+    full = config.forecast.confidence_full_origins
+    return forecast_confidence(coverage, origins, full_origins=full, budget_exhausted=exhausted)
 
 
 @pytest.mark.parametrize(

@@ -11,11 +11,44 @@ drawn in [architecture.md](architecture.md); scoring decisions are recorded in
 The code is in [src/pmfa/evaluation/](../src/pmfa/evaluation/) and the backtest world in
 [world/backtest.py](../src/pmfa/world/backtest.py).
 
+## Where the project stands
+
+| Area | State |
+| --- | --- |
+| Pipeline and tests | Built end to end. The offline suite of more than 1,400 tests runs with no keys and no network in about two and a half minutes on one machine. Four tests are skipped by default: the three [opt-in smoke tests](#opt-in-smoke-tests), and a test that needs a locally cached embedding model. |
+| Episode scenarios | All sixteen scenarios from the specification pass in [tests/episodes/test_scenarios.py](../tests/episodes/test_scenarios.py). |
+| Offline replay | Five sample episodes replay with one command and match their committed outputs. |
+| Real data | The exchange snapshot (7 settled events, 104 markets) and the evidence corpus (45 Federal Reserve and 10 BLS documents) were built from the live public sources on 2026-11-25. The counts are in the published [manifest](../evaluation/runs/2026-11-26-market-baseline/manifest.json). The whole backtest has been rehearsed on this data with fixed-rule role answers in place of a model ([scripts/rehearse_backtest.py](../scripts/rehearse_backtest.py)), which checks the data and the pipeline around the models but not the model side (the gateway, the cache, the dollar caps): its forecasts mean nothing. |
+| Measured | Of forecasting, only the market's own: its Brier score and calibration error (see [Results](#results)). They are the baseline every later run is compared with. The other measured figures here, such as fill coverage, price staleness and build time, describe the data and the harness, not forecasting. |
+| Not yet done | **No backtest or other evaluation with a model has been run yet.** The published run is the market's alone, made when no Anthropic API key was available. The agent's forecasts have therefore not been measured. |
+| Sample episodes | Hand-made fixtures: the inputs are real, but every model record is fixed text written in advance with an AI coding assistant, not the output of the pipeline's roles. They show the pipeline working, not forecasting skill, and each one says so. |
+| Shadow mode | Exercised for plumbing only, against recorded worlds in [tests/live/](../tests/live/). |
+| Demo executor | Built from Kalshi's documentation and tested against recorded and constructed responses. A read-only check against a live Kalshi demo account passed on 2026-11-27: signed requests, the balance and market data. No order has been placed on the demo exchange yet, and the exchange-side protections have not been exercised ([guardrails](guardrails.md#what-is-not-guaranteed)). |
+| Fees | The fee formula and rounding are tested on hand-computed cases and one worked example from Kalshi's fee-rounding documentation. The fee schedule PDF's own worked examples are not in the tests: the PDF sits behind a browser check. |
+
+Beating the market price is the hypothesis the evaluation tests, not a result of this project.
+
+### Opt-in smoke tests
+
+Three tests call live services and are skipped unless `PMFA_SMOKE=1` is set:
+
+```bash
+PMFA_SMOKE=1 uv run pytest -m smoke
+```
+
+- one read of a series from Kalshi production (public data, no key);
+- a read-only check of the demo exchange: the balance and one market, no order. It needs
+  `KALSHI_DEMO_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` or `KALSHI_DEMO_PRIVATE_KEY_PATH`;
+- one model call through the gateway on the cheapest configured model. It needs
+  `ANTHROPIC_API_KEY`.
+
+A test whose keys are missing is skipped. CI never sets `PMFA_SMOKE`.
+
 ## Method
 
 ### The frozen data
 
-A backtest never calls a live service. It reads two local files, both rebuilt by one command and
+A backtest reads no live market data or evidence; its only network calls are the model calls. It reads two local files, both rebuilt by one command and
 both ignored by git:
 
 - **The exchange snapshot** ([world/snapshot/](../src/pmfa/world/snapshot/)): for each enabled
@@ -26,13 +59,16 @@ both ignored by git:
 - **The evidence corpus** ([world/evidence/corpus.py](../src/pmfa/world/evidence/corpus.py)):
   Federal Reserve statements, minutes and speeches and BLS CPI and Employment Situation releases
   published in the window, each with its source, URL and publish time, plus the release calendar.
-  BLS pages may refuse automated clients; the manual import for a release that is not fetched is
-  described in [bls.py](../src/pmfa/world/evidence/bls.py).
+  BLS pages may refuse automated clients. When a release is not fetched, save it from a browser
+  into `data/manual/` as `bls-cpi-YYYY-MM.html` (the reference month, for example
+  `bls-cpi-2026-10.html` for the October CPI) and run `pmfa data build` again. The steps are in the
+  docstring of [bls.py](../src/pmfa/world/evidence/bls.py).
 
 ```bash
 uv run pmfa data build
 ```
 
+This step reads public Kalshi market data and Federal Reserve and BLS pages and needs no key.
 `pmfa data status` prints both manifests. The build on 2026-11-25 produced 7 events, 104 markets,
 753,670 one-minute and 87,171 hourly candles, and 55 documents (45 from federalreserve.gov, 10 from
 bls.gov). The snapshot build is resumable: a range already stored is skipped, so a second run
@@ -80,6 +116,12 @@ cutoff listed for every default model. A model that may have read about an outco
 offending slot, if any assigned model's listed cutoff (`models.catalog`) falls on or after the window
 start. The manifest records each slot's model, effort and listed cutoff.
 
+The guard checks the assigned models, so a backtest also runs with the server-side refusal fallback
+off, whatever `models.refusal_fallback` says (`backtest_config` in
+[world/backtest.py](../src/pmfa/world/backtest.py)): with it on, a request that one model declines
+would be answered by another model whose cutoff was not checked. A declined request is an unusable
+answer instead.
+
 ### Two schedules
 
 [schedule.py](../src/pmfa/evaluation/schedule.py) builds two deterministic lists from the snapshot
@@ -87,7 +129,7 @@ and the corpus:
 
 | Schedule | What it is | Used for |
 | --- | --- | --- |
-| Scoring points | Every settled event closing in the window, at fixed horizons of 7, 3 and 1 days before close. A point before the window start or before the event opened is skipped, with the reason recorded. | The forecast metrics. Every system forecasts every listed market of the event as of the point. Nothing is settled until the run ends, so no scoring forecast sees the outcome of an earlier one (the critic gets no calibration example from them). The pipeline's episodes still size, gate and fill on one paper account, which never realizes a result during the pass, and its orders are not reported as trades. |
+| Scoring points | Every settled event closing in the window, at fixed horizons of 7, 3 and 1 days before close. A point before the window start or before the event opened is skipped, with the reason recorded. | The forecast metrics. Every system forecasts every listed market of the event as of the point. When the pipeline runs, the outcome resolver writes back, before each point's forecasts, every result the snapshot exchange shows as settled at the point's as-of time: the pipeline's paper account settles those markets, its stops read them, and its Critic is given up to five of the pipeline's earlier forecasts that resolved before the as-of time (counted in whole seconds), same category first. The market and the one-call baselines read no outcome. The pipeline's episodes size, gate and fill on one paper account, and its orders are not reported as trades. |
 | Trading triggers | Every corpus document published in the window, in time order, as a new-document trigger at its publish time. | The trading simulation. The full pipeline runs on one continuous simulated clock, so holdings, the ledger and the bankroll carry forward. The outcome resolver settles what had settled before each episode starts (at its trigger's time, or later after a late start; see "Leakage controls"), and the rest at the end, once the last order's outcome has passed. |
 
 The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trading triggers.
@@ -97,7 +139,7 @@ The 2026-11-25 data gives 21 scoring points (7 events at 3 horizons) and 55 trad
 | System | What it is | What comparing it isolates |
 | --- | --- | --- |
 | `market` | The market's price at the as-of time, from the latest candle at or before it: the YES mid when both sides are quoted, else the last trade clamped into the standing quote (a trade from weeks ago above a no-bid ask scores at the ask). No model. | The baseline. Brier skill is measured against it. |
-| `prompt_only` | One call to the baseline slot (`claude-fable-5-2`, high effort, the strongest model in the pipeline) with the event's rules and markets and no passages. | Against `market`: what the model adds from the question alone. |
+| `prompt_only` | One call to the baseline slot (`claude-opus-5-5`, high effort, the strongest model in the pipeline) with the event's rules and markets and no passages. | Against `market`: what the model adds from the question alone. |
 | `single_pass` | The same call with the passages retrieved as of the as-of time, ranked by similarity, recency and origin. | Against `prompt_only`: what retrieval adds. |
 | `single_pass_similarity` | The same with similarity-only ranking. Not in the default `evaluation.systems`; request it with `--systems`. | Against `single_pass`: what recency- and origin-aware ranking adds. The two retrieve over the same queries, built in code, and differ only in ranking. |
 | `pipeline` | A full episode from a schedule trigger: research, the scenario tree with Generator and Critic, aggregation. | Against `single_pass`: what the tree search and separated roles add. It also uses different models per role (see [pmfa.toml](../pmfa.toml)), so the comparison is of the two designs as configured, not of one factor alone. |
@@ -164,13 +206,13 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
 
 | Control | Where |
 | --- | --- |
-| The as-of rule is inside the ports. The snapshot exchange shows quotes, listings and results only up to the simulated clock; the frozen evidence port returns only documents published at or before the as-of time; every retrieval index filters on publish or resolution time inside the Chroma query, before the nearest-neighbour search. | [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py), [evidence/corpus.py](../src/pmfa/world/evidence/corpus.py), [knowledge/index.py](../src/pmfa/knowledge/index.py) |
+| The as-of rule is inside the ports. The snapshot exchange shows quotes, listings and results only up to the simulated clock; the frozen evidence port returns only documents published at or before the as-of time; every retrieval index filters on publish or resolution time inside the read from Chroma, before any row is ranked. | [snapshot/reader.py](../src/pmfa/world/snapshot/reader.py), [evidence/corpus.py](../src/pmfa/world/evidence/corpus.py), [knowledge/index.py](../src/pmfa/knowledge/index.py) |
 | A canary document dated one day after the window, containing `evaluation.canary_text` and the words every query uses, sits in the evidence index but not in the corpus. A guard on the knowledge port raises `LeakageDetected` the moment any retrieval returns it, and every finished episode is scanned for it. One hit aborts the run and marks it aborted. The manifest's `leakage_checks` counts the retrievals and episodes checked, and the report says so; a market-only run builds no index, so its canary is not exercised. Dated after every as-of time, the canary catches a missing as-of filter, not one that lets documents through hours or days late. | `CanaryGuard`, `assert_episode_clean` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | Every decision reads the order book as of the as-of time; only the paper fill is priced from a later candle, and no role or decision sees that book (see "Fill assumptions and their limits" below). The order's outcome, filled or not, has a time: the end of the candle that priced it, or, when no candle was found, an hour after the arrival time (the end of the hour searched), or the arrival time when the market had closed by then (see "Fill assumptions and their limits"). The fills are stamped with it and the order carries it as `outcome_at`. The paper account's balance and positions are read as of the clock, each equity point values the account as of its own time, and the stops that read orders (fill failures, a changed source) count an order only from its outcome time on. So no decision made before that time sees the order's price or outcome, not even a second episode at the same clock time. | [snapshot/book.py](../src/pmfa/world/snapshot/book.py), [execution/paper.py](../src/pmfa/execution/paper.py), [execution/halt.py](../src/pmfa/execution/halt.py) |
 | In the trading pass an episode starts at the latest of its trigger's time, the clock's time and the latest stored order outcome. An episode that starts later than its trigger runs with that later time as its as-of time, and the report counts these late starts. The scoring pass keeps its fixed as-of times and relies on the time filter of the row above. | `_trading_pass` in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
-| No web access: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and no port holds an HTTP client. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
+| No web access for data: the backtest world's exchange is the snapshot, its evidence is the stored corpus, and neither holds an HTTP client; the only network calls are the model calls through the gateway. | `build_backtest_world` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 | The response cache key includes the as-of time, which every role input carries, so a question asked at a later time is a different entry. | [models/cache.py](../src/pmfa/models/cache.py) |
-| The knowledge-cutoff guard described above. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py) |
+| The knowledge-cutoff guard described above, and no server-side refusal fallback in a backtest, so only the assigned models can answer. | [models/pricing.py](../src/pmfa/models/pricing.py), called first in [evaluation/backtest.py](../src/pmfa/evaluation/backtest.py); `backtest_config` in [world/backtest.py](../src/pmfa/world/backtest.py) |
 
 ### Cost controls
 
@@ -188,7 +230,7 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   so a call that could take the run past the cap is not sent and the cap is a ceiling. When it trips, the run stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
   `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
-  pipeline) when it stopped part way, `not run: ...` when the cap came before its first forecast.
+  pipeline, counting the trigger whose episode the cap ended `error`) when it stopped part way, `not run: ...` when the cap came before its first forecast.
   The report marks the rows of a system scored on fewer points, and shows no P&L when the trading
   pass ran no trigger. `--cap` changes it for one run.
 - **Response cache.** Validated answers are stored on disk by content under `data/cache/models`, so
@@ -256,10 +298,10 @@ is not modelled.
 
 A backtest applies the same stops as the live modes
 ([execution/halt.py](../src/pmfa/execution/halt.py)), and both passes start with an equity point at
-the window's start, the bankroll the stops measure from. The scoring pass settles nothing until the
-run ends, so there the calibration stop has nothing resolved to read and cannot trip, and the daily
-loss stop and the drawdown halt never see a settled result. Two of the stops are likely to trip
-early in the trading pass.
+the window's start, the bankroll the stops measure from. When the pipeline runs, both passes settle
+outcomes as the clock passes them (the scoring pass before each scoring point, the trading pass
+before each episode), so the stops read settled results in both. Two of the stops are likely to
+trip early: the fill-failure stop in the trading pass, and the calibration stop in either pass.
 
 The fill-failure stop trips when more than `oversight.fill_failure_halt_fraction` (0.10) of the last
 `oversight.fill_failure_window` (10) orders did not fill, that is two or more in ten, once ten
@@ -280,8 +322,8 @@ market's own prices on its 63 scored rows have an expected calibration error of 
 0.0559 over all 312 rows (computed from the published `forecasts.csv` with ten equal bins, as
 [metrics.py](../src/pmfa/evaluation/metrics.py) does). An agent whose forecasts of that release are
 no better calibrated than the market's would trip the calibration stop about two weeks after it,
-near the end of July, and the trading simulation would then place no order for the rest of the
-window. This too is an expectation from the data, not an observed result.
+near the end of July, in the scoring pass and in the trading pass alike, and neither would place an
+order for the rest of the window. This too is an expectation from the data, not an observed result.
 
 Nobody resumes a halt in a backtest: once a stop trips, the later episodes of that pass still run,
 and every one that reaches the gate has already forecast and spent model calls, ends `halted` there
@@ -289,11 +331,11 @@ and sends no order. An episode that exits earlier, such as `no_match` or `no_edg
 never reads the halt and keeps that exit; `self_halts` in `metrics.json` counts how many ended
 halted from then on. The report states each pass's halt under "Exits by reason", and under
 "Simulated trading after fees" says that the trading figures describe the run only up to the halt.
-A halt in the scoring pass does not change the scores, because the forecast is made before the
-gate, and `pmfa backtest --no-trade` runs the scoring pass alone. Setting
-`oversight.fill_failure_window = 0` in the configuration a run reads turns the fill-failure stop
-off; `oversight.calibration_halt_weeks` and `routing.calibration_error_max` are the settings behind
-the calibration stop (the second also decides the auto tier). Whether these stops should apply
+A halt in the scoring pass stops only its orders: each forecast is made before the gate, so every
+scoring point is still forecast and scored. `pmfa backtest --no-trade` runs the scoring pass alone.
+Setting `oversight.fill_failure_window = 0` in the configuration a run reads turns the fill-failure
+stop off; `oversight.calibration_halt_weeks` and `routing.calibration_error_max` are the settings
+behind the calibration stop (the second also decides the auto tier). Whether these stops should apply
 inside a backtest is an open question.
 
 ### What a run writes and what is committed
@@ -316,16 +358,26 @@ reason, and how many episodes ended halted from then on), and, when a trading pa
 `late_starts` (how many trading episodes started later than their trigger, of how many, and the
 longest wait in seconds). `pmfa report RUN_DIR` adds `report.md` and `figures/` from the manifest
 and metrics alone ([report.py](../src/pmfa/evaluation/report.py)). When the scoring pass ran
-pipeline episodes, the report says above its first per-pass table, in "Routing tiers", that nothing
-in that pass is settled until the run ends, so its tiers and its exits after the forecast step say
-little about trading. `--publish NAME` copies `manifest.json`, `forecasts.csv`, `metrics.json`,
-`report.md`, `figures/` and `traces/` to `evaluation/runs/NAME/`, and the published manifest's
-`outputs` lists exactly those files. It refuses a run whose models were supplied by the caller
-(scripted answers in a test, or a rehearsal): it prints `not published: ...`, exits 1 and copies
-nothing to `evaluation/runs/` (the report is still built in the run directory). `trades.csv` and
-`episodes.jsonl` stay in the local run directory. A run made from a working tree with uncommitted
-changes says so in its report, in the published manifest's notes and in a warning when it is
-published: its commit does not hold exactly the code that produced it.
+pipeline episodes, the report says above its first per-pass table, in "Routing tiers", that the
+pass's points follow the calendar and never wait for an earlier order's outcome, so its tiers and
+its exits after the forecast step say little about trading. `--publish NAME` copies `manifest.json`,
+`forecasts.csv`, `metrics.json`, `report.md`, `figures/` and `traces/` to `evaluation/runs/NAME/`,
+and the published manifest's `outputs` lists exactly those files. It refuses a run whose models were
+supplied by the caller (scripted answers in a test, or a rehearsal): it prints `not published: ...`,
+exits 1 and copies nothing to `evaluation/runs/` (the report is still built in the run directory).
+It refuses a dry run, an aborted or unfinished run, and a run directory missing a file of the set
+the same way, so an earlier publication of that name is left as it was.
+`trades.csv` and `episodes.jsonl` stay in the local run directory. With `--scores-only`, the
+per-forecast table and the traces stay there too: they hold exchange prices, which Kalshi's
+Developer Agreement does not allow to be shared without permission
+([Sources and credits](#sources-and-credits)), so only the manifest, the metrics, the report and its
+figures are published, and the published manifest's notes say so. The published metrics leave out
+the parts from which a fill or market price can be worked out (the equity curve, P&L by market and
+by event, and each system's event and markets with the largest share of the error), and the report
+and figures are drawn again from them. The owner chose scores only for
+every run with model forecasts (2026-11-27). A run made from a working tree with uncommitted changes
+says so in its report, in the published manifest's notes and in a warning when it is published: its
+commit does not hold exactly the code that produced it.
 
 ## Results
 
@@ -351,22 +403,31 @@ What these numbers mean:
   definition.
 - The scores are low because most rows are priced near 0 or 1: 185 of 312 prices sat below 0.10 and
   82 above 0.90, mostly far strikes of CPI ladders. Those rows are not all easy. Of the market's
-  summed squared error, 10.7661, the rows below 0.10 carry 0.5%, the 45 rows from 0.10 to 0.90 carry
-  45.6%, and the rows above 0.90 carry 53.9%. Six of those 82 rows carry 53.4% on their own:
-  KXCPIYOY-26JUN-T3.5 and T3.6, priced 0.975 to 0.99 at all three horizons, both resolved NO. The
-  event KXCPIYOY-26JUN carries 69.5% of the error (63 rows), its markets T3.5, T3.6 and T3.7 26.9%,
-  26.5% and 14.2% (three rows each; T3.7 was priced 0.705 to 0.725 and also resolved NO). So the
-  market's score on this sample rests mostly on one release that surprised it. Since most of the
-  market's error sits in a handful of rows of that one event, a system's skill against the market is
-  likely to be decided mostly there. The report shows the split under "Where the error comes from".
+  summed squared error over the 312 rows, 10.7661, the 185 rows priced below 0.10 carry 0.5%, the
+  45 rows from 0.10 to 0.90 carry 45.6%, and the 82 rows above 0.90 carry 53.9%. Six of those 82
+  rows carry 53.4% on their own: KXCPIYOY-26JUN-T3.5 and T3.6, priced 0.975 to 0.99 at all three
+  horizons, both resolved NO. One event, KXCPIYOY-26JUN, carries 69.5% of the error (63 rows), and
+  three of its markets carry 26.9% (T3.5), 26.5% (T3.6) and 14.2% (T3.7), three rows each; T3.7 was
+  priced 0.705 to 0.725 and also resolved NO. So the market's score on this sample rests mostly on
+  one release that surprised it. Since most of the market's error sits in a handful of rows of that
+  one event, a system's skill against the market is likely to be decided mostly there. The report
+  shows the split under
+  [Where the error comes from](../evaluation/runs/2026-11-26-market-baseline/report.md#where-the-error-comes-from).
 - The market sharpens slightly toward the close (0.0376 at 7 days, 0.0329 at 1 day), but the
   intervals overlap almost entirely.
-- Expected calibration error is 0.0559 over all horizons.
+- The market's expected calibration error over all horizons is 0.0559.
 - 226 of 312 prices came from the last trade, because one side of the quote was empty (mostly far
   strikes with no bid). The standing quote was fresh on most rows (median 0.45 hours since it last
   changed); the last trades were older (median 60.5 hours). 18 of those trades lay outside the
   standing one-sided quote and were clamped to it, which moves the pooled Brier score by less than
   0.000001.
+
+The published run is market-only: it built no retrieval index and made no retrieval
+(`leakage_checks` in its [manifest](../evaluation/runs/2026-11-26-market-baseline/manifest.json)),
+so the canary guarded nothing in that run; there the as-of rule applied to the snapshot's price
+reads. The tests exercise the canary, for example
+[tests/evaluation/backtest/test_backtest.py](../tests/evaluation/backtest/test_backtest.py), where a
+canary in a retrieval result aborts the run.
 
 ### Not yet run
 
@@ -402,17 +463,32 @@ uv run python scripts/rehearse_backtest.py
 ```
 
 On the 2026-11-25 data it passed: 105 scoring forecasts (21 points for each of 5 systems), 21
-pipeline episodes in the scoring pass (executed 9, `no_edge` 12) and 55 in the trading pass
-(executed 2, halted 8, `no_edge` 30, `no_match` 15), 2 trading orders (neither filled), and six
-saved traces that all replay and match. The canary checks covered all 103 retrievals and the 76
-finished episodes and found nothing, and no trading episode started late. Its trading pass halted
-itself on the calibration stop on 2026-07-29 ("cpi error above 0.1 for 2 weeks"), and from then on
-8 of 44 trading episodes ended halted. This shows that the pipeline around the models runs end to
-end on the real data and that a stop trips and is reported. It shows nothing about forecasting: its
-answers are fixed rules, so its scores, trades and halt say nothing about how a model would do.
-`pmfa report --publish` refuses a run whose models were supplied by the caller, such as a
-rehearsal: it prints `not published: ...`, exits 1 and copies nothing to `evaluation/runs/` (the
-report is still built in the run directory).
+pipeline episodes in the scoring pass (executed 2, halted 7, `no_edge` 12) and 55 in the trading
+pass (executed 3, halted 10, `no_edge` 27, `no_match` 15), 3 trading orders (none filled), and six
+saved traces that all replay and match. The Critic was given calibration examples in 18 of the 21
+scoring episodes. The canary checks covered all 103 retrievals and the 76 finished episodes and
+found nothing, and no trading episode started late. Both passes halted themselves on the calibration
+stop ("cpi error above 0.1 for 2 weeks"): the scoring pass on 2026-07-28, after which 7 of 16
+scoring episodes ended halted, and the trading pass on 2026-07-29, after which 10 of 44 did. This
+shows that the pipeline around the models runs end to end on the real data and that a stop trips and
+is reported. It shows nothing about forecasting: its answers are fixed rules, so its scores, trades
+and halt say nothing about how a model would do. `pmfa report --publish` refuses a run whose models
+were supplied by the caller, such as a rehearsal: it prints `not published: ...`, exits 1 and copies
+nothing to `evaluation/runs/` (the report is still built in the run directory).
+
+#### The Claude API key
+
+```bash
+export ANTHROPIC_API_KEY=...
+```
+
+Create the key in the [Claude Console](https://platform.claude.com/settings/keys) and select a
+workspace for it there. A key that is not scoped to one workspace is refused unless each request
+names its workspace; for such a key, also set `ANTHROPIC_WORKSPACE_ID`. In a Claude Code cloud
+session a variable named `ANTHROPIC_API_KEY` is not passed to commands: save the key there under
+another name, for example `PMFA_ANTHROPIC_API_KEY`, and name it in `models.api_key_env`.
+
+#### The runs, in order
 
 With `ANTHROPIC_API_KEY` set and the data built, in this order.
 
@@ -495,5 +571,70 @@ uv run pmfa report runs/YYYY-MM-DD-full --publish YYYY-MM-DD-full
 
 `YYYY-MM-DD` is the date the run started; `pmfa backtest` prints the run directory when it finishes.
 Publishing commits the manifest, the per-forecast table, the metrics, the report and figures, and the
-saved traces. The notebook [notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the
-newest published run.
+saved traces; with `--scores-only` it leaves out the per-forecast table, the traces and the
+price-revealing parts of the metrics. The notebook
+[notebooks/evaluation.ipynb](../notebooks/evaluation.ipynb) reads the newest published run: it
+recomputes the scores when the per-forecast table is there, and reads them from `metrics.json` when
+the run was published as scores only.
+
+## Limitations
+
+- **The agent's forecasting has not been measured.** No backtest or other evaluation with a model
+  has been run here; the only forecasting result measured is the market's own (its Brier score and
+  calibration error).
+- **The sample is small.** The window from 2026-07-01 holds 7 settled events in the two followed
+  series. No result on it can separate skill from luck; the harness is the deliverable and its numbers
+  are a pilot.
+- **Many backtest prices are old trades**: 226 of the 312 scored prices used the last trade
+  ([The market baseline](#the-market-baseline-2026-11-26)).
+- **Backtest fills are simulated from candles**, with no order-book depth
+  ([Fill assumptions and their limits](#fill-assumptions-and-their-limits)).
+- **A backtest's trading simulation is likely to halt itself early**, on fill failures or on
+  calibration; the reasons and the numbers are in
+  [Fill assumptions and their limits](#fill-assumptions-and-their-limits).
+- **Sample episodes are hand-made.** Their model records are fixed text written in advance, with an
+  AI coding assistant and with the outcomes known. They are not the output of the pipeline's roles.
+- **Exchange-side protections are documented, not verified.** The subaccount restriction, the
+  funds-transfer block and the order-group breaker have not been exercised against a live demo
+  account.
+- **An injected passage can still distort a probability**, within the caps; roles cannot act on it.
+- **Evidence is official sources only**: Federal Reserve and BLS. No news wires or web search. A
+  generic RSS or Atom feed source exists for the live modes, off by default and secondary only.
+- **Stage demotion runs only in the live modes.** Each pass of the shadow or demo loop drops the
+  stage one step after daily loss stops on two days of the last seven; backtests and the episode
+  pipeline itself do not apply the rule.
+
+## Sources and credits
+
+Evidence text comes from the Board of Governors of the Federal Reserve System
+([federalreserve.gov](https://www.federalreserve.gov/disclaimer.htm)) and the U.S. Bureau of Labor
+Statistics ([bls.gov](https://www.bls.gov/bls/linksite.htm)). Both agencies place their text in the
+public domain and ask to be credited as the source; this project credits them here and in the
+README, and each example's README names its sources and URLs. Market data comes from Kalshi's
+public API. The exchange data committed here is: the examples' `world.json` files (one event and a
+handful of markets per example, one book level per side, no candle series), some of whose prices the
+`expected/` outputs repeat; the test fixtures under
+[tests/world/kalshi/fixtures/](../tests/world/kalshi/fixtures/) whose `_source` says they were
+recorded, API responses cut down to a few items each (the four candle files hold two to seven
+candles each), and the events under [tests/forecast/fixtures/](../tests/forecast/fixtures/), cut
+down to a few markets each; and the published run's `forecasts.csv` (312 rows: the market price of
+104 markets in 7 events at three horizons, each with its outcome), `manifest.json`, which names the
+12 events the snapshot builder did not store, with their close times, and `metrics.json`,
+`report.md` and `figures/`, which summarize those rows (scores by horizon, sample sizes by event and
+market, reliability, where the error comes from) and draw them as Brier scores by horizon, a
+reliability diagram and an equity curve, which is empty because the run did not trade. The fixtures
+whose `_source` says CONSTRUCTED were built by hand from Kalshi's API documentation and hold no
+recorded exchange data. The snapshot with its candle series and the corpus are not committed: they
+are rebuilt locally and ignored by git. The one synthetic story in `single-origin-syndicated` uses
+made-up outlets on reserved `.example` domains.
+
+**The exchange data here is not cleared for reuse.** Kalshi's API documentation says that using the
+API binds the user to its [Developer Agreement](https://kalshi.com/developer-agreement). The copy
+read for this project on 2026-11-27 (v1.1, from Kalshi's public documents; the linked page refused
+an automated request, so check it for a newer version) limits use of the API to "facilitating a
+members own trading on the Exchange". It prohibits "collecting, caching, aggregating, or storing
+data or content accessed via the API except for purposes of facilitating your own trading on
+Kalshi", and says "You may not share such data or content with third parties in any manner without
+prior written authorization from Kalshi." No authorization has been asked for or given for this
+project. Whether the committed exchange data and the local snapshot may be kept is therefore an
+open question that only Kalshi can settle; until it is settled, do not reuse that data.

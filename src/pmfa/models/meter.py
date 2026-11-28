@@ -32,13 +32,17 @@ from pmfa.records.episode import Usage
 
 
 def add_usage(a: Usage, b: Usage) -> Usage:
-    """The sum of two usages."""
+    """The sum of two usages.
+
+    Seconds are kept to the millisecond, the unit a cassette stores, so a replay
+    of recorded calls adds up to the number the live calls did.
+    """
     return Usage(
         calls=a.calls + b.calls,
         input_tokens=a.input_tokens + b.input_tokens,
         output_tokens=a.output_tokens + b.output_tokens,
         cost_usd=a.cost_usd + b.cost_usd,
-        seconds=a.seconds + b.seconds,
+        seconds=round(a.seconds + b.seconds, 3),
     )
 
 

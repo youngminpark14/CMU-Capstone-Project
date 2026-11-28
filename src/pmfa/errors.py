@@ -27,6 +27,13 @@ class ModelOutputError(PmfaError):
     or the model refused. The episode exits ``error`` and places no order."""
 
 
+class ModelCallFailed(ModelOutputError):
+    """The API client raised (a timeout or a server error, after its own retries).
+
+    It is a ``ModelOutputError``, so the episode exits ``error`` and the run goes on.
+    """
+
+
 class CassetteMiss(PmfaError):
     """Replay asked for a model call that the cassette does not hold, or with a
     different input than was recorded. The replay is not faithful, so it stops."""
@@ -42,7 +49,3 @@ class ExchangeError(PmfaError):
 
 class NotFound(PmfaError):
     """A requested series, event, market, document, or record does not exist."""
-
-
-class ReadOnlyExchange(PmfaError):
-    """An order was attempted through an adapter that cannot place orders."""

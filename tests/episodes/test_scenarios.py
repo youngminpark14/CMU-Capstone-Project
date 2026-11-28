@@ -179,9 +179,12 @@ def test_05_every_first_level_scenario_failing_the_rules_rematches_once_then_rul
     models = world.models
     matches = models.calls_for(RoleTask.MATCH)
     assert len(matches) == 2  # one re-match, no more
-    second = matches[1].payload
-    assert isinstance(second, MatchInput)
-    assert FED not in {c.event_ticker for c in second.candidates}
+    first, second = matches[0].payload, matches[1].payload
+    assert isinstance(first, MatchInput) and isinstance(second, MatchInput)
+    # Both meetings are open, and a series offers one candidate: its next event to close.
+    assert [c.event_ticker for c in first.candidates] == [FED]
+    # The re-match leaves the excluded event out, so the series offers the one after it.
+    assert [c.event_ticker for c in second.candidates] == [FED_JAN]
     assert record.event_ticker == FED_JAN
     assert record.forecast is None and orders(world) == []
 
@@ -1290,21 +1293,23 @@ def test_an_exchange_error_after_the_order_was_accepted_records_the_order_found_
     assert ledger_traded(world, C25)
 
 
-def test_an_exchange_error_while_sending_with_no_order_found_ends_in_error_and_is_recorded():
+def test_an_exchange_error_while_sending_with_no_order_found_waits_with_the_outcome_unknown():
     world = spied_world(fed_file(), lambda w: FlakyExchange(w.executor, exchange_side(w)))
     with EpisodeController(world) as controller:
         record = controller.run(world.file.trigger)
-        again = controller.run(world.file.trigger)
-    check_trace(record)
-    assert record.exit is Exit.ERROR and record.status is EpisodeStatus.DONE
-    intent = world.executor.placed[0]
-    assert "503" in record.exit_detail and intent.client_order_id in record.exit_detail
-    assert again == record and len(world.executor.placed) == 1
-    # The outcome is unknown, so nothing may say the order was refused, filled or never
-    # placed: the proposal keeps its approval and no order is stored under the episode.
-    [(_, status)] = world.store.list_proposals()
-    assert status is ProposalStatus.APPROVED
-    assert world.store.list_orders(episode_id=record.episode_id) == []
+        check_trace(record)
+        assert record.exit is None and record.status is EpisodeStatus.OUTCOME_UNKNOWN
+        assert world.store.get_episode(record.episode_id) == record
+        intent = world.executor.placed[0]
+        detail = record.trace[-1].data["detail"]
+        assert "503" in detail and intent.client_order_id in detail
+        # The outcome is unknown, so nothing may say the order was refused, filled or never
+        # placed: the proposal waits in doubt and no order is stored under the episode.
+        [(_, status)] = world.store.list_proposals()
+        assert status is ProposalStatus.OUTCOME_UNKNOWN
+        assert world.store.list_orders(episode_id=record.episode_id) == []
+        controller.run(world.file.trigger)  # the same trigger again only asks again
+    assert len(world.executor.placed) == 1
 
 
 def ledger_traded(world, ticker) -> bool:

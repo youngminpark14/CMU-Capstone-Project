@@ -254,7 +254,7 @@ LEAKAGE_CONTROLS = [
     "The as-of rule is inside the ports: the snapshot exchange shows quotes, listings and "
     "results only up to the simulated clock, the frozen evidence port returns only documents "
     "published at or before the as-of time, and every retrieval index filters on publish or "
-    "resolution time inside the Chroma query, before the nearest-neighbour search.",
+    "resolution time inside the read from Chroma, before any row is ranked.",
     "A canary document dated one day after the end of the window, containing the configured "
     "canary text and the words every query uses, sits in the evidence index (not in the "
     "corpus). Every retrieval result and every finished episode is checked for it; one hit "
@@ -271,11 +271,22 @@ LEAKAGE_CONTROLS = [
     "time, so an episode can start later than its trigger, with that later time as its as-of "
     "time; the report counts these late starts. The scoring pass keeps its fixed as-of times "
     "and relies on that time filter.",
-    "No web access: the exchange is the frozen snapshot, the evidence is the stored corpus, "
-    "and no port in the backtest world holds an HTTP client.",
+    "When the pipeline runs, the outcome resolver runs before each scoring point and each "
+    "trading episode and writes back every result the snapshot exchange shows as settled at "
+    "that as-of time; nothing settled after it is read. The paper account settles those "
+    "markets and the stops read them. The critic is given up to retrieval.ledger_k of the "
+    "pipeline's earlier forecasts that resolved before the as-of time, same category first, "
+    "and the calibration stop counts the entries resolved before it. The ledger index "
+    "compares whole seconds, so a result settled in the last second before an as-of time, or "
+    "at it, reaches the paper account then and the critic only at a later as-of time. The "
+    "market and the one-call baselines read no outcome.",
+    "No web access for data: the exchange is the frozen snapshot, the evidence is the stored "
+    "corpus, and neither holds an HTTP client; the only network calls are the model calls "
+    "through the gateway.",
     "The response cache key includes the as-of time, which is part of every role input.",
     "The run refuses to start if any assigned model's listed knowledge cutoff falls on or "
-    "after the window start.",
+    "after the window start. The server-side refusal fallback is off in a backtest, so no "
+    "model other than the assigned ones can answer.",
 ]
 
 COST_CONTROLS = [

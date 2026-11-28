@@ -212,11 +212,13 @@ def continue_with(then: str, controller, world, paused):
         return controller.resume(paused.episode_id, rejection(paused, world))
     if then in ("expire", "expire_late"):
         return controller.expire(paused.episode_id)
+    if then == "reconcile":  # a person names the episode: pmfa reconcile --episode
+        return controller.reconcile(paused.episode_id)
     assert then == "run"
     return controller.run(world.file.trigger)
 
 
-CONTINUATIONS = ["approve", "reject", "expire", "expire_late", "run"]
+CONTINUATIONS = ["approve", "reject", "expire", "expire_late", "run", "reconcile"]
 
 
 @pytest.mark.parametrize("then", CONTINUATIONS)
@@ -233,7 +235,8 @@ def test_a_continued_episode_that_died_before_sending_sends_nothing(then):
         again = controller.resume(paused.episode_id, approval(paused, world))
     check_trace(record)
     assert world.executor.calls == 1  # the attempt that died; the continuation placed nothing
-    assert record.exit is Exit.ERROR and "before the order was sent" in record.exit_detail
+    assert record.exit is Exit.ERROR and "the exchange lists no order" in record.exit_detail
+    assert "before the order was sent" not in record.exit_detail  # it may have been sent and lost
     assert record.status is EpisodeStatus.DONE and again == record
     assert world.store.list_orders() == [] and record.orders == []
     assert world.store.get_proposal(paused.proposal.proposal_id)[1] is ProposalStatus.CANCELLED
@@ -309,16 +312,27 @@ def test_a_continuation_finds_an_order_only_the_exchange_holds_and_sends_no_othe
     assert order == world.executor.exchange.store.list_orders()[0] and record.orders == [order]
 
 
-def test_a_continuation_whose_order_lookup_fails_sends_nothing_and_says_the_outcome_is_unknown():
+def test_a_continuation_whose_order_lookup_fails_sends_nothing_and_waits_with_the_outcome_unknown():
     world = exchange_world(lookup_fails=True)
     controller, paused = approved_then_died(world)
     with controller:
         advance(world, 60)
         record = controller.resume(paused.episode_id, approval(paused, world))
+        check_trace(record)
+        assert world.executor.calls == 1 and record.exit is None
+        assert record.status is EpisodeStatus.OUTCOME_UNKNOWN
+        assert "503" in record.trace[-1].data["detail"]
+        assert world.store.list_orders() == []
+
+        # The exchange answers again: the order it holds is recorded, and none is sent.
+        world.executor.lookup_fails = False
+        advance(world, 300)
+        record = controller.reconcile(paused.episode_id)
     check_trace(record)
-    assert world.executor.calls == 1 and record.exit is Exit.ERROR
-    assert "unknown" in record.exit_detail and "503" in record.exit_detail
-    assert world.store.list_orders() == []
+    assert world.executor.calls == 1 and record.exit is Exit.EXECUTED
+    [order] = world.store.list_orders()
+    assert order == world.executor.exchange.store.list_orders()[0] and record.orders == [order]
+    assert world.store.get_proposal(paused.proposal.proposal_id)[1] is ProposalStatus.EXECUTED
 
 
 @pytest.mark.parametrize("then", ["approve", "run"])
@@ -331,10 +345,10 @@ def test_a_failed_lookup_does_not_cancel_the_proposal_as_never_sent(then):
         advance(world, 60)
         record = continue_with(then, controller, world, paused)
     check_trace(record)
-    assert world.executor.calls == 1 and record.exit is Exit.ERROR
-    assert "unknown" in record.exit_detail and "nothing was placed" not in record.exit_detail
+    assert world.executor.calls == 1 and record.exit is None
+    assert record.status is EpisodeStatus.OUTCOME_UNKNOWN
     status = world.store.get_proposal(paused.proposal.proposal_id)[1]
-    assert status is not ProposalStatus.CANCELLED
+    assert status is ProposalStatus.OUTCOME_UNKNOWN
     assert world.store.list_orders() == []
 
 
@@ -421,8 +435,23 @@ def test_running_a_trigger_again_continues_an_episode_that_died_at_execute(after
 def test_the_graph_is_drawn_as_mermaid():
     text = mermaid()
     assert text.startswith("---") or "graph" in text
-    for node in ("match", "research", "forecast_step", "size", "gate", "route", "pause", "record"):
+    nodes = ("match", "research", "forecast_step", "size", "gate", "route", "pause", "record")
+    for node in (*nodes, "hold", "reconcile"):
         assert node in text
+
+
+def test_once_an_order_may_be_on_the_exchange_no_path_leads_back_to_sending():
+    """From ``hold`` and ``reconcile`` the graph can only wait again or record the end."""
+    from pmfa.episode.graph import EDGES
+
+    reachable, frontier = set(), ["hold"]
+    while frontier:
+        node = frontier.pop()
+        for nxt in EDGES.get(node, ()):
+            if nxt not in reachable:
+                reachable.add(nxt)
+                frontier.append(nxt)
+    assert reachable == {"hold", "reconcile", "record", "end"}
 
 
 def test_importing_the_controller_does_not_load_langgraph_or_mcp():

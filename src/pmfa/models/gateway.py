@@ -5,9 +5,10 @@ Role and input record in, validated output record out. The gateway owns:
 - the map from ``ModelSlot`` to model, effort, and max_tokens (``config.models.slots``;
   a task's default slot comes from ``records.roles.TASKS`` unless the caller names one);
 - validation against the task's output record, with one repair retry that shows
-  the model its unusable answer and what was wrong with it; a refusal or a
-  truncated answer gets the same single retry; a second failure raises
-  ``ModelOutputError``;
+  the model its unusable answer and what was wrong with it; a refusal, a
+  truncated answer, or an answer that fails its input check (``INPUT_CHECKS``:
+  a ``score`` answer must score each scenario asked for exactly once) gets the
+  same single retry; a second failure raises ``ModelOutputError``;
 - the meters and hard caps (``pmfa.models.meter``), checked before every call.
   A call's cost is known only once it returns, so each live call (the repair
   retry included) is checked at its worst case: ``input_token_bound`` of the
@@ -19,7 +20,8 @@ Role and input record in, validated output record out. The gateway owns:
   already spent. When the seconds cap is enforced (live modes), each call's
   timeout is the configured ``request_timeout_seconds`` or the episode's seconds
   left, whichever is shorter;
-- the content-addressed response cache (``pmfa.models.cache``);
+- the content-addressed response cache (``pmfa.models.cache``); a cached answer
+  that fails its input check is treated as not cached;
 - cassette recording (``pmfa.models.cassette``).
 
 Roles are run by a ``RoleRunner`` (CrewAI or direct), which sends the prompt to
@@ -38,7 +40,13 @@ from typing import Any
 from pydantic import ValidationError
 
 from pmfa.config import Config, ModelAssignment
-from pmfa.errors import BudgetExhausted, ModelOutputError, RunBudgetExhausted
+from pmfa.errors import (
+    BudgetExhausted,
+    ModelCallFailed,
+    ModelOutputError,
+    PmfaError,
+    RunBudgetExhausted,
+)
 from pmfa.models.backend import AnthropicBackend, Backend, Completion
 from pmfa.models.cache import CachedAnswer, ResponseCache, cache_key
 from pmfa.models.cassette import CassetteRecorder, EntryUsage
@@ -48,7 +56,7 @@ from pmfa.models.roles.prompts import Prompt, Repair, render
 from pmfa.models.roles.runner import RoleRunner, make_runner
 from pmfa.records.base import Record
 from pmfa.records.episode import CallMeta, ModelResult, Usage
-from pmfa.records.roles import TASKS, ModelSlot, RoleTask
+from pmfa.records.roles import TASKS, ModelSlot, RoleTask, ScoreInput, ScoreOutput
 
 _MAX_PROBLEM_CHARS = 2000
 
@@ -70,8 +78,30 @@ def input_token_bound(prompt: Prompt, output_type: type[Record]) -> int:
     return len(text.encode("utf-8")) + INPUT_OVERHEAD_TOKENS
 
 
-def _problem(completion: Completion, output_type: type[Record]) -> tuple[Record | None, str]:
-    """The validated record, or None and a plain description of what was wrong."""
+def _one_score_each(payload: ScoreInput, output: ScoreOutput) -> str:
+    """Why a score answer does not score each scenario asked for exactly once, or ""."""
+    asked = [s.scenario_id for s in payload.scenarios]
+    answered = [s.scenario_id for s in output.scores]
+    if sorted(answered) == sorted(asked):
+        return ""
+    return (
+        f"the answer must hold exactly one score for each scenario: asked for {asked}, "
+        f"answered {answered}"
+    )
+
+
+INPUT_CHECKS: dict[RoleTask, Callable[[Any, Any], str]] = {RoleTask.SCORE: _one_score_each}
+"""Checks a schema cannot state because they need the input: (input, output) -> problem or ""."""
+
+
+def _input_problem(task: RoleTask, payload: Record, output: Record) -> str:
+    check = INPUT_CHECKS.get(task)
+    return check(payload, output) if check is not None else ""
+
+
+def _problem(completion: Completion, task: RoleTask, payload: Record) -> tuple[Record | None, str]:
+    """The usable record, or None and a plain description of what was wrong."""
+    output_type = TASKS[task].output_type
     if completion.stop_reason == "refusal":
         return None, "the model declined to answer (stop_reason refusal)"
     if completion.stop_reason == "max_tokens":
@@ -80,12 +110,15 @@ def _problem(completion: Completion, output_type: type[Record]) -> tuple[Record 
             "answer more briefly"
         )
     if isinstance(completion.parsed, output_type):
-        return completion.parsed, ""
-    try:
-        return output_type.model_validate_json(completion.raw_text), ""
-    except ValidationError as exc:
-        text = f"the answer did not validate as {output_type.__name__}: {exc}"
-        return None, text[:_MAX_PROBLEM_CHARS]
+        output: Record = completion.parsed
+    else:
+        try:
+            output = output_type.model_validate_json(completion.raw_text)
+        except ValidationError as exc:
+            text = f"the answer did not validate as {output_type.__name__}: {exc}"
+            return None, text[:_MAX_PROBLEM_CHARS]
+    problem = _input_problem(task, payload, output)
+    return (None, problem[:_MAX_PROBLEM_CHARS]) if problem else (output, "")
 
 
 class Gateway:
@@ -148,13 +181,23 @@ class Gateway:
             output_type=spec.output_type,
         )
         hit = self.cache.get(key) if self.cache is not None else None
+        if hit is not None and _input_problem(
+            task, payload, spec.output_type.model_validate(hit.output)
+        ):
+            hit = None  # stored before the input check existed: ask the model again
         if hit is not None:
             self._check(episode_id, entry)  # nothing new to pay: what is spent decides
             return self._from_cache(hit, episode_id, entry)
 
         self._check(episode_id, entry, worst=self._worst_case(spec.output_type, assignment, prompt))
-        attempts = [self._attempt(task, payload, assignment, episode_id, None)]
-        output, problem = _problem(attempts[0][0], spec.output_type)
+        before = self.meter.episode(episode_id)
+        attempts: list[tuple[Completion, float]] = []
+        try:
+            attempts.append(self._attempt(task, payload, assignment, episode_id, None))
+        except ModelCallFailed as exc:
+            self._record_failed(episode_id, entry, before, exc)
+            raise
+        output, problem = _problem(attempts[0][0], task, payload)
         if output is None:
             first_problem = problem
             repair = Repair(previous_answer=attempts[0][0].raw_text, problem=problem)
@@ -165,8 +208,12 @@ class Gateway:
                 attempts,
                 worst=self._worst_case(spec.output_type, assignment, retry),
             )
-            attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
-            output, problem = _problem(attempts[1][0], spec.output_type)
+            try:
+                attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
+            except ModelCallFailed as exc:
+                self._record_failed(episode_id, entry, before, exc)
+                raise
+            output, problem = _problem(attempts[1][0], task, payload)
             if output is None:
                 message = (
                     f"{task.value}: no usable answer after one repair retry. "
@@ -244,10 +291,15 @@ class Gateway:
                 timeout=timeout,
                 repair=repair,
             )
-        except BaseException:
-            self.meter.add(episode_id, usage_of(seconds=max(0.0, self._timer() - started)))
+        except BaseException as exc:
+            self.meter.add(episode_id, usage_of(seconds=self._elapsed(started)))
+            if isinstance(exc, Exception) and not isinstance(exc, PmfaError):
+                # A timeout or server error from the API client ends the episode, not the run.
+                raise ModelCallFailed(
+                    f"{task.value}: the model call failed: {type(exc).__name__}: {exc}"
+                ) from exc
             raise
-        seconds = max(0.0, self._timer() - started)
+        seconds = self._elapsed(started)
         self.meter.add(
             episode_id,
             usage_of(
@@ -258,6 +310,14 @@ class Gateway:
             ),
         )
         return completion, seconds
+
+    def _elapsed(self, started: float) -> float:
+        """Seconds since ``started``, to the millisecond.
+
+        A cassette and the cache store a call's latency in whole milliseconds. Measuring
+        each attempt in that unit makes a replay charge exactly what the live call did.
+        """
+        return round(max(0.0, self._timer() - started), 3)
 
     def _worst_case(
         self, output_type: type[Record], assignment: ModelAssignment, prompt: Prompt
@@ -372,5 +432,34 @@ class Gateway:
             calls=len(attempts),
         )
 
+    def _record_failed(
+        self, episode_id: str, entry: dict[str, Any], before: Usage, error: ModelCallFailed
+    ) -> None:
+        """Put a call the API client failed on the cassette, with what it was charged.
 
-__all__ = ["INPUT_OVERHEAD_TOKENS", "Gateway", "input_token_bound"]
+        A replay then raises the same error at the same place and charges the same
+        usage: the attempts made, the tokens of an earlier attempt, and the seconds.
+        """
+        if self.recorder is None:
+            return
+        after = self.meter.episode(episode_id)
+        self.recorder.record(
+            episode_id,
+            **entry,
+            served_model="",
+            source="live",
+            output=None,
+            outcome="model_output_error",
+            error=str(error),
+            usage=EntryUsage(
+                input_tokens=after.input_tokens - before.input_tokens,
+                output_tokens=after.output_tokens - before.output_tokens,
+                cost_usd=after.cost_usd - before.cost_usd,
+            ),
+            latency_ms=round((after.seconds - before.seconds) * 1000),
+            repaired=False,
+            calls=after.calls - before.calls,
+        )
+
+
+__all__ = ["INPUT_CHECKS", "INPUT_OVERHEAD_TOKENS", "Gateway", "input_token_bound"]

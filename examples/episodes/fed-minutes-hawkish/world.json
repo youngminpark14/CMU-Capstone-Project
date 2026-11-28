@@ -303,6 +303,12 @@
       "period": "2026-09"
     }
   ],
+  "equity": [
+    {
+      "at": "2026-10-07T18:05:00Z",
+      "equity": "1000"
+    }
+  ],
   "bankroll": "1000",
   "stage": "approval",
   "review": {

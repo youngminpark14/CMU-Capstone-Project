@@ -166,7 +166,7 @@ def test_a_self_halt_is_stated_for_each_pass(full_run: FullRun, tmp_path: Path) 
             assert value not in parts[name], (name, value)
     trading_part, scoring_part = parts["trading"], parts["scoring"]
     assert "no further orders" in trading_part and "no further orders" not in scoring_part
-    assert "scores are not affected" in scoring_part
+    assert "every scoring point is still forecast and scored" in scoring_part
     assert TRADING_HALT["first_started_at"] in parts["money"]
     assert SCORING_HALT["first_started_at"] not in parts["money"]
 
@@ -226,9 +226,34 @@ def test_late_starts_are_counted_when_the_trading_pass_sent_no_order(
 
     _edit(run_dir, no_orders)
     priced = _section(build_report(run_dir).read_text(), "How each fill was priced")
-    assert "No order was placed" in priced
+    assert "The trading pass placed no order." in priced
     assert "1 of the 4 trading episode(s) started later than their trigger's time" in priced
     assert "90.0 minutes" in priced
+
+
+def test_a_run_without_the_trading_pass_does_not_say_that_no_order_was_placed(
+    full_run: FullRun, tmp_path: Path
+) -> None:
+    """Its scoring pass placed orders; the fill-pricing section counts the trading pass only."""
+    from pmfa.evaluation.manifest import read_manifest, write_manifest
+    from pmfa.evaluation.report import build_report
+
+    run_dir = _copy(full_run, tmp_path)
+    full = _section(build_report(run_dir).read_text(), "How each fill was priced")
+    assert "The trading pass's orders" in full and "| Book priced from |" in full
+
+    manifest = read_manifest(run_dir)
+    write_manifest(
+        manifest.model_copy(update={"plan": manifest.plan.model_copy(update={"trade": False})}),
+        run_dir,
+    )
+    _edit(run_dir, lambda m: m.update(fill_pricing={"orders": 0, "stale_price_exits": 0}))
+    text = build_report(run_dir).read_text()
+    priced = " ".join(_section(text, "How each fill was priced").split())
+    assert "No order was placed" not in text
+    assert "the trading simulation, which did not run in this run" in priced
+    assert "(the run was made with --no-trade)" in priced
+    assert "The scoring pass's orders are not trading results" in priced
 
 
 def test_a_run_without_the_new_blocks_still_reports(full_run: FullRun, tmp_path: Path) -> None:
