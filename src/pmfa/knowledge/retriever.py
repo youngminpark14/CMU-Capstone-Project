@@ -285,6 +285,7 @@ class ChromaKnowledge:
             if not event.markets:
                 raise ValueError(f"event {event.event_ticker} has no markets to index")
         latest = list({e.event_ticker: e for e in events}.values())
+        closes = {e.event_ticker: floor_ts(e.close_time) for e in latest}
         rows = [row for e in latest for row in listings(e)]
         texts = [event_text(listed) for _, _, _, listed in rows]
         self.index.upsert(
@@ -298,6 +299,7 @@ class ChromaKnowledge:
                     "category": listed.category,
                     "open_ts": start,
                     "close_ts": until,
+                    "event_close_ts": closes[listed.event_ticker],
                 }
                 for _, start, until, listed in rows
             ],

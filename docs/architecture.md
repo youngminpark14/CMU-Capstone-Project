@@ -75,7 +75,7 @@ What each step does, in the code's terms:
 | Step | Who | What happens | Exits |
 | --- | --- | --- | --- |
 | trigger | code | Saves a new episode record. The trigger's time becomes the *as-of time* (in a backtest's trading pass, an episode that starts late runs on the trigger re-dated to its start). | |
-| match | Monitor, or code | A *new-document* trigger: code searches the events index for the top 5 open events, and the Monitor picks one or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
+| match | Monitor, or code | A *new-document* trigger: code searches the events index and offers the Monitor at most 5 open events, one per series: its next event to close ([decision 0044](decisions/0044-match-next-event-of-a-series.md)). The Monitor picks the one the document is evidence for, or none. The index holds one row per listing change of an event, so a ladder strike that opens later is not shown before it opens. A *price-move* or *schedule* trigger already names its event, so no model is called. | `no_match` |
 | research | Researcher, then code | The Researcher writes one query for and one against. Code retrieves the top 8 passages as of the as-of time; for a price-move trigger, only passages published after the event's last forecast count, so a price move with no new evidence since then ends in `no_evidence`. The Researcher drops passages that do not bear on the event. Code resolves *origins*, merging documents whose text is a copy of another's, and applies the origin rule. | `no_evidence`, `insufficient_origins` |
 | forecast | Generator, Critic, code | Reads every open market's book and keeps each market's YES mid as the forecast-time price: the midpoint of the YES bid and ask when both sides are quoted, else the last trade. Beam search over a scenario tree ([below](#the-scenario-tree-search)). | `rules_mismatch`, `low_coverage` |
 | size | code | Picks the one market and side with the best fee-adjusted *edge* that meets the liquidity floor, sizes it at quarter-Kelly times confidence, and proposes the difference from the current holding. | `no_edge` |
@@ -491,7 +491,7 @@ The trace of the example above:
 
 ```text
  1 trigger  observation  new_document trigger trig-fomc-minutes-2026-10 at 2026-11-20T15:00:00+00:00 (document fomc-minutes-2026-10)
- 2 match    action       search the events index for the top 5 events as of 2026-11-20T15:00:00+00:00
+ 2 match    action       search the events index for the next event of each series, at most 5, as of 2026-11-20T15:00:00+00:00
  3 match    observation  1 candidate event(s): KXFEDDECISION-26DEC
  4 match    thought      The trigger bears on KXFEDDECISION-26DEC.
  5 match    observation  matched event KXFEDDECISION-26DEC

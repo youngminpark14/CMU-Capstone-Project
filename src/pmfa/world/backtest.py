@@ -55,12 +55,14 @@ if TYPE_CHECKING:
 INDEX_MARKER = "pmfa_backtest_index.json"
 """Written into a finished index directory; an index without it is rebuilt."""
 
-INDEX_FORMAT = 2
+INDEX_FORMAT = 3
 """The shape of the rows the index stores, part of the index key.
 
 Bump it whenever the stored rows change shape, so an index cached by older code
 is rebuilt rather than reused. 2: the events index holds one row per listing
-change of an event instead of one row with its full strike list.
+change of an event instead of one row with its full strike list. 3: each of
+those rows carries the event's own close time, which the events search uses to
+offer the next event of each series.
 """
 
 CANARY_SOURCE = "canary.invalid"

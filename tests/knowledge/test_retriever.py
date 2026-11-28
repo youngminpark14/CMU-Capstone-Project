@@ -379,8 +379,59 @@ def test_only_events_open_at_as_of_are_returned(knowledge: ChromaKnowledge) -> N
     for query in ["Fed decision in October 2026", "Fed decision in January 2027", "Fed"]:
         hits = knowledge.search_events(query, as_of=AS_OF)
         assert [h.event_ticker for h in hits] == ["KXFEDDECISION-26DEC"]
-    later = knowledge.search_events("Fed decision", as_of=AS_OF + timedelta(days=1))
-    assert {h.event_ticker for h in later} == {"KXFEDDECISION-26DEC", "KXFEDDECISION-27JAN"}
+    # A day later the January meeting is open too; the series' next event still comes first.
+    later = knowledge.search_events("Fed decision in January 2027", as_of=AS_OF + timedelta(days=1))
+    assert [h.event_ticker for h in later] == ["KXFEDDECISION-26DEC", "KXFEDDECISION-27JAN"]
+    after_december = knowledge.search_events(
+        "Fed decision", as_of=datetime(2026, 12, 10, tzinfo=UTC)
+    )
+    assert [h.event_ticker for h in after_december] == ["KXFEDDECISION-27JAN"]
+
+
+def test_the_events_search_lists_the_next_event_of_each_series_first(
+    knowledge: ChromaKnowledge,
+) -> None:
+    """Several months of one series are listed at once; they must not crowd out another series.
+
+    In the first paid run four CPI months took four of five places, so the
+    nearest Fed meeting was not among the candidates for a Fed speech.
+    """
+    opened = datetime(2026, 6, 1, tzinfo=UTC)
+
+    def cpi(month: str, closes: datetime) -> Event:
+        title = f"CPI inflation for the year ending in {month}"
+        e = event(f"KXCPIYOY-26{month}", title, opened, closes)
+        return e.model_copy(update={"series_ticker": "KXCPIYOY", "category": "cpi"})
+
+    def fed(month: str, closes: datetime) -> Event:
+        return event(f"KXFEDDECISION-26{month}", f"Fed decision in {month} 2026", opened, closes)
+
+    events = [
+        cpi("SEP", datetime(2026, 10, 14, 12, 29, tzinfo=UTC)),
+        cpi("AUG", datetime(2026, 9, 11, 12, 29, tzinfo=UTC)),
+        cpi("JUL", datetime(2026, 8, 12, 12, 29, tzinfo=UTC)),
+        cpi("JUN", datetime(2026, 7, 14, 12, 29, tzinfo=UTC)),
+        fed("OCT", datetime(2026, 10, 28, 18, tzinfo=UTC)),
+        fed("SEP", datetime(2026, 9, 16, 18, tzinfo=UTC)),
+        fed("JUL", datetime(2026, 7, 29, 18, tzinfo=UTC)),
+    ]
+    assert knowledge.index_events(events) == 7
+    early_july = datetime(2026, 7, 6, 15, tzinfo=UTC)
+    for query in (
+        "CPI inflation for the year ending in SEP",  # most like a later month of one series
+        "Governor speech on the outlook for monetary policy",
+        "Fed decision in OCT 2026",
+    ):
+        hits = [h.event_ticker for h in knowledge.search_events(query, as_of=early_july, k=5)]
+        assert set(hits[:2]) == {"KXCPIYOY-26JUN", "KXFEDDECISION-26JUL"}, query
+        assert set(hits[2:4]) == {"KXCPIYOY-26JUL", "KXFEDDECISION-26SEP"}, query
+        assert hits[4] in {"KXCPIYOY-26AUG", "KXFEDDECISION-26OCT"}, query
+    # Once an event has closed, its series' next event is the one after it.
+    mid_august = [
+        h.event_ticker
+        for h in knowledge.search_events("Fed decision", as_of=datetime(2026, 8, 20, tzinfo=UTC))
+    ]
+    assert mid_august[:2] == ["KXFEDDECISION-26SEP", "KXCPIYOY-26AUG"]
 
 
 def test_the_event_document_lists_only_strikes_open_at_as_of(

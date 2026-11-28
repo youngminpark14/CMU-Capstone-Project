@@ -43,10 +43,10 @@ def _role(name: str, goal: str, who: str) -> RoleSpec:
 ROLES: dict[str, RoleSpec] = {
     "Monitor": _role(
         "Monitor",
-        "Decide which candidate event, if any, a trigger bears on, reading each event's "
-        "rules as written.",
+        "Decide which candidate event, if any, a trigger is evidence for, reading each "
+        "event's rules as written.",
         "You watch news for a desk that forecasts Kalshi event contracts. You read exchange "
-        "rules literally and never guess at a match.",
+        "rules literally: an event is what its rules say, not what its title suggests.",
     ),
     "Researcher": _role(
         "Researcher",
@@ -86,13 +86,19 @@ _DISTRIBUTION = (
 
 INSTRUCTIONS: dict[RoleTask, str] = {
     RoleTask.MATCH: (
-        "Decide whether the trigger bears on exactly one of the candidate events, as each "
+        "Decide which of the candidate events, if any, the trigger bears on, as each "
         "event's rules are written.\n"
+        "A trigger bears on an event when it is evidence about how that event will resolve: "
+        "it could change a careful forecaster's probabilities. It does not have to state the "
+        "figure or the decision the event resolves on. A speech on the policy outlook, the "
+        "minutes of a meeting or a jobs report bears on the next rate decision; one month's "
+        "inflation release bears on the next inflation reading. A document on another "
+        "subject, such as bank supervision or payments, bears on none.\n"
         "Output fields:\n"
-        "- matched: true only if the trigger bears on exactly one candidate; false if it "
-        "bears on none, or if you cannot tell which one.\n"
-        "- event_ticker: the event_ticker of the matched candidate, copied exactly; an "
-        "empty string when matched is false.\n"
+        "- matched: true if the trigger bears on at least one candidate; false if it bears "
+        "on none.\n"
+        "- event_ticker: the event_ticker of the candidate the trigger bears on most "
+        "directly, copied exactly; an empty string when matched is false.\n"
         "- rationale: one or two sentences."
     ),
     RoleTask.PLAN_QUERIES: (

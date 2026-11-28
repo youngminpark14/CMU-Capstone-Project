@@ -573,7 +573,8 @@ class Pipeline:
         self.tracer.action(
             eid,
             "match",
-            f"search the events index for the top {k} events as of {as_of.isoformat()}"
+            f"search the events index for the next event of each series, at most {k}, "
+            f"as of {as_of.isoformat()}"
             + (f", excluding {', '.join(excluded)}" if excluded else ""),
             k=k,
             excluded=excluded,
@@ -581,19 +582,23 @@ class Pipeline:
         hits = world.knowledge.search_events(
             f"{document.title}\n{document.text}", as_of=as_of, k=k + len(excluded)
         )
-        hits = [h for h in hits if h.event_ticker not in excluded][:k]
+        hits = [h for h in hits if h.event_ticker not in excluded]
+        # One candidate per series: its next event to close, which the index lists first.
         briefs: list[EventBrief] = []
+        offered: set[str] = set()
         for hit in hits:
             try:
                 event = world.exchange.get_event(hit.event_ticker)
             except NotFound:
                 continue
-            if self._followed(event) is None:
+            if self._followed(event) is None or event.series_ticker in offered:
                 continue
             try:
                 briefs.append(self._brief(event))
             except OutcomeSpaceError:
                 continue
+            offered.add(event.series_ticker)
+        briefs = briefs[:k]
         self.tracer.observation(
             eid,
             "match",

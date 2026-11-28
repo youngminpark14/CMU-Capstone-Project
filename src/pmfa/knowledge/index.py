@@ -219,7 +219,17 @@ class ChromaIndex:
         return _rows(result)
 
     def query_events(self, vector: np.ndarray, *, as_of: datetime, n: int) -> list[Hit]:
-        """Event listings with ``open_ts <= as_of < close_ts``, nearest first.
+        """Events open at ``as_of``, each series' next event to close before its later ones.
+
+        The listings with ``open_ts <= as_of < close_ts`` are ordered by their
+        place in their series (the event that closes first, then the one after
+        it, and so on), then by similarity to ``vector``, then by row id. So
+        the first hit of each series is its next event. An exchange lists
+        several months or meetings of one series at once, and a document is
+        evidence for the nearest of them first; ranked by similarity alone, the
+        later months of one series crowd the nearest event of another series
+        out of a short list. The events are few, so every current listing is
+        read and ranked here; the time filter is inside the read.
 
         Both bounds compare with the as-of time rounded down. That is still safe
         at the close, because ``close_ts`` is stored rounded down too, and
@@ -227,9 +237,34 @@ class ChromaIndex:
         rounding for both makes back-to-back listings of an event meet without
         a gap or an overlap.
         """
+        if n <= 0:
+            return []
         at = floor_ts(as_of)
         where = _all_of([{"open_ts": {"$lte": at}}, {"close_ts": {"$gt": at}}])
-        return self._query(EVENTS, vector, n, where)
+        rows = _rows(
+            self._collections[EVENTS].get(
+                where=where, include=["metadatas", "documents", "embeddings"]
+            )
+        )
+        query = np.asarray(vector, dtype=np.float64)
+        by_series: dict[str, list[tuple[int, float, Row]]] = {}
+        for row in rows:
+            series = str(row.metadata.get("series_ticker") or row.id)
+            # A row written before the event's own close was stored falls back on its listing's.
+            closes = int(row.metadata.get("event_close_ts", row.metadata["close_ts"]))
+            by_series.setdefault(series, []).append((closes, _cosine(query, row.vector), row))
+        ordered: list[tuple[int, float, str, float, Row]] = []
+        for listed in by_series.values():
+            listed.sort(key=lambda item: (item[0], -round(item[1], _TIE_DECIMALS), item[2].id))
+            ordered.extend(
+                (place, -round(similarity, _TIE_DECIMALS), row.id, similarity, row)
+                for place, (_, similarity, row) in enumerate(listed)
+            )
+        ordered.sort(key=lambda item: item[:3])
+        return [
+            Hit(id=row.id, similarity=similarity, document=row.document, metadata=row.metadata)
+            for _, _, _, similarity, row in ordered[:n]
+        ]
 
     def query_ledger(
         self,

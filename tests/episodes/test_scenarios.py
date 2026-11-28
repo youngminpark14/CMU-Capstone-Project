@@ -179,9 +179,12 @@ def test_05_every_first_level_scenario_failing_the_rules_rematches_once_then_rul
     models = world.models
     matches = models.calls_for(RoleTask.MATCH)
     assert len(matches) == 2  # one re-match, no more
-    second = matches[1].payload
-    assert isinstance(second, MatchInput)
-    assert FED not in {c.event_ticker for c in second.candidates}
+    first, second = matches[0].payload, matches[1].payload
+    assert isinstance(first, MatchInput) and isinstance(second, MatchInput)
+    # Both meetings are open, and a series offers one candidate: its next event to close.
+    assert [c.event_ticker for c in first.candidates] == [FED]
+    # The re-match leaves the excluded event out, so the series offers the one after it.
+    assert [c.event_ticker for c in second.candidates] == [FED_JAN]
     assert record.event_ticker == FED_JAN
     assert record.forecast is None and orders(world) == []
 

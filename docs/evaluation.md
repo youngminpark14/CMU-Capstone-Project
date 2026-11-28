@@ -459,12 +459,12 @@ uv run python scripts/rehearse_backtest.py
 
 On the 2026-11-25 data it passed: 105 scoring forecasts (21 points for each of 5 systems), 21
 pipeline episodes in the scoring pass (executed 2, halted 7, `no_edge` 12) and 55 in the trading
-pass (executed 2, halted 8, `no_edge` 30, `no_match` 15), 2 trading orders (neither filled), and six
+pass (executed 3, halted 10, `no_edge` 27, `no_match` 15), 3 trading orders (none filled), and six
 saved traces that all replay and match. The Critic was given calibration examples in 18 of the 21
 scoring episodes. The canary checks covered all 103 retrievals and the 76 finished episodes and
 found nothing, and no trading episode started late. Both passes halted themselves on the calibration
 stop ("cpi error above 0.1 for 2 weeks"): the scoring pass on 2026-07-28, after which 7 of 16
-scoring episodes ended halted, and the trading pass on 2026-07-29, after which 8 of 44 did. This
+scoring episodes ended halted, and the trading pass on 2026-07-29, after which 10 of 44 did. This
 shows that the pipeline around the models runs end to end on the real data and that a stop trips and
 is reported. It shows nothing about forecasting: its answers are fixed rules, so its scores, trades
 and halt say nothing about how a model would do. `pmfa report --publish` refuses a run whose models

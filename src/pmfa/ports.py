@@ -173,7 +173,7 @@ class Knowledge(Protocol):
     """The three retrieval indexes. ``as_of`` is enforced inside every call."""
 
     def search_events(self, query: str, *, as_of: datetime, k: int = 5) -> list[EventHit]:
-        """Events open at ``as_of``, by cosine similarity to ``query``."""
+        """Events open at ``as_of``: each series' next event to close first, then by similarity."""
         ...
 
     def search_evidence(
