@@ -39,8 +39,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pmfa.config import Config
-from pmfa.examples import ReplayResult, TapeModels, replay, review_policy, run_on_world
+from pmfa.examples import ReplayResult, replay, review_policy, run_on_world
 from pmfa.models import ScriptedModels
+from pmfa.models.cassette import ModelTap
 from pmfa.records.base import Record
 from pmfa.records.decision import ReasonCode, ReviewDecision
 from pmfa.records.episode import EpisodeRecord, Exit
@@ -909,7 +910,7 @@ EXAMPLES: list[Example] = [
 def record_example(example: Example, source: RecordedWorldFile):
     """Run the scripted episode through ``Recording``: the recorded file, cassette, and run."""
     config = recorded_config(source)
-    tape = TapeModels(example.records.models(config), config)
+    tape = ModelTap(example.records.models(config), config)
     world = build_recorded_world(source, models=tape, review_policy=review_policy(source))
     if not example.recorded:
         run = run_on_world(world, source)

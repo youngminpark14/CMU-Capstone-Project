@@ -295,45 +295,6 @@ def resolve(mode: LiveMode = MODE_OPTION) -> None:
 # --------------------------------------------------------------------------- report
 
 
-def _trade_rows(store: StateStore, mode: RunMode) -> list[Any]:
-    from pmfa.evaluation.rows import TradeRow
-    from pmfa.records.decision import RoutingTier
-
-    settlements = {t: (side, at) for t, side, at in store.list_settlements()}
-    rows = []
-    episodes: dict[str, Any] = {}
-    for order in store.list_orders():
-        if order.episode_id not in episodes:
-            episodes[order.episode_id] = store.get_episode(order.episode_id)
-        episode = episodes[order.episode_id]
-        if episode is None or episode.mode is not mode:
-            continue
-        routing = episode.routing
-        for f in order.fills:
-            if f.contracts <= 0:
-                continue
-            result, settled_at = settlements.get(f.market_ticker, (None, None))
-            if settled_at is not None and settled_at < f.filled_at:
-                result, settled_at = None, None
-            rows.append(
-                TradeRow(
-                    episode_id=order.episode_id,
-                    event_ticker=episode.event_ticker or "",
-                    market_ticker=f.market_ticker,
-                    side=f.side,
-                    contracts=f.contracts,
-                    price=f.price,
-                    fee=f.fee,
-                    tier=routing.tier if routing is not None else RoutingTier.APPROVE,
-                    would_be_auto=routing.would_be_auto if routing is not None else False,
-                    filled_at=f.filled_at,
-                    result=result,
-                    settled_at=settled_at,
-                )
-            )
-    return rows
-
-
 def _counts_line(counts: dict[str, int]) -> str:
     return ", ".join(f"{k} {v}" for k, v in counts.items()) or "none"
 
@@ -373,6 +334,7 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
     from pmfa.evaluation.pnl import equity_curve, max_drawdown, pnl_summary
     from pmfa.evaluation.rows import ForecastRow
     from pmfa.evaluation.summary import episode_tallies
+    from pmfa.execution.stages import trade_rows
     from pmfa.live.text import unknown_outcome_sentence
     from pmfa.records.decision import ProposalStatus, ReviewDecision
     from pmfa.records.episode import EpisodeStatus
@@ -399,7 +361,7 @@ def status_report(store: StateStore, config: Config, mode: RunMode) -> list[str]
                 "any order it may have sent"
             )
 
-    trades = _trade_rows(store, mode)
+    trades, _ = trade_rows(store, mode)
     pnl = pnl_summary(trades)
     marks = store.equity_series()
     bankroll, base = drawdown_base(marks, config, mode)

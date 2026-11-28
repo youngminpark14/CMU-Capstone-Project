@@ -18,9 +18,6 @@ BLS_SOURCE = "bls.gov"
 STATEMENT_RELEASE = time(14, 0)
 """FOMC statements and minutes are released at 2:00 p.m. Eastern (the Fed's calendar page says so)."""
 
-BLS_RELEASE = time(8, 30)
-"""BLS news releases come out at 8:30 a.m. Eastern (every row of the BLS schedule says so)."""
-
 
 def eastern_to_utc(day: date, at: time) -> datetime:
     """The UTC instant of an Eastern wall-clock time on ``day`` (daylight saving applied)."""

@@ -176,20 +176,14 @@ class ForecastEngine:
         return self.finish(state)
 
     def start(self, request: ForecastRequest) -> SearchState:
-        levels = list(request.levels)
-        if not levels or not levels[-1].is_resolution:
+        if not request.levels or not request.levels[-1].is_resolution:
             raise ValueError("the last level must be the event's resolution")
-        max_depth = self.config.forecast.max_depth
-        if request.fast_path:
-            levels = [levels[-1]]
-        elif len(levels) > max_depth:
-            levels = [*levels[: max_depth - 1], levels[-1]]
-        return SearchState(request=request, levels=levels, rejections=list(request.rejections))
+        return SearchState(request=request, rejections=list(request.rejections))
 
     def done(self, state: SearchState) -> bool:
         if state.exit is not None or state.budget_exhausted:
             return True
-        if state.level_index >= len(state.levels):
+        if state.level_index >= len(state.request.levels):
             return True
         if state.level_index == 0:
             return False
@@ -202,7 +196,7 @@ class ForecastEngine:
         if self.done(state):
             return state
         work = _Work.of(state)
-        level = state.levels[state.level_index]
+        level = state.request.levels[state.level_index]
         depth = state.level_index + 1
         brief = event_brief(state.request.event, state.request.space, state.request.series)
         if depth == 1:
@@ -225,7 +219,9 @@ class ForecastEngine:
                 work.exit = Exit.RULES_MISMATCH
                 work.exit_detail = "every first-level scenario failed the rules check"
         if work.exit is None and not work.budget_exhausted:
-            self._select(state, work, depth, last=state.level_index == len(state.levels) - 1)
+            self._select(
+                state, work, depth, last=state.level_index == len(state.request.levels) - 1
+            )
             self._emit(state, work)
         return state.model_copy(
             update={
@@ -294,7 +290,7 @@ class ForecastEngine:
         request = state.request
         fc = self.config.forecast
         passages = self._passages(request, work)
-        level_titles = {lv.scheduled_event_id: lv.title for lv in state.levels}
+        level_titles = {lv.scheduled_event_id: lv.title for lv in state.request.levels}
         payload = GenerateInput(
             event=brief,
             level=level,
@@ -437,7 +433,7 @@ class ForecastEngine:
     ) -> ScoreOutput:
         request = state.request
         passages = self._passages(request, work)
-        level_titles = {lv.scheduled_event_id: lv.title for lv in state.levels}
+        level_titles = {lv.scheduled_event_id: lv.title for lv in state.request.levels}
         payload = ScoreInput(
             event=brief,
             level=level,

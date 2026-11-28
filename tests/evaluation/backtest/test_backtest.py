@@ -245,6 +245,11 @@ def test_canary_in_a_retrieval_result_aborts_the_run(
             models=scripted(data_config),
         )
     assert read_manifest(run_dir).status == "aborted"
+    # An aborted run writes no metrics.json; its report still renders and says why it stopped.
+    from pmfa.evaluation.report import build_report
+
+    assert not (run_dir / "metrics.json").exists()
+    assert "The run was aborted" in build_report(run_dir).read_text()
 
 
 def _plant_the_canary(data_config: Config, monkeypatch: pytest.MonkeyPatch) -> None:

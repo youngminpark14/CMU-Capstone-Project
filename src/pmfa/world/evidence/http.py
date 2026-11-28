@@ -98,7 +98,6 @@ class PoliteFetcher:
         timeout_seconds: float = 30.0,
     ) -> None:
         self._cache_dir = Path(cache_dir)
-        self._user_agent = user_agent
         self._min_gap = min_seconds_between_requests
         self._sleep = sleep
         self._monotonic = monotonic
@@ -109,8 +108,6 @@ class PoliteFetcher:
             follow_redirects=True,
             timeout=timeout_seconds,
         )
-        self.requests_made = 0
-        """Network requests sent by this fetcher (cache hits do not count)."""
 
     @classmethod
     def from_config(
@@ -175,7 +172,6 @@ class PoliteFetcher:
                 return cached
         host = urlsplit(url).hostname or ""
         self._wait_turn(host)
-        self.requests_made += 1
         try:
             response = self._client.get(url)
         except httpx.HTTPError as exc:

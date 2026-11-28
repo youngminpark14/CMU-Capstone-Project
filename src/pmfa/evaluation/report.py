@@ -840,7 +840,7 @@ def build_report(run_dir: str | Path) -> Path:
     # -- limitations
     w("## Limitations\n")
     scored = metrics.get("scored_events")
-    if scored is None:  # a run made before the scored events were counted
+    if scored is None:  # a run with no metrics.json: aborted, a dry run, or unfinished
         n_events = f"{snap.get('counts', {}).get('events', 'a handful of')} settled events"
         held = f"The snapshot holds only {n_events}"
     else:
@@ -984,13 +984,7 @@ def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
         w(
             "Nothing in the window was left out: every release in the calendar has an event in "
             "the snapshot, and every scheduled point and every priced market with a result was "
-            "scored"
-            + (
-                ""
-                if dropped is not None
-                else " (this snapshot predates the record of events its builder dropped)"
-            )
-            + ".\n"
+            "scored.\n"
         )
         return
     if plan.releases_without_event:
@@ -1000,15 +994,8 @@ def _left_out(w: Any, manifest: Any, metrics: dict[str, Any]) -> None:
             "scored for them. The exchange does not list an event for every release.\n"
         )
         for line in plan.releases_without_event:
-            verdict = "" if dropped is None else " " + _release_verdict(line, dropped)
-            w(f"- {line}.{verdict}")
+            w(f"- {line}. {_release_verdict(line, dropped)}")
         w("")
-        if dropped is None:
-            w(
-                "This snapshot was built before its builder recorded the events it dropped, "
-                "so the snapshot alone does not show whether the exchange listed an event for "
-                "these releases.\n"
-            )
     if dropped:
         w(f"Events the exchange listed that the snapshot builder did not store ({len(dropped)}):\n")
         for ticker, reason in dropped.items():

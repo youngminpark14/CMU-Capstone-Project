@@ -42,7 +42,3 @@ class ExchangeError(PmfaError):
 
 class NotFound(PmfaError):
     """A requested series, event, market, document, or record does not exist."""
-
-
-class ReadOnlyExchange(PmfaError):
-    """An order was attempted through an adapter that cannot place orders."""

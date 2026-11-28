@@ -204,7 +204,6 @@ def test_the_review_queue_refuses_to_decide_or_expire_a_proposal_in_doubt():
         queue.decide(pid, ReviewDecision.REJECT, reason_code=ReasonCode.OTHER)
     with pytest.raises(ReviewRefused, match="outcome_unknown"):
         queue.expire(pid)
-    assert queue.expire_due() == []
     assert world.store.get_proposal(pid)[1] is ProposalStatus.OUTCOME_UNKNOWN
 
 

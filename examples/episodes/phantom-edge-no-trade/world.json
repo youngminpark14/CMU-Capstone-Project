@@ -290,6 +290,12 @@
       "content_hash": "072b09c43e0b3015aa059afe865209104f09af088c8af6825b10e6de0c20927b"
     }
   ],
+  "equity": [
+    {
+      "at": "2026-09-11T12:35:00Z",
+      "equity": "1000"
+    }
+  ],
   "bankroll": "1000",
   "stage": "approval",
   "mode": "replay",

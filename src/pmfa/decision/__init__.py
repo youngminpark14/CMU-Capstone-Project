@@ -7,7 +7,7 @@ configuration) and pass them in; these functions only decide.
 
 from __future__ import annotations
 
-from pmfa.decision.confidence import confidence, origin_rule_met
+from pmfa.decision.confidence import origin_rule_met
 from pmfa.decision.fees import (
     KNOWN_FEE_TYPES,
     UnknownFeeType,
@@ -39,7 +39,6 @@ __all__ = [
     "SizingDecision",
     "SizingInputs",
     "UnknownFeeType",
-    "confidence",
     "edge_bound",
     "exact_fee",
     "fee",

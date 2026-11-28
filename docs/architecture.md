@@ -147,7 +147,7 @@ flowchart LR
   call the same state service directly for throughput
   ([decision 0031](decisions/0031-state-transport.md)); everything else goes to the store directly.
   A reviewer can attach any MCP client to the same server to browse episodes and traces:
-  `python -m pmfa.state --db PATH` (or `pmfa state-server`) serves a database over stdio.
+  `pmfa state-server --db PATH` serves a database over stdio.
 - **Ports** ([ports.py](../src/pmfa/ports.py)) are the only way out: `Exchange` (market data),
   `Executor` (orders and holdings), `Evidence` (documents and the release calendar), `Knowledge`
   (the retrieval indexes), `Models` (the gateway or a stand-in), `Clock`, and `StateStore`. A

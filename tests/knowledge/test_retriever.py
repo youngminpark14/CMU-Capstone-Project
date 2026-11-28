@@ -321,37 +321,6 @@ def test_get_passages_keeps_order_and_leaves_out_unknown_ids(knowledge: ChromaKn
     assert [p.passage_id for p in early] == ["fomc-statement-2026-10#0"]
 
 
-class FakeEvidence:
-    def __init__(self, documents: list[Document]) -> None:
-        self._documents = documents
-
-    def documents(
-        self, *, as_of: datetime, published_after: datetime | None = None
-    ) -> list[Document]:
-        return sorted(
-            (
-                d
-                for d in self._documents
-                if d.published_at <= as_of
-                and (published_after is None or d.published_at > published_after)
-            ),
-            key=lambda d: d.published_at,
-        )
-
-
-def test_index_evidence_fills_from_the_evidence_port(knowledge: ChromaKnowledge) -> None:
-    written = knowledge.index_evidence(
-        FakeEvidence(corpus()), as_of=datetime(2026, 11, 11, tzinfo=UTC)
-    )
-    assert written == 3
-    hits = knowledge.search_evidence(FED_QUERIES, as_of=AS_OF, category="fed_decision", k=50)
-    assert {h.passage.doc_id for h in hits} <= {
-        "fomc-statement-2026-10",
-        "fed-speech-2026-11",
-        "garden-tomatoes",
-    }
-
-
 # -- events
 
 

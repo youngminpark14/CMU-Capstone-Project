@@ -1,6 +1,6 @@
 # 0042. Every configuration field has a reader
 
-A setting that nothing reads is removed, and a file that still sets one is refused with a pointer to where the setting lives.
+A setting that nothing reads is removed, and a file that still sets one is refused as an unknown key.
 
 ## Context
 
@@ -8,11 +8,11 @@ A setting that nothing reads is removed, and a file that still sets one is refus
 
 ## Decision
 
-Both fields are removed. `REMOVED_KEYS` in [config.py](../../src/pmfa/config.py) names each one with where its setting lives now. `pmfa config check`, and any load of a configuration file that still sets one, refuses it with that pointer, even at its old default. A recorded configuration, such as a recorded world's, that carries one at its old default still reads, because that value expressed no intent; any other value is refused there too. [test_config_fields.py](../../tests/test_config_fields.py) walks every leaf field of `Config` and fails when its name is never read as an attribute in `src/pmfa` outside `config.py`.
+Both fields are removed. Every section of `Config` in [config.py](../../src/pmfa/config.py) forbids unknown keys, so `pmfa config check`, and any load of a configuration file that still sets one, refuses it as an unknown key. [test_config_fields.py](../../tests/test_config_fields.py) walks every leaf field of `Config` and fails when its name is never read as an attribute in `src/pmfa` outside `config.py`.
 
 ## Consequences
 
-An edit to a removed setting is refused rather than ignored, and a new field whose name nothing reads fails the suite. The guard checks names, not full paths, so it is a floor: an unrelated attribute with the same name satisfies it. A field removed later needs its own entry in `REMOVED_KEYS`, or an old file that sets it is refused as an unknown key with no pointer.
+An edit to a removed setting is refused rather than ignored, and a new field whose name nothing reads fails the suite. The guard checks names, not full paths, so it is a floor: an unrelated attribute with the same name satisfies it. A published run whose manifest records a field removed later is republished rather than read back.
 
 ## Origin
 

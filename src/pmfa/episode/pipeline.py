@@ -427,13 +427,9 @@ class Pipeline:
         return mids
 
     def _forecast_mid(self, state: EpisodeState, ticker: str) -> Decimal | None:
-        """``ticker``'s YES mid when the forecast started, which no recompute changes.
-
-        A checkpoint written before ``forecast_mids`` existed falls back to the sizing books.
-        """
-        mids = state.get("forecast_mids")
-        if mids is None:
-            mids = self._mids(SizingInputs.model_validate(state["sizing"]))
+        """``ticker``'s YES mid when the forecast started, which no recompute changes."""
+        mids = state["forecast_mids"]
+        assert mids is not None, "forecast_start sets forecast_mids with the sizing inputs"
         value = mids.get(ticker)
         return Decimal(value) if value is not None else None
 
@@ -777,23 +773,23 @@ class Pipeline:
         self.tracer.action(
             eid,
             "forecast",
-            f"beam search over {len(search.levels)} level(s)"
+            f"beam search over {len(search.request.levels)} level(s)"
             + (" on the fast path (the event closes within the hour)" if request.fast_path else "")
             + f"; {len(rejections)} earlier rejection(s), {len(examples)} ledger example(s), "
             f"bankroll ${sizing.bankroll}",
-            levels=[dump(lv) for lv in search.levels],
+            levels=[dump(lv) for lv in search.request.levels],
         )
         return {**update, "search": dump(search), "goto": "forecast_step"}
 
     def forecast_step(self, state: EpisodeState) -> dict[str, Any]:
         eid = state["episode_id"]
         search = SearchState.model_validate(state["search"])
-        level = search.levels[search.level_index]
+        level = search.request.levels[search.level_index]
         depth = search.level_index + 1
         self.tracer.action(
             eid,
             "forecast",
-            f"level {depth} of {len(search.levels)}: generate, check, and score scenarios "
+            f"level {depth} of {len(search.request.levels)}: generate, check, and score scenarios "
             f"for {level.title}",
         )
         engine = self._engine(state)

@@ -301,6 +301,7 @@ def build_data(config: Config) -> None:
             series=["KXFEDDECISION", "KXCPIYOY"],
             counts=store.counts(),
             source_host="synthetic",
+            dropped_events={},
         )
     )
     store.close()

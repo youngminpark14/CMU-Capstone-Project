@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 from pmfa.records.base import Record
-from pmfa.records.decision import Fill
+from pmfa.records.decision import Fill, OrderResult, OrderStatus
 from pmfa.records.episode import LedgerEntry, ModelResult, Usage
 from pmfa.records.evidence import Document, ScheduledEvent, Trigger, TriggerKind
 from pmfa.records.market import (
@@ -141,6 +141,27 @@ def prior_fill() -> Fill:
         filled_at=AS_OF - timedelta(days=3),
         simulated=True,
     )
+
+
+def filled_order(fills: list[Fill]) -> OrderResult:
+    """A prior filled order holding ``fills`` (one order id), as a recorded world gives holdings."""
+    first = fills[0]
+    return OrderResult(
+        order_id=first.order_id,
+        client_order_id=first.order_id,
+        episode_id="ep-prior",
+        market_ticker=first.market_ticker,
+        side=first.side,
+        requested_contracts=int(sum((f.contracts for f in fills), Decimal(0))),
+        limit_price=max(f.price for f in fills),
+        status=OrderStatus.FILLED,
+        fills=fills,
+        placed_at=min(f.filled_at for f in fills),
+    )
+
+
+def prior_order() -> OrderResult:
+    return filled_order([prior_fill()])
 
 
 def resolved_entry() -> LedgerEntry:

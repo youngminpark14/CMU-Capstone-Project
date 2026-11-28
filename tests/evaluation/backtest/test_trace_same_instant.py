@@ -15,7 +15,8 @@ from pathlib import Path
 
 from pmfa.config import Config
 from pmfa.evaluation.backtest import replay_check
-from pmfa.examples import TapeModels, stored_card
+from pmfa.examples import stored_card
+from pmfa.models.cassette import ModelTap
 from pmfa.state.store import SqliteStore
 from pmfa.world.backtest import BacktestData, build_backtest_world
 from pmfa.world.clocks import SimClock
@@ -39,7 +40,7 @@ def _second_trace(
     data = BacktestData(data_config)
     clock = SimClock(DOC1_AT)
     store = SqliteStore(tmp_path / "scoring.sqlite")
-    tape = TapeModels(scripted(data_config), data_config)
+    tape = ModelTap(scripted(data_config), data_config)
     world = build_backtest_world(
         data,
         data_config,
@@ -93,7 +94,7 @@ def test_the_second_trace_at_a_shared_instant_holds_nothing_after_its_as_of_time
     assert {o.order_id for o in file.orders} == {f"earlier-{i}" for i in range(9)}
     assert not set(first_orders) & {o.order_id for o in file.orders}
     assert all((o.outcome_at or o.placed_at) <= file.as_of for o in file.orders)
-    fills = [*file.fills, *(f for o in file.orders for f in o.fills)]
+    fills = [f for o in file.orders for f in o.fills]
     assert all(f.filled_at <= file.as_of for f in fills)
     assert all(s.settled_at <= file.as_of for s in file.settlements)
     assert all(p.at <= file.as_of for p in file.equity)

@@ -20,19 +20,16 @@ review when it has one. Nothing here needs an account, a key or the network.
 from __future__ import annotations
 
 import json
-import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pmfa.config import Config, default_config
-from pmfa.errors import BudgetExhausted, ModelOutputError, PmfaError, RunBudgetExhausted
-from pmfa.models.cassette import Cassette, CassetteEntry, first_difference
-from pmfa.ports import Models, World
-from pmfa.records.base import Record, RunMode
+from pmfa.errors import PmfaError
+from pmfa.models.cassette import Cassette, first_difference
+from pmfa.ports import World
+from pmfa.records.base import RunMode
 from pmfa.records.decision import ReviewCard, ReviewPolicy
-from pmfa.records.episode import EpisodeRecord, EpisodeStatus, LedgerEntry, ModelResult, Usage
-from pmfa.records.roles import TASKS, ModelSlot, RoleTask
+from pmfa.records.episode import EpisodeRecord, EpisodeStatus, LedgerEntry
 from pmfa.world.recorded import RecordedWorldFile, load_recorded_world
 from pmfa.world.recording import (
     CARD_FILE,
@@ -142,77 +139,6 @@ def resolve(path: str | Path) -> ExamplePaths:
 
 def load_cassette(path: Path) -> Cassette:
     return Cassette.model_validate_json(path.read_text(encoding="utf-8"))
-
-
-# --------------------------------------------------------------------------- recording model calls
-
-
-class TapeModels:
-    """A ``Models`` wrapper that writes every call to a cassette as it happens.
-
-    The build script wraps ``ScriptedModels`` in it, so the cassette holds the
-    hand-written answers (``source: scripted``) in the exact form a
-    ``CassettePlayer`` replays.
-    """
-
-    def __init__(self, models: Models, config: Config | None = None) -> None:
-        self.models = models
-        self.config = config or default_config()
-        self._cassettes: dict[str, Cassette] = {}
-        self._lock = threading.Lock()
-
-    def call(
-        self, task: RoleTask, payload: Record, *, episode_id: str, slot: ModelSlot | None = None
-    ) -> ModelResult:
-        chosen = slot or TASKS[task].default_slot
-        assignment = self.config.models.slots[chosen]
-        base: dict[str, Any] = {
-            "task": task,
-            "slot": chosen,
-            "role": TASKS[task].role,
-            "model": assignment.model,
-            "served_model": assignment.model,
-            "effort": assignment.effort,
-            "source": "scripted",
-            "input": payload.model_dump(mode="json"),
-        }
-        try:
-            result = self.models.call(task, payload, episode_id=episode_id, slot=slot)
-        except BudgetExhausted as exc:
-            self._add(episode_id, base, outcome="budget_exhausted", error=str(exc), calls=0)
-            raise
-        except RunBudgetExhausted as exc:
-            self._add(episode_id, base, outcome="run_budget_exhausted", error=str(exc), calls=0)
-            raise
-        except ModelOutputError as exc:
-            self._add(episode_id, base, outcome="model_output_error", error=str(exc))
-            raise
-        meta = result.meta
-        self._add(
-            episode_id,
-            {
-                **base,
-                "slot": meta.slot,
-                "role": meta.role,
-                "model": meta.model,
-                "served_model": meta.served_model,
-                "effort": meta.effort,
-            },
-            output=result.output.model_dump(mode="json"),
-        )
-        return result
-
-    def _add(self, episode_id: str, fields: dict[str, Any], **more: Any) -> None:
-        with self._lock:
-            cassette = self._cassettes.setdefault(episode_id, Cassette(episode_id=episode_id))
-            cassette.entries.append(CassetteEntry(seq=len(cassette.entries) + 1, **fields, **more))
-
-    def usage(self, episode_id: str) -> Usage:
-        return self.models.usage(episode_id)
-
-    def cassette(self, episode_id: str) -> Cassette:
-        with self._lock:
-            return self._cassettes.get(episode_id, Cassette(episode_id=episode_id))
 
 
 # --------------------------------------------------------------------------- running an episode
@@ -375,7 +301,6 @@ __all__ = [
     "ExampleError",
     "ExamplePaths",
     "ReplayResult",
-    "TapeModels",
     "check",
     "examples_root",
     "list_examples",

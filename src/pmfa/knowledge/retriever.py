@@ -5,9 +5,8 @@ Retrieval (the port): ``search_events``, ``search_evidence``, ``search_ledger``,
 applied inside the Chroma query, before the nearest-neighbour search, so a
 caller cannot read the future even by asking for it word for word.
 
-Ingestion: ``index_documents``, ``index_events``, ``index_ledger`` and
-``index_evidence`` (fill the evidence index from an ``Evidence`` port up to a
-time). Re-indexing the same records leaves the index unchanged.
+Ingestion: ``index_documents``, ``index_events`` and ``index_ledger``.
+Re-indexing the same records leaves the index unchanged.
 """
 
 from __future__ import annotations
@@ -46,7 +45,6 @@ from pmfa.records.market import Event
 
 if TYPE_CHECKING:
     from pmfa.config import Config
-    from pmfa.ports import Evidence
 
 
 def event_text(event: Event) -> str:
@@ -273,14 +271,6 @@ class ChromaKnowledge:
             published_at=datetime.fromisoformat(str(row.metadata["published_at"])),
             text_hash=digest,
             shingles=self._shingles[key],
-        )
-
-    def index_evidence(
-        self, evidence: Evidence, *, as_of: datetime, published_after: datetime | None = None
-    ) -> int:
-        """Fill the evidence index from an ``Evidence`` port with what it published up to ``as_of``."""
-        return self.index_documents(
-            evidence.documents(as_of=as_of, published_after=published_after)
         )
 
     def index_events(self, events: list[Event]) -> int:

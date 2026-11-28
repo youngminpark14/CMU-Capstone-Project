@@ -10,21 +10,12 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    ValidationError,
-    ValidationInfo,
-    ValidatorFunctionWrapHandler,
-    model_validator,
-)
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from pmfa.errors import ConfigError
 from pmfa.records.roles import ModelSlot
@@ -327,65 +318,6 @@ class PathsConfig(Section):
         return Path(self.data_dir) / "cache"
 
 
-@dataclass(frozen=True)
-class RemovedKey:
-    """A key older configurations still carry, though nothing ever read it."""
-
-    where: str
-    """Where the setting really lives, for the refusal message."""
-    old_default: tuple[Any, ...]
-    """The value the field had by default. A recorded configuration carrying exactly this
-    value expressed no intent, so reading it back may drop the key."""
-
-
-REMOVED_KEYS: dict[tuple[str, str], RemovedKey] = {
-    ("triggers", "schedule_horizons_days"): RemovedKey(
-        where="the scoring horizons are evaluation.horizons_days", old_default=(7, 3, 1)
-    ),
-    ("forecast", "quantile_levels"): RemovedKey(
-        where="the Quantiles record fixes the five quantile levels",
-        old_default=(0.05, 0.25, 0.5, 0.75, 0.95),
-    ),
-}
-"""Keys that were removed because nothing read them. Setting one is refused, with a message
-saying where the setting lives now, so an edit is never silently ignored."""
-
-REFUSE_REMOVED_KEYS = "refuse_removed_keys"
-"""Validation context flag ``load_config`` sets: a file a person edits may not carry a removed
-key at all, not even at its old default."""
-
-
-def _split_removed_keys(
-    data: dict[str, Any], *, strict: bool
-) -> tuple[dict[str, Any], list[tuple[str, str, Any]]]:
-    """``data`` without the removed keys, and the (section, key, value) of each one to refuse.
-
-    Not strict (a recorded configuration, such as a published run's manifest), a key still at
-    its old default is dropped quietly, because it meant nothing; any other value is refused.
-    """
-    cleaned = dict(data)
-    refused: list[tuple[str, str, Any]] = []
-    for (section, key), removed in REMOVED_KEYS.items():
-        table = cleaned.get(section)
-        if not isinstance(table, dict) or key not in table:
-            continue
-        value = table[key]
-        cleaned[section] = {k: v for k, v in table.items() if k != key}
-        unchanged = isinstance(value, list | tuple) and tuple(value) == removed.old_default
-        if strict or not unchanged:
-            refused.append((section, key, value))
-    return cleaned, refused
-
-
-def _same_error(error: Any) -> InitErrorDetails:
-    """A pydantic error dict turned back into one that can be raised again unchanged."""
-    return InitErrorDetails(
-        type=PydanticCustomError(error["type"], "{msg}", {"msg": error["msg"]}),
-        loc=tuple(error["loc"]),
-        input=error.get("input"),
-    )
-
-
 class Config(Section):
     follow: FollowConfig = FollowConfig()
     sources: SourcesConfig = SourcesConfig()
@@ -487,43 +419,6 @@ class Config(Section):
             raise ValueError("; ".join(problems))
         return self
 
-    # Defined after ``_consistent`` so that it wraps it: the other problems are still reported.
-    @model_validator(mode="wrap")
-    @classmethod
-    def _refuse_removed_keys(
-        cls, data: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
-    ) -> Config:
-        """Refuse a removed key by name, saying where the setting lives now.
-
-        Without this, ``extra="forbid"`` would refuse it as an unknown input, and a recorded
-        configuration that still carries one at its old default could not be read back.
-        """
-        if not isinstance(data, dict):
-            return handler(data)
-        strict = bool((info.context or {}).get(REFUSE_REMOVED_KEYS))
-        cleaned, refused = _split_removed_keys(data, strict=strict)
-        if not refused:
-            return handler(cleaned)
-        details: list[InitErrorDetails] = []
-        try:
-            handler(cleaned)
-        except ValidationError as exc:
-            details = [_same_error(e) for e in exc.errors(include_url=False)]
-        for section, key, value in refused:
-            where = REMOVED_KEYS[(section, key)].where
-            details.append(
-                InitErrorDetails(
-                    type=PydanticCustomError(
-                        "removed_setting",
-                        "no longer a setting, nothing ever read it: {where}",
-                        {"where": where},
-                    ),
-                    loc=(section, key),
-                    input=value,
-                )
-            )
-        raise ValidationError.from_exception_data(cls.__name__, details)
-
     def full_tree_calls(self) -> int:
         """Most generator plus critic calls a full tree can make at depth 3.
 
@@ -570,7 +465,7 @@ def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None
     if overrides:
         data = _merge(data, overrides)
     try:
-        return Config.model_validate(data, context={REFUSE_REMOVED_KEYS: True})
+        return Config.model_validate(data)
     except ValidationError as exc:
         raise ConfigError(str(exc)) from exc
 

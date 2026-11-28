@@ -181,21 +181,13 @@ def test_expiry_by_price() -> None:
     assert q.get("prop-1")[1] is ProposalStatus.EXPIRED
 
 
-def test_expire_and_expire_due() -> None:
-    q, _, clock = queue()
+def test_expire() -> None:
+    q, _, _ = queue()
     q.submit(proposal(proposal_id="prop-2", expires_at=AS_OF + timedelta(hours=1)), card())
-    q.submit(proposal(proposal_id="prop-3", expires_at=AS_OF + timedelta(hours=1)), card())
-    clock.set(AS_OF + timedelta(minutes=30))
-    moved = book(no_bids=(("0.35", "40"),))
-    calm = book()
-    due = q.expire_due(lambda ticker: calm)
-    assert [p.proposal_id for p in due] == ["prop-1"]
     q.expire("prop-2")
     assert q.get("prop-2")[1] is ProposalStatus.EXPIRED
     with pytest.raises(ReviewRefused):
         q.expire("prop-2")
-    assert [p.proposal_id for p in q.expire_due(lambda ticker: moved)] == ["prop-3"]
-    assert q.pending() == []
 
 
 def test_a_proposal_whose_order_outcome_is_unknown_cannot_be_decided_or_expired() -> None:
@@ -213,6 +205,5 @@ def test_a_proposal_whose_order_outcome_is_unknown_cannot_be_decided_or_expired(
             q.decide("prop-1", decision, **extra)
     with pytest.raises(ReviewRefused, match="outcome_unknown"):
         q.expire("prop-1")
-    assert q.expire_due() == []
     assert store.list_reviews() == []
     assert q.get("prop-1")[1] is ProposalStatus.OUTCOME_UNKNOWN
