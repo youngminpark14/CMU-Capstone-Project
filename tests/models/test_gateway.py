@@ -278,6 +278,25 @@ def test_cache_hit_skips_the_model_and_keeps_the_recorded_cost(tmp_path):
     assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def test_a_repaired_answer_from_the_cache_counts_the_two_calls_it_took(tmp_path):
+    """A rerun from the cache must meet the call cap where the first run did.
+
+    The first reproducible paid run differed from its rerun in one number: an
+    episode with a repaired answer counted 15 calls live and 14 from the cache.
+    """
+    first, _ = gateway([raw("bad"), ok(MATCH_OUT)], cache_dir=tmp_path)
+    assert first.call(RoleTask.MATCH, MATCH_IN, episode_id="e").meta.repaired
+    again, backend = gateway([], cache_dir=tmp_path, recorder=CassetteRecorder(tmp_path / "c"))
+    result = again.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert result.meta.source == "cache" and result.meta.repaired and backend.requests == []
+    assert again.usage("e").calls == first.usage("e").calls == 2
+    assert again.usage("e").cost_usd == first.usage("e").cost_usd
+    assert again.run_usage().cost_usd == 0  # nothing new was paid
+    player = CassettePlayer.from_paths(tmp_path / "c")
+    player.call(RoleTask.MATCH, MATCH_IN, episode_id="e")
+    assert player.usage("e").calls == 2
+
+
 def test_as_of_is_part_of_the_cache_key(tmp_path):
     later = MATCH_IN.model_copy(update={"as_of": AS_OF.replace(hour=16)})
     gw, backend = gateway([ok(MATCH_OUT), ok(MATCH_OUT)], cache_dir=tmp_path)

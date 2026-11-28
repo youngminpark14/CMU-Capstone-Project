@@ -369,9 +369,12 @@ class Gateway:
         output = spec.output_type.model_validate(hit.output)
         # The episode is charged what the answer cost when it was made, so a rerun
         # from the cache meets its caps at the same point; the run pays nothing new.
+        # A repaired answer took two calls when it was made: the unusable one and the retry.
+        calls = 2 if hit.repaired else 1
         self.meter.add(
             episode_id,
             usage_of(
+                calls=calls,
                 input_tokens=hit.input_tokens,
                 output_tokens=hit.output_tokens,
                 cost_usd=hit.cost_usd,
@@ -407,7 +410,7 @@ class Gateway:
                 ),
                 latency_ms=hit.latency_ms,
                 repaired=hit.repaired,
-                calls=1,
+                calls=calls,
             )
         return ModelResult(output=output, meta=meta)
 
