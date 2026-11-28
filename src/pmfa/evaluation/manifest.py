@@ -254,7 +254,7 @@ LEAKAGE_CONTROLS = [
     "The as-of rule is inside the ports: the snapshot exchange shows quotes, listings and "
     "results only up to the simulated clock, the frozen evidence port returns only documents "
     "published at or before the as-of time, and every retrieval index filters on publish or "
-    "resolution time inside the Chroma query, before the nearest-neighbour search.",
+    "resolution time inside the read from Chroma, before any row is ranked.",
     "A canary document dated one day after the end of the window, containing the configured "
     "canary text and the words every query uses, sits in the evidence index (not in the "
     "corpus). Every retrieval result and every finished episode is checked for it; one hit "

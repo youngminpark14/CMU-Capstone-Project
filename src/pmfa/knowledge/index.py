@@ -16,6 +16,15 @@ a publish time is rounded up and an as-of time down, so a document published a
 fraction of a second after the as-of time can never pass the filter. Embeddings
 are always passed explicitly, so Chroma never loads its own model, and
 telemetry is off.
+
+Every search is exact and repeatable. Chroma stores the rows and applies the
+time filter inside the read; the rows that pass it are ranked here, by cosine
+similarity and then by a fixed tie-break. Chroma's own nearest-neighbour search
+is approximate: on the frozen data it returned different passages for the same
+query in different runs, and tied rows in a different order, so two identical
+backtests asked the models different questions. The collections are small
+(hundreds to a few thousand rows), so reading every eligible row is cheap. A
+collection of many tens of thousands of rows would need another design.
 """
 
 from __future__ import annotations
@@ -201,11 +210,27 @@ class ChromaIndex:
         n: int,
         published_after: datetime | None = None,
     ) -> list[Hit]:
-        """Passages with ``published_after < published_at <= as_of``, nearest first."""
+        """Passages with ``published_after < published_at <= as_of``, most similar first.
+
+        Passages equally similar (to six decimals) come in id order.
+        """
+        if n <= 0:
+            return []
         clauses: list[dict[str, Any]] = [{"published_ts": {"$lte": floor_ts(as_of)}}]
         if published_after is not None:
             clauses.append({"published_ts": {"$gt": ceil_ts(published_after)}})
-        return self._query(EVIDENCE, vector, n, _all_of(clauses), with_vectors=True)
+        scored = self._scored(EVIDENCE, vector, _all_of(clauses))
+        scored.sort(key=lambda pair: (-pair[0], pair[1].id))
+        return [
+            Hit(
+                id=row.id,
+                similarity=similarity,
+                document=row.document,
+                metadata=row.metadata,
+                vector=row.vector,
+            )
+            for similarity, row in scored[:n]
+        ]
 
     def get_evidence(self, passage_ids: list[str], *, as_of: datetime) -> list[Row]:
         """Passages by id, published at or before ``as_of``. Missing ids are left out."""
@@ -241,23 +266,18 @@ class ChromaIndex:
             return []
         at = floor_ts(as_of)
         where = _all_of([{"open_ts": {"$lte": at}}, {"close_ts": {"$gt": at}}])
-        rows = _rows(
-            self._collections[EVENTS].get(
-                where=where, include=["metadatas", "documents", "embeddings"]
-            )
-        )
-        query = np.asarray(vector, dtype=np.float64)
         by_series: dict[str, list[tuple[int, float, Row]]] = {}
-        for row in rows:
+        for similarity, row in self._scored(EVENTS, vector, where):
             series = str(row.metadata.get("series_ticker") or row.id)
-            # A row written before the event's own close was stored falls back on its listing's.
-            closes = int(row.metadata.get("event_close_ts", row.metadata["close_ts"]))
-            by_series.setdefault(series, []).append((closes, _cosine(query, row.vector), row))
+            # A row written before the event's own close was stored cannot be placed (its
+            # listing's close is not the event's), so it comes after the rows that can.
+            closes = int(row.metadata.get("event_close_ts", _CLOSE_UNKNOWN))
+            by_series.setdefault(series, []).append((closes, similarity, row))
         ordered: list[tuple[int, float, str, float, Row]] = []
         for listed in by_series.values():
-            listed.sort(key=lambda item: (item[0], -round(item[1], _TIE_DECIMALS), item[2].id))
+            listed.sort(key=lambda item: (item[0], -item[1], item[2].id))
             ordered.extend(
-                (place, -round(similarity, _TIE_DECIMALS), row.id, similarity, row)
+                (place, -similarity, row.id, similarity, row)
                 for place, (_, similarity, row) in enumerate(listed)
             )
         ordered.sort(key=lambda item: item[:3])
@@ -292,16 +312,10 @@ class ChromaIndex:
             clauses.append({"category": {"$eq": category}})
         if exclude_category is not None:
             clauses.append({"category": {"$ne": exclude_category}})
-        rows = _rows(
-            self._collections[LEDGER].get(
-                where=_all_of(clauses), include=["metadatas", "documents", "embeddings"]
-            )
-        )
-        query = np.asarray(vector, dtype=np.float64)
-        scored = [(_cosine(query, row.vector), row) for row in rows]
+        scored = self._scored(LEDGER, vector, _all_of(clauses))
         scored.sort(
             key=lambda pair: (
-                -round(pair[0], _TIE_DECIMALS),
+                -pair[0],
                 -int(pair[1].metadata["resolved_ts"]),
                 pair[1].id,
             )
@@ -311,54 +325,39 @@ class ChromaIndex:
             for similarity, row in scored[:n]
         ]
 
-    def _query(
-        self,
-        name: str,
-        vector: np.ndarray,
-        n: int,
-        where: dict[str, Any],
-        *,
-        with_vectors: bool = False,
-    ) -> list[Hit]:
-        if n <= 0:
-            return []
-        include = ["metadatas", "documents", "distances"]
-        if with_vectors:
-            include.append("embeddings")
-        result = self._collections[name].query(
-            query_embeddings=[np.asarray(vector, dtype=np.float32)],
-            n_results=n,
-            where=where,
-            include=include,
-        )
-        ids = result["ids"][0]
-        distances = result["distances"][0]
-        documents = result["documents"][0]
-        metadatas = result["metadatas"][0]
-        vectors = result["embeddings"][0] if with_vectors else None
-        return [
-            Hit(
-                id=ids[i],
-                similarity=1.0 - float(distances[i]),
-                document=documents[i] or "",
-                metadata=dict(metadatas[i] or {}),
-                vector=np.asarray(vectors[i], dtype=np.float32) if vectors is not None else None,
+    def _scored(
+        self, name: str, vector: np.ndarray, where: dict[str, Any]
+    ) -> list[tuple[float, Row]]:
+        """Every row of ``name`` that passes ``where``, with its cosine similarity to ``vector``.
+
+        The filter runs inside the read. See the module docstring for why the
+        rows are ranked here and not by Chroma's nearest-neighbour search. The
+        similarity is kept to ``_TIE_DECIMALS``: stored vectors are 32-bit
+        floats, so what lies beyond is noise that differs with the machine's
+        arithmetic, and a recorded trace must not depend on it.
+        """
+        rows = _rows(
+            self._collections[name].get(
+                where=where, include=["metadatas", "documents", "embeddings"]
             )
-            for i in range(len(ids))
+        )
+        if not rows:
+            return []
+        matrix = np.asarray([row.vector for row in rows], dtype=np.float64)
+        query = np.asarray(vector, dtype=np.float64)
+        norms = np.linalg.norm(matrix, axis=1) * float(np.linalg.norm(query))
+        dots = matrix @ query
+        return [
+            (round(float(dots[i] / norms[i]), _TIE_DECIMALS) if norms[i] > 0 else 0.0, row)
+            for i, row in enumerate(rows)
         ]
 
 
 _TIE_DECIMALS = 6
-"""Similarities equal to this many decimals are a tie: stored vectors are 32-bit floats."""
+"""Similarities are kept to this many decimals, and equal ones are a tie."""
 
-
-def _cosine(query: np.ndarray, stored: np.ndarray | None) -> float:
-    """Cosine similarity of the query and one stored vector, 0.0 when either has no length."""
-    if stored is None:
-        return 0.0
-    other = np.asarray(stored, dtype=np.float64)
-    norm = float(np.linalg.norm(query)) * float(np.linalg.norm(other))
-    return float(np.dot(query, other)) / norm if norm > 0 else 0.0
+_CLOSE_UNKNOWN = 2**62
+"""Sorts an event row that does not carry its event's close time after every row that does."""
 
 
 def _all_of(clauses: list[dict[str, Any]]) -> dict[str, Any]:

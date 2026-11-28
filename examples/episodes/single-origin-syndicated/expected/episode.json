@@ -73,7 +73,7 @@
         "hits": [
           {
             "event_ticker": "KXFEDDECISION-26OCT",
-            "similarity": 0.18491028501874635
+            "similarity": 0.18491
           }
         ]
       },
@@ -177,7 +177,7 @@
             "source": "example-markets.example",
             "url": "https://example-markets.example/2026/10/20/fed-hold",
             "published_at": "2026-10-20T14:20:00+00:00",
-            "score": 0.5433823824297304
+            "score": 0.5433844050373875
           }
         ]
       },

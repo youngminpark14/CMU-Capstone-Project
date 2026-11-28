@@ -8,7 +8,7 @@ The Monitor matches a trigger to the event it bears on. With one index document 
 
 ## Decision
 
-At any as-of time the events index shows one document per event: its title, the rules text the markets share, and the strike list (`event_text` in [retriever.py](../../src/pmfa/knowledge/retriever.py)). A ladder adds strikes after its first markets open, so the event is stored as one row per listing change (`listings`): each distinct market open time starts a row that lists only the markets open by then and is valid until the next one opens or the event closes. The as-of filter inside the Chroma query returns exactly the row current at the as-of time, so a strike never appears before it opens. Code retrieves up to five open events, one per series ([decision 0044](0044-match-next-event-of-a-series.md)); the Monitor confirms one or none. The full rules are then fetched by ticker.
+At any as-of time the events index shows one document per event: its title, the rules text the markets share, and the strike list (`event_text` in [retriever.py](../../src/pmfa/knowledge/retriever.py)). A ladder adds strikes after its first markets open, so the event is stored as one row per listing change (`listings`): each distinct market open time starts a row that lists only the markets open by then and is valid until the next one opens or the event closes. The as-of filter inside the read from Chroma returns exactly the row current at the as-of time, so a strike never appears before it opens. Code retrieves up to five open events, one per series ([decision 0044](0044-match-next-event-of-a-series.md)); the Monitor confirms one or none. The full rules are then fetched by ticker.
 
 ## Consequences
 

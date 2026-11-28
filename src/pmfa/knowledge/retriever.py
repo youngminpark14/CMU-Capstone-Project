@@ -2,8 +2,9 @@
 
 Retrieval (the port): ``search_events``, ``search_evidence``, ``search_ledger``,
 ``get_passages`` and ``origins``. Each search takes ``as_of`` and the filter is
-applied inside the Chroma query, before the nearest-neighbour search, so a
-caller cannot read the future even by asking for it word for word.
+applied inside the Chroma read, so a caller cannot read the future even by
+asking for it word for word. The rows that pass it are ranked exactly, in a
+fixed order (see ``pmfa.knowledge.index``).
 
 Ingestion: ``index_documents``, ``index_events`` and ``index_ledger``.
 Re-indexing the same records leaves the index unchanged.
@@ -74,7 +75,7 @@ def listings(event: Event) -> list[tuple[str, int, int, Event]]:
     until the next one opens (or the event closes). Boundaries are whole epoch
     seconds rounded up from the open time, so a listing is only ever shown once
     every strike it names has opened, and the listings never overlap.
-    ``query_events`` then returns, inside the Chroma query, exactly the listing
+    ``query_events`` then reads, with the filter inside the read, exactly the listing
     current at the as-of time. The first listing keeps the event ticker as its
     id, so re-indexing over an index built before listings existed replaces
     that row rather than duplicating it.

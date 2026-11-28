@@ -194,7 +194,7 @@ class StateService:
         return knowledge.get_passages(passage_ids, as_of=_require_aware("as_of", as_of))
 
     def search_events(self, query: str, *, as_of: datetime, k: int = 5) -> list[EventHit]:
-        """Search the events index: events open at as_of, by similarity to the query."""
+        """Search the events index: events open at as_of, each series' next event to close first."""
         knowledge = self.knowledge
         return knowledge.search_events(query, as_of=_require_aware("as_of", as_of), k=k)
 

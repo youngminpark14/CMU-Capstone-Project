@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from pmfa.config import Config
 from pmfa.knowledge.embedders import EmbedderMismatch, HashingEmbedder
+from pmfa.knowledge.index import EVENTS, LEDGER
 from pmfa.knowledge.retriever import ChromaKnowledge
 from pmfa.ports import Knowledge
 from pmfa.records.base import RunMode
@@ -434,6 +437,52 @@ def test_the_events_search_lists_the_next_event_of_each_series_first(
     assert mid_august[:2] == ["KXFEDDECISION-26SEP", "KXCPIYOY-26AUG"]
 
 
+def test_a_series_next_event_is_judged_by_the_events_close_not_a_listings(
+    knowledge: ChromaKnowledge,
+) -> None:
+    """A ladder's listing ends when its next strike opens, which says nothing of the event's close.
+
+    On the frozen data the August inflation event gets a strike on 20 July, so its
+    first listing ends before the July event closes on 12 August.
+    """
+    opened = datetime(2026, 6, 1, tzinfo=UTC)
+    july_closes = datetime(2026, 8, 12, 12, 29, tzinfo=UTC)
+    august_closes = datetime(2026, 9, 11, 12, 29, tzinfo=UTC)
+    july = event("KXCPIYOY-26JUL", "CPI inflation for the year ending in July", opened, july_closes)
+    august = event(
+        "KXCPIYOY-26AUG", "CPI inflation for the year ending in August", opened, august_closes
+    )
+    strike_opens = datetime(2026, 7, 20, 18, tzinfo=UTC)
+    august = august.model_copy(
+        update={
+            "markets": [
+                *august.markets,
+                market("KXCPIYOY-26AUG-T4.0", "KXCPIYOY-26AUG", strike_opens, august_closes),
+            ]
+        }
+    )
+    assert knowledge.index_events([august, july]) == 2
+    for as_of in (datetime(2026, 7, 15, tzinfo=UTC), datetime(2026, 7, 25, tzinfo=UTC)):
+        hits = knowledge.search_events("CPI inflation for the year ending in August", as_of=as_of)
+        assert [h.event_ticker for h in hits] == ["KXCPIYOY-26JUL", "KXCPIYOY-26AUG"], as_of
+
+    # A row written before the event's close was stored cannot be placed, so it comes last.
+    vector = knowledge.index.embed(["CPI inflation"])[0]
+    stored = knowledge.index.query_events(vector, as_of=datetime(2026, 7, 15, tzinfo=UTC), n=5)
+    [old] = [h for h in stored if h.id.startswith("KXCPIYOY-26JUL")]
+    stripped = {k: v for k, v in old.metadata.items() if k != "event_close_ts"}
+    knowledge.index.delete(EVENTS, [old.id])
+    knowledge.index.upsert(
+        EVENTS,
+        ids=[old.id],
+        vectors=knowledge.index.embed([old.document]),
+        metadatas=[stripped],
+        documents=[old.document],
+    )
+    hits = knowledge.search_events("CPI inflation", as_of=datetime(2026, 7, 15, tzinfo=UTC))
+    assert [h.event_ticker for h in hits] == ["KXCPIYOY-26AUG", "KXCPIYOY-26JUL"]
+
+
 def test_the_event_document_lists_only_strikes_open_at_as_of(
     knowledge: ChromaKnowledge,
 ) -> None:
@@ -473,6 +522,44 @@ def test_the_event_document_lists_only_strikes_open_at_as_of(
         hits = knowledge.search_events("Fed decision", as_of=as_of)
         assert [h.event_ticker for h in hits] == [ticker]
     assert knowledge.search_events("Fed decision", as_of=closes) == []
+
+
+def test_the_evidence_search_is_exact_and_the_same_on_two_copies_of_an_index(
+    tmp_path: Path,
+) -> None:
+    """Every passage that passes the time filter is ranked: nothing nearer is left out.
+
+    Chroma's own nearest-neighbour search is approximate. On the frozen data it
+    returned different passages for the same query in two identical runs.
+    """
+    first, second = tmp_path / "a", tmp_path / "b"
+    small = config(passage_words=30, passage_overlap_words=5)  # several passages per document
+    with make(small, path=first) as k:
+        k.index_documents([*corpus(), *syndicated_copies()])
+    shutil.copytree(first, second)
+    embedder = HashingEmbedder()
+    queries = [*FED_QUERIES, "consumer price index shelter energy", "tomato plants"]
+    seen = []
+    for path in (first, second):
+        with make(small, path=path) as k:
+            everything = k.index.query_evidence(
+                embedder.embed(["anything"])[0], as_of=AS_OF + timedelta(days=365), n=10_000
+            )
+            assert len(everything) == k.index.count("evidence") > 12
+            eligible = [h for h in everything if h.metadata["published_ts"] <= AS_OF.timestamp()]
+            vectors = embedder.embed([h.document for h in eligible])
+            per_query = []
+            for query in embedder.embed(queries):
+                hits = k.index.query_evidence(query, as_of=AS_OF, n=6)
+                # The same ranking, worked out again from each passage's own text.
+                expected = sorted(
+                    zip(eligible, vectors, strict=True),
+                    key=lambda pair: (-round(float(np.dot(pair[1], query)), 6), pair[0].id),
+                )[:6]
+                assert [h.id for h in hits] == [h.id for h, _ in expected]
+                per_query.append([(h.id, h.similarity) for h in hits])
+            seen.append(per_query)
+    assert seen[0] == seen[1]
 
 
 # -- ledger
@@ -535,6 +622,35 @@ def test_ledger_returns_resolved_before_as_of_same_category_first(
     assert hits[0].probability == 0.7 and hits[0].market_price == 0.62 and hits[0].outcome
     [top] = knowledge.search_ledger("Fed", as_of=AS_OF, category="fed_decision", k=1)
     assert top.category == "fed_decision"
+
+
+def test_similarities_equal_to_six_decimals_are_a_tie(knowledge: ChromaKnowledge) -> None:
+    """Stored vectors are 32-bit floats, so a difference past the sixth decimal is noise.
+
+    Two rows whose similarity differs only there are ordered by the later resolution.
+    """
+    held = "Will the Fed hold rates in September?"
+    earlier = entry("exact", held, "fed_decision", datetime(2026, 9, 17, tzinfo=UTC))
+    later = entry("nearly", held, "fed_decision", datetime(2026, 9, 20, tzinfo=UTC))
+    assert knowledge.index_ledger([earlier, later]) == 2
+    vector = knowledge.index.embed([held])[0]
+    # Nudge the later row's stored vector so its similarity is lower from the eighth decimal on.
+    nudged = np.asarray(vector, dtype=np.float64).copy()
+    nudged[int(np.argmin(np.abs(nudged)))] += 2e-4
+    stored = knowledge.index.query_ledger(vector, as_of=AS_OF, n=2, category="fed_decision")
+    [row] = [h for h in stored if h.id == "nearly"]
+    knowledge.index.upsert(
+        LEDGER,
+        ids=["nearly"],
+        vectors=np.asarray([nudged], dtype=np.float32),
+        metadatas=[row.metadata],
+        documents=[row.document],
+    )
+    hits = knowledge.index.query_ledger(vector, as_of=AS_OF, n=2, category="fed_decision")
+    assert [h.id for h in hits] == ["nearly", "exact"]
+    assert hits[0].similarity == hits[1].similarity == 1.0  # reported as the tie it is
+    exact = np.asarray(vector, dtype=np.float32)
+    assert not np.array_equal(exact, np.asarray(nudged, dtype=np.float32))  # yet not the same
 
 
 def test_tied_ledger_entries_come_back_in_one_fixed_order() -> None:
