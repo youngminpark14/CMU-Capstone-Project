@@ -15,9 +15,11 @@ Role and input record in, validated output record out. The gateway owns:
   rendered prompt times the assigned model's input price, plus ``max_tokens``
   times its output price. A call that could take the episode or run dollar cap
   past its limit is refused, so the caps are ceilings as far as the input-token
-  bound holds (and the model served is the one assigned). A cached answer costs
-  the run nothing new and is checked as any answer was before: against what was
-  already spent. When the seconds cap is enforced (live modes), each call's
+  bound holds (and the model served is the one assigned). A call that fails in
+  the API client is charged that worst case, because it may have been answered
+  and billed all the same, so repeated failures reach the caps too. A cached
+  answer costs the run nothing new and is checked as any answer was before:
+  against what was already spent. When the seconds cap is enforced (live modes), each call's
   timeout is the configured ``request_timeout_seconds`` or the episode's seconds
   left, whichever is shorter;
 - the content-addressed response cache (``pmfa.models.cache``); a cached answer
@@ -189,11 +191,12 @@ class Gateway:
             self._check(episode_id, entry)  # nothing new to pay: what is spent decides
             return self._from_cache(hit, episode_id, entry)
 
-        self._check(episode_id, entry, worst=self._worst_case(spec.output_type, assignment, prompt))
+        worst = self._worst_case(spec.output_type, assignment, prompt)
+        self._check(episode_id, entry, worst=worst)
         before = self.meter.episode(episode_id)
         attempts: list[tuple[Completion, float]] = []
         try:
-            attempts.append(self._attempt(task, payload, assignment, episode_id, None))
+            attempts.append(self._attempt(task, payload, assignment, episode_id, None, worst))
         except ModelCallFailed as exc:
             self._record_failed(episode_id, entry, before, exc)
             raise
@@ -202,14 +205,10 @@ class Gateway:
             first_problem = problem
             repair = Repair(previous_answer=attempts[0][0].raw_text, problem=problem)
             retry = render(task, payload, repair)
-            self._check(
-                episode_id,
-                entry,
-                attempts,
-                worst=self._worst_case(spec.output_type, assignment, retry),
-            )
+            worst = self._worst_case(spec.output_type, assignment, retry)
+            self._check(episode_id, entry, attempts, worst=worst)
             try:
-                attempts.append(self._attempt(task, payload, assignment, episode_id, repair))
+                attempts.append(self._attempt(task, payload, assignment, episode_id, repair, worst))
             except ModelCallFailed as exc:
                 self._record_failed(episode_id, entry, before, exc)
                 raise
@@ -277,7 +276,16 @@ class Gateway:
         assignment: ModelAssignment,
         episode_id: str,
         repair: Repair | None,
+        worst: Decimal,
     ) -> tuple[Completion, float]:
+        """One request. ``worst`` is the most it can cost, charged when the client fails.
+
+        A request that fails in the API client may still have been answered and
+        billed (a timeout after the answer was written, an error raised by the
+        runner after the call), and the client's own retries may have sent it
+        more than once. Nothing says what it cost, so the attempt is charged its
+        worst case: the caps stay ceilings, and repeated failures reach them.
+        """
         timeout = self.config.models.request_timeout_seconds
         left = self.meter.seconds_left(episode_id)
         if left is not None:
@@ -292,12 +300,14 @@ class Gateway:
                 repair=repair,
             )
         except BaseException as exc:
-            self.meter.add(episode_id, usage_of(seconds=self._elapsed(started)))
+            seconds = self._elapsed(started)
             if isinstance(exc, Exception) and not isinstance(exc, PmfaError):
                 # A timeout or server error from the API client ends the episode, not the run.
+                self.meter.add(episode_id, usage_of(cost_usd=worst, seconds=seconds))
                 raise ModelCallFailed(
                     f"{task.value}: the model call failed: {type(exc).__name__}: {exc}"
                 ) from exc
+            self.meter.add(episode_id, usage_of(seconds=seconds))
             raise
         seconds = self._elapsed(started)
         self.meter.add(

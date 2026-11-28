@@ -262,10 +262,14 @@ def test_canary_in_a_retrieval_result_aborts_the_run(
         run_backtest(
             data_config,
             run_dir=run_dir,
-            systems=["market", "single_pass"],
+            systems=["market", "prompt_only", "single_pass"],
             models=scripted(data_config),
         )
-    assert read_manifest(run_dir).status == "aborted"
+    aborted = read_manifest(run_dir)
+    assert aborted.status == "aborted"
+    # The prompt-only call made before the leak is on record: an aborted run's report must
+    # not say that nothing was spent.
+    assert aborted.usage.calls == 1
     # An aborted run writes no metrics.json; its report still renders and says why it stopped.
     from pmfa.evaluation.report import build_report
 
@@ -519,6 +523,24 @@ def test_a_dry_run_report_points_at_no_missing_file_and_claims_no_score(
     assert "`forecasts.csv`" not in text and "- `metrics.json`" not in text
     assert "with a result was scored" not in text and "Nothing was scored in this run." in text
     assert "(this is a dry run)" in text and "was would run" not in text
+
+
+def test_the_report_of_a_run_that_never_finished_does_not_say_what_it_spent(
+    data_config: Config, tmp_path: Path
+) -> None:
+    """Its manifest was written before any call, so the usage in it is not what was spent."""
+    from pmfa.evaluation.manifest import write_manifest
+    from pmfa.evaluation.report import build_report
+
+    run_dir = tmp_path / "runs" / "died"
+    manifest = run_backtest(
+        data_config, run_dir=run_dir, systems=["market"], models=scripted(data_config), dry_run=True
+    )
+    write_manifest(manifest.model_copy(update={"status": "running"}), run_dir)
+    text = " ".join(build_report(run_dir).read_text().split())
+    assert "What this run spent on model calls was not recorded: it did not finish." in text
+    assert "Spent on new model calls" not in text
+    assert "This run did not finish (status running)" in text
 
 
 def test_a_run_with_no_scoring_pass_does_not_call_itself_a_pilot_of_zero_events(

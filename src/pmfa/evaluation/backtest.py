@@ -215,6 +215,22 @@ def _statuses(
     return out
 
 
+def _run_usage(tap: ModelTap | None, models: Models | None) -> RunUsage:
+    """What the run spent on new model calls so far, and how many answers were new or cached."""
+    if tap is None:
+        return RunUsage()
+    run_usage = getattr(models, "run_usage", None)
+    spent = run_usage() if callable(run_usage) else tap.usage_total
+    return RunUsage(
+        calls=spent.calls,
+        input_tokens=spent.input_tokens,
+        output_tokens=spent.output_tokens,
+        cost_usd=spent.cost_usd,
+        cache_answers=tap.sources.get("cache", 0),
+        live_answers=tap.sources.get("live", 0),
+    )
+
+
 def _final_statuses(
     statuses: dict[str, str],
     running: list[str],
@@ -1025,6 +1041,8 @@ def run_backtest(
                 "finished_at": stamp.now(),
                 "progress": run.progress.model_copy(update={"stopped_reason": str(exc)}),
                 "leakage_checks": _leakage_checks(run, index_built=index_built),
+                # What was paid before the abort is still spent.
+                "usage": _run_usage(tap, chosen_models),
                 "notes": [*manifest.notes, f"aborted: {exc}"],
             }
         )
@@ -1073,18 +1091,7 @@ def run_backtest(
         json.dumps(metrics, indent=2, default=str) + "\n", encoding="utf-8"
     )
 
-    usage = RunUsage()
-    if tap is not None:
-        run_usage = getattr(chosen_models, "run_usage", None)
-        spent = run_usage() if callable(run_usage) else tap.usage_total
-        usage = RunUsage(
-            calls=spent.calls,
-            input_tokens=spent.input_tokens,
-            output_tokens=spent.output_tokens,
-            cost_usd=spent.cost_usd,
-            cache_answers=tap.sources.get("cache", 0),
-            live_answers=tap.sources.get("live", 0),
-        )
+    usage = _run_usage(tap, chosen_models)
     notes = list(manifest.notes)
     if source == "supplied":
         notes.append(

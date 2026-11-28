@@ -17,6 +17,7 @@ import json
 import re
 import shutil
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -30,14 +31,21 @@ FIGURES = ("brier_by_horizon.png", "reliability.png", "equity_curve.png")
 COMMITTED = ("manifest.json", "forecasts.csv", "metrics.json", REPORT_FILE)
 """Files of a published run; ``figures/`` and ``traces/`` are copied whole beside them."""
 ROWS = "forecasts.csv"
+SCORES_ONLY_MIN_FILLS = 10
+"""With fewer fills than this, the dollar results are enough to work out the fill prices."""
+SCORES_ONLY_MIN_BIN = 5
+"""A reliability bin with fewer forecasts than this would show single forecasts."""
 SCORES_ONLY_NOTE = (
     "Published as scores only: the per-forecast table and the saved traces are left out, and so "
     "are the parts of the metrics from which a fill or market price can be worked out (the "
-    "equity curve, P&L by market and by event, and the events and markets with the largest share "
-    "of the error), because they hold exchange prices and Kalshi's Developer Agreement does not "
-    "allow data from its API to be shared without written permission. They stay in the local run "
-    "directory."
+    "equity curve, P&L by market and by event, the events and markets with the largest share "
+    f"of the error, the mean forecast of a reliability bin with fewer than {SCORES_ONLY_MIN_BIN} "
+    f"forecasts and, when there are fewer than {SCORES_ONLY_MIN_FILLS} fills, the dollar results "
+    "of the trading simulation), because they hold exchange prices and Kalshi's Developer "
+    "Agreement does not allow data from its API to be shared without written permission. They "
+    "stay in the local run directory."
 )
+WITHHELD = "withheld"
 PUBLISH_ROOT = Path("evaluation") / "runs"
 NO_METRICS = ("dry_run", "aborted", "running")
 """Run statuses that wrote no ``metrics.json`` and no ``forecasts.csv``."""
@@ -233,7 +241,7 @@ def _figures(folder: Path, manifest: Any, metrics: dict[str, Any]) -> None:
             pts = [
                 (b["mean_forecast"], b["observed_frequency"], b["count"])
                 for b in table["bins"]
-                if b["count"]
+                if b["count"] and b["mean_forecast"] is not None  # withheld in small bins
             ]
             if not pts:
                 continue
@@ -435,9 +443,15 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         f"{manifest.plan.triggers}"
         + (f"; subsample limit {manifest.plan.limit}" if manifest.plan.limit else "")
         + ".\n"
-        f"- Dollar cap for the run: ${cfg['budget']['max_usd_per_run']}. Spent on new model "
-        f"calls: ${float(manifest.usage.cost_usd):.4f} ({manifest.usage.live_answers} new "
-        f"answers, {manifest.usage.cache_answers} from the cache).\n"
+        f"- Dollar cap for the run: ${cfg['budget']['max_usd_per_run']}. "
+        + (
+            # A run that never finished wrote its manifest before any call: its spend is unknown.
+            "What this run spent on model calls was not recorded: it did not finish.\n"
+            if manifest.status == "running"
+            else f"Spent on new model calls: ${float(manifest.usage.cost_usd):.4f} "
+            f"({manifest.usage.live_answers} new answers, {manifest.usage.cache_answers} from "
+            "the cache).\n"
+        )
     )
     w("")
     w(
@@ -653,7 +667,11 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
                     [
                         f"[{b['lower']:.1f}, {b['upper']:.1f})",
                         str(b["count"]),
-                        _num(b["mean_forecast"], 3) if b["count"] else "empty",
+                        "empty"
+                        if not b["count"]
+                        else WITHHELD
+                        if b["mean_forecast"] is None
+                        else _num(b["mean_forecast"], 3),
                         _num(b["observed_frequency"], 3) if b["count"] else "empty",
                     ]
                     for b in table["bins"]
@@ -676,6 +694,7 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
         )
     else:
         dd = pnl.get("max_drawdown", {})
+        withheld = pnl.get("withheld")
         w(
             _table(
                 ["Measure", "Value"],
@@ -683,19 +702,43 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
                     ["Bankroll (notional)", _money(pnl.get("bankroll"))],
                     ["Fills", str(summary.get("n_trades", 0))],
                     ["Settled fills", str(summary.get("n_settled", 0))],
-                    ["Realized P&L after fees", _money(summary.get("total"))],
+                    [
+                        "Realized P&L after fees",
+                        f"{withheld['result']} (dollars {WITHHELD})"
+                        if withheld
+                        else _money(summary.get("total")),
+                    ],
                     ["Not trading", _money(0)],
-                    ["P&L 95% interval (resampling events)", _pnl_interval(pnl.get("interval"))],
-                    ["Fees paid on settled fills", _money(summary.get("fees"))],
-                    ["Still open at the end (cost)", _money(summary.get("open_cost"))],
+                    [
+                        "P&L 95% interval (resampling events)",
+                        WITHHELD if withheld else _pnl_interval(pnl.get("interval")),
+                    ],
+                    [
+                        "Fees paid on settled fills",
+                        WITHHELD if withheld else _money(summary.get("fees")),
+                    ],
+                    [
+                        "Still open at the end (cost)",
+                        WITHHELD if withheld else _money(summary.get("open_cost")),
+                    ],
                     [
                         "Maximum drawdown",
-                        f"{float(dd.get('fraction', 0)) * 100:.2f}% ({_money(dd.get('dollars'))})",
+                        WITHHELD
+                        if withheld
+                        else f"{float(dd.get('fraction', 0)) * 100:.2f}% "
+                        f"({_money(dd.get('dollars'))})",
                     ],
                 ],
             )
         )
         w("")
+        if withheld:
+            w(
+                f"The dollar results are {WITHHELD} from this scores-only publication: with "
+                f"{withheld['why']}, a profit and its fees are enough to work out the fill "
+                "prices. They are in the local run directory. So few fills say nothing about "
+                "trading either way.\n"
+            )
         trading_halt = (metrics.get("self_halts") or {}).get("trading")
         if trading_halt:
             w(
@@ -751,7 +794,11 @@ def _report_text(manifest: Any, metrics: dict[str, Any]) -> str:
                 _table(
                     ["Trades", "Fills", "Realized P&L after fees"],
                     [
-                        [k.replace("_", " "), str(v["n_fills"]), _money(v["total"])]
+                        [
+                            k.replace("_", " "),
+                            str(v["n_fills"]),
+                            WITHHELD if v["total"] is None else _money(v["total"]),
+                        ]
                         for k, v in by.items()
                     ],
                 )
@@ -1296,17 +1343,47 @@ def _scores_only_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
 
     Cash and equity at each fill and settlement give the fill price, and so does a
     market's or an event's P&L; one market's squared error against its public
-    outcome gives the market's prices. Aggregates over many rows stay.
+    outcome gives the market's prices. With only a few fills, the totals do too:
+    whole contracts, cent prices and the fee schedule leave one answer for a
+    profit and its fees, and a bootstrap interval over two events is twice each
+    event's result. So with fewer than ``SCORES_ONLY_MIN_FILLS`` fills the dollar
+    results are withheld, and ``pnl.withheld`` says so with the sign of the
+    result. A reliability bin with fewer than ``SCORES_ONLY_MIN_BIN`` forecasts
+    would show single forecasts, which for the market are exchange prices, so its
+    mean forecast is withheld. Aggregates over many rows stay.
     """
     out = json.loads(json.dumps(metrics))
     pnl = out.get("pnl", {})
     pnl.pop("equity_curve", None)
-    for block in (pnl.get("summary", {}), *pnl.get("by_routing", {}).values()):
+    summary = pnl.get("summary", {})
+    tiers = list(pnl.get("by_routing", {}).values())
+    for block in (summary, *tiers):
         block.pop("by_market", None)
         block.pop("by_event", None)
+    fills = int(summary.get("n_trades", 0) or 0)
+    if 0 < fills < SCORES_ONLY_MIN_FILLS:
+        total = Decimal(str(summary.get("total") or "0"))
+        pnl["withheld"] = {
+            "why": f"fewer than {SCORES_ONLY_MIN_FILLS} fills",
+            "result": "a gain" if total > 0 else "a loss" if total < 0 else "no gain or loss",
+        }
+        for block in (summary, *tiers):
+            for key in ("total", "fees", "open_cost"):
+                if key in block:
+                    block[key] = None
+        for key in ("fraction", "dollars"):
+            pnl.get("max_drawdown", {})[key] = None
+        for key in ("estimate", "lower", "upper"):
+            if key in pnl.get("interval", {}):
+                pnl["interval"][key] = None
     for entry in out.get("systems", {}).values():
         for key in ("top_event", "top_markets"):
             (entry.get("error_concentration") or {}).pop(key, None)
+    for tables in out.get("reliability", {}).values():
+        for table in tables.values():
+            for b in (table or {}).get("bins", []):
+                if 0 < b["count"] < SCORES_ONLY_MIN_BIN:
+                    b["mean_forecast"] = None
     return out
 
 

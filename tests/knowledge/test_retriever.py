@@ -562,6 +562,61 @@ def test_the_evidence_search_is_exact_and_the_same_on_two_copies_of_an_index(
     assert seen[0] == seen[1]
 
 
+def test_no_search_uses_chromas_own_nearest_neighbour_query(
+    knowledge: ChromaKnowledge, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Chroma's ``query`` is approximate and not repeatable: every search must rank in code.
+
+    On a corpus this small Chroma's query happens to be exact, so comparing
+    results cannot tell the two apart; forbidding the call can.
+    """
+    from chromadb.api.models.Collection import Collection
+
+    def forbidden(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("a search called Chroma's approximate query")
+
+    monkeypatch.setattr(Collection, "query", forbidden)
+    knowledge.index_documents(corpus())
+    opened, closes = datetime(2026, 10, 29, tzinfo=UTC), datetime(2026, 12, 9, 19, tzinfo=UTC)
+    knowledge.index_events(
+        [event("KXFEDDECISION-26DEC", "Fed decision in December", opened, closes)]
+    )
+    knowledge.index_ledger(
+        [
+            entry(
+                "held",
+                "Will the Fed hold rates?",
+                "fed_decision",
+                datetime(2026, 9, 17, tzinfo=UTC),
+            )
+        ]
+    )
+    assert knowledge.search_evidence(FED_QUERIES, as_of=AS_OF, category="fed_decision")
+    assert knowledge.search_events("Fed decision", as_of=AS_OF)
+    assert knowledge.search_ledger("Fed hold", as_of=AS_OF, category="fed_decision")
+
+
+def test_a_search_reads_its_rows_in_pages(
+    knowledge: ChromaKnowledge, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One read of more than about 32,000 rows fails inside Chroma, so reads are paged."""
+    from pmfa.knowledge import index as index_module
+
+    small = config(passage_words=30, passage_overlap_words=5)
+    with make(small) as k:
+        k.index_documents([*corpus(), *syndicated_copies()])
+        query = k.index.embed(FED_QUERIES)[0]
+        whole = [(h.id, h.similarity) for h in k.index.query_evidence(query, as_of=AS_OF, n=50)]
+        assert len(whole) > 12
+        monkeypatch.setattr(index_module, "_PAGE", 5)  # several pages, the last one short
+        paged = [(h.id, h.similarity) for h in k.index.query_evidence(query, as_of=AS_OF, n=50)]
+        assert paged == whole
+        monkeypatch.setattr(index_module, "_PAGE", len(whole))  # the last page exactly full
+        assert [
+            (h.id, h.similarity) for h in k.index.query_evidence(query, as_of=AS_OF, n=50)
+        ] == whole
+
+
 # -- ledger
 
 

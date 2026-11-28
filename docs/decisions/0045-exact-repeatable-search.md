@@ -14,7 +14,7 @@ Each of the three searches reads every row that passes its time filter with `get
 
 ## Consequences
 
-Two runs on the same data ask the same questions, so a rerun costs nothing and gives the same numbers; five full runs with fixed rules, under four hash seeds, gave identical inputs for all 425 model calls. The top of every list is the true nearest, not an approximation. The cost is a read of every eligible row per search: about a fifth of a second for the backtest's passages, and several seconds for a collection of fifty thousand rows, which would need another design. A model's answers still vary from call to call; the cache makes one run repeatable, not the model.
+Two runs on the same data ask the same questions, so a rerun costs nothing and gives the same numbers; five full runs with fixed rules, under four hash seeds, gave identical inputs for all 425 model calls. The top of every list is the true nearest, not an approximation. The cost is a read of every eligible row per search, in pages of 10,000 (one read of more than about 32,000 rows fails inside Chroma): about a fifth of a second for the backtest's 700 passages, about one second and 850 MB for 5,000 rows, and about four seconds and 2.8 GB for 20,000. A collection much larger than that needs another design. A model's answers still vary from call to call; the cache makes one run repeatable, not the model.
 
 ## Origin
 

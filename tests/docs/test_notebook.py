@@ -136,8 +136,12 @@ def test_a_run_published_as_scores_only_is_drawn_from_metrics_json_and_says_so(
     assert "published as scores only" in printed and "nothing is recomputed" in printed
     assert namespace["scores"]["market"] == metrics["systems"]["market"]["by_horizon"]
     assert set(namespace["tables"]) == {"market"}
-    assert (
-        namespace["tables"]["market"].model_dump(mode="json")
-        == (metrics["reliability"]["market"]["answered"])
-    )
+    # The published metrics withhold the mean forecast of a bin with few forecasts. The
+    # notebook shows what was published and still draws its figures.
+    from pmfa.evaluation.report import _scores_only_metrics
+
+    published = _scores_only_metrics(metrics)["reliability"]["market"]["answered"]
+    assert namespace["tables"]["market"].model_dump(mode="json") == published
+    assert any(b["count"] and b["mean_forecast"] is None for b in published["bins"])
+    assert published != metrics["reliability"]["market"]["answered"]
     assert_figures_drawn(namespace)

@@ -536,6 +536,27 @@ def test_a_call_the_api_client_failed_is_on_the_cassette_and_replays_the_same(tm
     assert gw.usage("e").calls == 4 and gw.usage("e").seconds == 6.0
 
 
+def test_a_call_that_fails_in_the_client_is_charged_its_worst_case_and_reaches_the_cap():
+    """The provider may have answered and billed a call that then failed: nothing says what
+    it cost, so it is charged the most it could, and repeated failures stop at the run's cap."""
+
+    def fails_after_the_answer(request):  # type: ignore[no-untyped-def]
+        raise RuntimeError("the runner raised after the provider answered")
+
+    one = score_worst_case(make_config())
+    cap = str(one * 3)
+    config = make_config(budget={"max_usd_per_run": cap, "max_usd_per_episode": cap})
+    gw, backend = gateway([fails_after_the_answer] * 10, config=config)
+    for n in range(1, 4):
+        with pytest.raises(ModelOutputError, match="the model call failed"):
+            gw.call(RoleTask.SCORE, SCORE_IN, episode_id=f"e{n}")
+        assert gw.usage(f"e{n}").cost_usd == one
+        assert gw.run_usage().cost_usd == one * n
+    with pytest.raises(RunBudgetExhausted):  # the fourth is refused before it is sent
+        gw.call(RoleTask.SCORE, SCORE_IN, episode_id="e4")
+    assert len(backend.requests) == 3
+
+
 def test_a_transport_error_is_a_model_output_error_and_is_charged():
     """An error from the API client (after its own retries) ends the episode, not the run."""
     from pmfa.errors import ModelCallFailed

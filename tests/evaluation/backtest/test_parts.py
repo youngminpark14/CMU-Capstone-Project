@@ -304,8 +304,20 @@ def test_a_scores_only_publication_leaves_out_the_rows_and_the_traces_and_says_s
     local = (full_run.run_dir / "report.md").read_text()
     assert "the per-forecast table is `forecasts.csv`" in local and "- `traces/`:" in local
     assert SCORES_ONLY_NOTE not in local
-    same = [line for line in local.splitlines() if line.startswith(("## ", "| "))]
-    assert all(line in report for line in same)
+    headings = [line for line in local.splitlines() if line.startswith("## ")]
+    assert headings == [line for line in report.splitlines() if line.startswith("## ")]
+
+    def section(text: str, heading: str) -> str:
+        return text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
+
+    for heading in (
+        "What was run and what was not",
+        "Sample sizes",
+        "Brier score and Brier skill against the market",
+        "Exits by reason",
+        "How look-ahead was prevented",
+    ):
+        assert section(report, heading) == section(local, heading), heading
 
 
 def test_a_scores_only_publication_leaves_out_what_gives_fill_or_market_prices(
@@ -328,12 +340,88 @@ def test_a_scores_only_publication_leaves_out_what_gives_fill_or_market_prices(
         assert f'"{key}"' not in text, key
     published = json.loads(text)
     assert published["systems"].keys() == local["systems"].keys()
-    assert published["pnl"]["summary"]["total"] == local["pnl"]["summary"]["total"]
+    assert published["pnl"]["summary"]["n_settled"] == local["pnl"]["summary"]["n_settled"]
     report = (target / "report.md").read_text()
     assert "The event with the largest share" not in report
     error_section = " ".join(report.split("## Where the error comes from", 1)[1].split())
     assert "split by the forecast probability." in error_section
     assert "by event and by market is left out of a scores-only publication" in error_section
+
+    # Two fills: a profit and its fees have one solution in whole contracts and cent prices,
+    # and an interval over two events is twice each event's result. So no dollar result is told.
+    pnl, kept = published["pnl"], local["pnl"]
+    assert kept["summary"]["n_trades"] == pnl["summary"]["n_trades"] == 2
+    assert pnl["withheld"] == {"why": "fewer than 10 fills", "result": "a gain"}
+    assert float(kept["summary"]["total"]) > 0
+    for block in (pnl["summary"], *pnl["by_routing"].values()):
+        assert block["total"] is None and block["fees"] is None and block["open_cost"] is None
+    assert pnl["max_drawdown"] == {"fraction": None, "dollars": None}
+    assert [pnl["interval"][k] for k in ("estimate", "lower", "upper")] == [None, None, None]
+    dollars = {
+        f"{float(kept['summary'][k]):,.2f}" for k in ("total", "fees") if float(kept["summary"][k])
+    }
+    dollars |= {f"{float(kept['interval'][k]):,.2f}" for k in ("lower", "upper")}
+    assert dollars and not any(f"${value}" in report for value in dollars)
+    trading = " ".join(report.split("## Simulated trading after fees", 1)[1].split())
+    assert "| Realized P&L after fees | a gain (dollars withheld) |" in trading
+    assert "The dollar results are withheld from this scores-only publication" in trading
+
+    # A reliability bin with fewer than five forecasts would show single forecasts.
+    small = large = 0
+    for system, tables in local["reliability"].items():
+        for variant, table in tables.items():
+            for mine, theirs in zip(
+                table["bins"], published["reliability"][system][variant]["bins"], strict=True
+            ):
+                if 0 < mine["count"] < 5:
+                    small += 1
+                    assert theirs["mean_forecast"] is None, (system, variant, mine)
+                else:
+                    large += bool(mine["count"])
+                    assert theirs["mean_forecast"] == mine["mean_forecast"]
+                assert theirs["count"] == mine["count"]
+                assert theirs["observed_frequency"] == mine["observed_frequency"]
+    assert small and large
+    assert "| withheld |" in report.split("## Reliability", 1)[1]
     for ticker in local["pnl"]["summary"]["by_market"]:
         assert ticker not in report
     assert json.loads((full_run.run_dir / "metrics.json").read_text()) == local  # left as it was
+
+
+def test_scores_only_keeps_the_dollar_results_of_ten_fills_or_more() -> None:
+    """Many fills hide each one: the totals no longer have a single solution."""
+    from pmfa.evaluation.report import _scores_only_metrics
+
+    def block(fills: int) -> dict:
+        return {
+            "total": "12.34",
+            "fees": "1.20",
+            "open_cost": "0",
+            "n_trades": fills,
+            "n_settled": fills,
+            "by_market": {"M": "12.34"},
+            "by_event": {"E": "12.34"},
+        }
+
+    def metrics(fills: int) -> dict:
+        return {
+            "systems": {},
+            "reliability": {},
+            "pnl": {
+                "bankroll": "1000",
+                "summary": block(fills),
+                "by_routing": {"auto": {**block(fills), "n_fills": fills}},
+                "interval": {"estimate": "12.34", "lower": "1.00", "upper": "20.00"},
+                "max_drawdown": {"fraction": "0.01", "dollars": "10.00"},
+                "equity_curve": [{"at": "2026-08-10T14:02:00Z", "cash": "993.73"}],
+            },
+        }
+
+    many = _scores_only_metrics(metrics(10))["pnl"]
+    assert "withheld" not in many and "equity_curve" not in many
+    assert many["summary"]["total"] == "12.34" and many["interval"]["upper"] == "20.00"
+    assert "by_market" not in many["summary"] and "by_event" not in many["by_routing"]["auto"]
+    few = _scores_only_metrics(metrics(9))["pnl"]
+    assert few["withheld"]["result"] == "a gain" and few["summary"]["total"] is None
+    none = _scores_only_metrics(metrics(0))["pnl"]
+    assert "withheld" not in none and none["summary"]["total"] == "12.34"  # nothing to hide

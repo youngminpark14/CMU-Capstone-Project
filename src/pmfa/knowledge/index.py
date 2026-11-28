@@ -22,9 +22,10 @@ time filter inside the read; the rows that pass it are ranked here, by cosine
 similarity and then by a fixed tie-break. Chroma's own nearest-neighbour search
 is approximate: on the frozen data it returned different passages for the same
 query in different runs, and tied rows in a different order, so two identical
-backtests asked the models different questions. The collections are small
-(hundreds to a few thousand rows), so reading every eligible row is cheap. A
-collection of many tens of thousands of rows would need another design.
+backtests asked the models different questions. The cost is a read of every
+eligible row per search: about 0.2 s for the backtest's 700 passages, about
+1 s and 850 MB for 5,000 rows and about 4 s and 2.8 GB for 20,000 (2048-number
+vectors). A collection much larger than that needs another design.
 """
 
 from __future__ import annotations
@@ -336,11 +337,19 @@ class ChromaIndex:
         floats, so what lies beyond is noise that differs with the machine's
         arithmetic, and a recorded trace must not depend on it.
         """
-        rows = _rows(
-            self._collections[name].get(
-                where=where, include=["metadatas", "documents", "embeddings"]
+        rows: list[Row] = []
+        while True:  # in pages: one read of more than about 32,000 rows fails inside Chroma
+            page = _rows(
+                self._collections[name].get(
+                    where=where,
+                    include=["metadatas", "documents", "embeddings"],
+                    limit=_PAGE,
+                    offset=len(rows),
+                )
             )
-        )
+            rows.extend(page)
+            if len(page) < _PAGE:
+                break
         if not rows:
             return []
         matrix = np.asarray([row.vector for row in rows], dtype=np.float64)
@@ -355,6 +364,9 @@ class ChromaIndex:
 
 _TIE_DECIMALS = 6
 """Similarities are kept to this many decimals, and equal ones are a tie."""
+
+_PAGE = 10_000
+"""Rows per read. Chroma's ``get`` fails above 32,766 rows (SQLite's limit on variables)."""
 
 _CLOSE_UNKNOWN = 2**62
 """Sorts an event row that does not carry its event's close time after every row that does."""

@@ -227,7 +227,9 @@ separates skill from luck. The harness is the deliverable; its numbers are a pil
   run's cap, the plan says the run would stop partial.
 - **Dollar cap per run.** The gateway's run meter enforces `budget.max_usd_per_run` (default $100)
   before every call ([meter.py](../src/pmfa/models/meter.py)), against the call's worst-case cost,
-  so a call that could take the run past the cap is not sent and the cap is a ceiling. When it trips, the run stops cleanly,
+  so a call that could take the run past the cap is not sent and the cap is a ceiling. A call that
+  fails in the API client is charged that worst case, since it may have been answered and billed,
+  so repeated failures reach the cap too. When it trips, the run stops cleanly,
   is marked partial, and writes everything it ran. Each system's status then says how far it got:
   `run` when it finished everything planned, `partial: k of n points` (and `j of m triggers` for the
   pipeline, counting the trigger whose episode the cap ended `error`) when it stopped part way, `not run: ...` when the cap came before its first forecast.
@@ -372,9 +374,19 @@ per-forecast table and the traces stay there too: they hold exchange prices, whi
 Developer Agreement does not allow to be shared without permission
 ([Sources and credits](#sources-and-credits)), so only the manifest, the metrics, the report and its
 figures are published, and the published manifest's notes say so. The published metrics leave out
-the parts from which a fill or market price can be worked out (the equity curve, P&L by market and
-by event, and each system's event and markets with the largest share of the error), and the report
-and figures are drawn again from them. The owner chose scores only for
+the parts from which a fill or market price can be worked out, and the report and figures are drawn
+again from them:
+
+- the equity curve, P&L by market and by event, and each system's event and markets with the
+  largest share of the error;
+- the mean forecast of a reliability bin holding fewer than five forecasts (for the market system
+  that is one or a few exchange prices);
+- with fewer than ten fills, every dollar result of the trading simulation (profit, fees, drawdown,
+  the interval): whole contracts, cent prices and the fee schedule leave a single answer for one
+  trade's profit and fee, and an interval over two events is twice each event's result. The
+  publication says how many fills there were and whether the result was a gain or a loss.
+
+The owner chose scores only for
 every run with model forecasts (2026-11-27). A run made from a working tree with uncommitted changes
 says so in its report, in the published manifest's notes and in a warning when it is published: its
 commit does not hold exactly the code that produced it.
