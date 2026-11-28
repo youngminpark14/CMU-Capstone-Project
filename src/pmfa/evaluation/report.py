@@ -1127,13 +1127,22 @@ def _error_concentration(w: Any, manifest: Any, metrics: dict[str, Any], shown: 
     if not blocks:
         return
     w("## Where the error comes from\n")
-    w(
-        "Each system's summed squared error, (probability - outcome)^2 added over the rows of "
-        "its pooled Brier score (answered forecasts, all horizons), split by the forecast "
-        "probability and by event and market. When one event carries a large share, a "
-        "comparison on this sample rests heavily on that event; the event-clustered interval "
-        "above already reflects it.\n"
-    )
+    if SCORES_ONLY_NOTE in manifest.notes:
+        w(
+            "Each system's summed squared error, (probability - outcome)^2 added over the rows "
+            "of its pooled Brier score (answered forecasts, all horizons), split by the forecast "
+            "probability. The split by event and by market is left out of a scores-only "
+            "publication: one market's squared error against its public outcome gives its "
+            "prices.\n"
+        )
+    else:
+        w(
+            "Each system's summed squared error, (probability - outcome)^2 added over the rows "
+            "of its pooled Brier score (answered forecasts, all horizons), split by the forecast "
+            "probability and by event and market. When one event carries a large share, a "
+            "comparison on this sample rests heavily on that event; the event-clustered "
+            "interval above already reflects it.\n"
+        )
     for s, block in blocks.items():
         total = float(block["squared_error"])
         w(

@@ -331,6 +331,9 @@ def test_a_scores_only_publication_leaves_out_what_gives_fill_or_market_prices(
     assert published["pnl"]["summary"]["total"] == local["pnl"]["summary"]["total"]
     report = (target / "report.md").read_text()
     assert "The event with the largest share" not in report
+    error_section = " ".join(report.split("## Where the error comes from", 1)[1].split())
+    assert "split by the forecast probability." in error_section
+    assert "by event and by market is left out of a scores-only publication" in error_section
     for ticker in local["pnl"]["summary"]["by_market"]:
         assert ticker not in report
     assert json.loads((full_run.run_dir / "metrics.json").read_text()) == local  # left as it was
