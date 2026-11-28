@@ -22,7 +22,7 @@ Fable 5.2 stays in the price catalog so a slot can still be pointed at it.
 
 ## Consequences
 
-Answers cached under the old assignments are not reused for the changed slots, so the next backtest pays for them again; per call, Opus costs half of what Fable did and Sonnet twenty times Haiku. Evaluation runs made before this change (the runs of 27 and 28 November 2026) describe the old assignments and are not comparable call for call. The sample dry-run output in [evaluation.md](../evaluation.md) was recorded under the old assignments. Whether the stronger Generator or the Opus Critic improves forecasts has not been measured.
+Answers cached under the old assignments are not reused for the changed slots, so the next backtest pays for them again; per call, Opus costs half of what Fable did and Sonnet twenty times Haiku. Evaluation runs made before this change (the runs of 27 and 28 November 2026) describe the old assignments and are not comparable call for call. Whether the stronger Generator or the Opus Critic improves forecasts has not been measured.
 
 ## Origin
 

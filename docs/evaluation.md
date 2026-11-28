@@ -518,40 +518,38 @@ Models: none
 
 system                   status                 forecasts   calls (min-max)       USD (min-max)
 market                   would run                     21       0-0             0.00-0.00
-prompt_only              not run: no API key           21      21-21            5.29-5.29
+prompt_only              not run: no API key           21      21-21            2.65-2.65
                           one baseline call per scoring point; a repair retry would add one
-single_pass              not run: no API key           21      21-21            5.80-5.80
+single_pass              not run: no API key           21      21-21            2.90-2.90
                           one baseline call per scoring point; a repair retry would add one
-single_pass_similarity   not run: no API key           21      21-21            5.80-5.80
+single_pass_similarity   not run: no API key           21      21-21            2.90-2.90
                           one baseline call per scoring point; a repair retry would add one
-pipeline                 not run: no API key           76      76-1683          0.04-85.99
+pipeline                 not run: no API key           76      76-1683          0.04-81.66
                           scheduled episodes by tree depth: depth 1: 18, depth 2: 3
                           55 news-triggered episode(s), each bounded with a full depth-3 tree after one Monitor call
                           the maximum assumes no repair retries: an unusable answer gets one retry, which could add up to as many calls again within each episode's call cap; the run's dollar cap ($100) is the real ceiling
                           the floor assumes every episode stops after its first call (no candidate event, or no evidence)
 
-Estimated total: $16.93 to $102.87 (run cap $100)
-The maximum exceeds the run's dollar cap of $100: if the run spends that much it stops at the cap and is marked partial, with what it did not run listed.
+Estimated total: $8.49 to $90.10 (run cap $100)
 Assumptions:
   - Prices are the catalog's dollars per million tokens (config.models.catalog).
-  - baseline on claude-fable-5-2: assumed 1500 input and 6000 output tokens, $0.2520 per call
-  - baseline_with_passages on claude-fable-5-2: assumed 4500 input and 6000 output tokens, $0.2760 per call
-  - generate on claude-haiku-5-5: assumed 5000 input and 2500 output tokens, $0.0018 per call
+  - baseline on claude-opus-5-5: assumed 1500 input and 6000 output tokens, $0.1260 per call
+  - baseline_with_passages on claude-opus-5-5: assumed 4500 input and 6000 output tokens, $0.1380 per call
+  - generate on claude-sonnet-5-5: assumed 5000 input and 2500 output tokens, $0.0350 per call
   - match on claude-haiku-5-5: assumed 3000 input and 600 output tokens, $0.0006 per call
   - plan_queries on claude-haiku-5-5: assumed 1500 input and 800 output tokens, $0.0006 per call
-  - score on claude-fable-5-2: assumed 6000 input and 6000 output tokens, $0.2880 per call
+  - score on claude-opus-5-5: assumed 6000 input and 6000 output tokens, $0.1440 per call
   - score on claude-sonnet-5-5: assumed 6000 input and 6000 output tokens, $0.0720 per call
   - select_passages on claude-haiku-5-5: assumed 4500 input and 1200 output tokens, $0.0010 per call
   - Answers already in the response cache cost nothing on a rerun; the estimate does not subtract them.
 ```
 
-With the default systems (without `single_pass_similarity`) the total is $11.13 to $97.08, inside
-the default $100 cap. The estimate uses assumed token counts until the cache holds recorded costs;
-the high-effort calls are assumed to write 6,000 output tokens each, thinking included. With all
-five systems the upper end exceeds the cap, so a run that spent the maximum would stop there and be
-marked partial.
+With the default systems (without `single_pass_similarity`) the total is $5.59 to $87.20. Both are
+inside the default $100 cap. The estimate uses assumed token counts until the cache holds recorded
+costs; the high-effort calls are assumed to write 6,000 output tokens each, thinking included. If a
+run did reach the cap it would stop there and be marked partial.
 
-**2. A subsample.** Three scoring points and three triggers; the dry run estimated $1.59 to $7.28 for
+**2. A subsample.** Three scoring points and three triggers; the dry run estimated $0.80 to $5.76 for
 the default systems. Its report shows the real cost per call and per episode, and its answers stay in
 the cache.
 
